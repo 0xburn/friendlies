@@ -25,7 +25,26 @@ export function UpdateBanner() {
 
   if (dismissed || !status) return null;
   if (status.state === 'not-available' || status.state === 'checking') return null;
-  if (status.state === 'error') return null;
+
+  if (status.state === 'error') {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 w-72">
+        <div className="rounded-xl border border-red-500/20 bg-[#1a1a2e]/95 backdrop-blur-sm shadow-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-red-400">Update error</span>
+            <button onClick={() => setDismissed(true)} className="text-gray-500 hover:text-gray-300 text-xs ml-3">✕</button>
+          </div>
+          <p className="text-[11px] text-gray-400 break-all">{status.message}</p>
+          <button
+            onClick={() => window.api.checkForUpdates()}
+            className="w-full rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isDownloading = status.state === 'downloading';
   const isReady = status.state === 'downloaded';

@@ -95,16 +95,24 @@ export function Settings() {
 
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
-        <button
-          onClick={handleLogout}
-          className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
-        >
-          Log Out
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleLogout}
+            className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          >
+            Log Out
+          </button>
+          <button
+            onClick={() => window.api.checkForUpdates()}
+            className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+          >
+            Check for Updates
+          </button>
+        </div>
       </div>
 
       <p className="text-center text-xs text-gray-600">
-        Slippi Friends v0.1.24
+        Slippi Friends v0.1.25
       </p>
     </div>
   );
