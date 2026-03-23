@@ -139,6 +139,7 @@ async function refreshAgentState(): Promise<void> {
         return;
       }
 
+      const appVersion = app.getVersion();
       const { error: syncErr } = await supabase.from('profiles').update({
         connect_code: identity.connectCode,
         slippi_uid: identity.uid,
@@ -146,6 +147,7 @@ async function refreshAgentState(): Promise<void> {
         verified: true,
         verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        app_version: appVersion,
       }).eq('id', user.id);
       if (syncErr) console.error('[main] profile sync failed:', syncErr.message);
       else console.log('[main] profile synced:', identity.connectCode);
