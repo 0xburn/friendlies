@@ -41,6 +41,7 @@ export function Dashboard() {
   const [characterId, setCharacterId] = useState<number | null>(null);
   const [opponentCharacterId, setOpponentCharacterId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.getIdentity().then(setIdentity);
@@ -58,7 +59,14 @@ export function Dashboard() {
       setPlayingSince(info.playingSince ?? null);
       setCharacterId(info.characterId ?? null);
     });
-    return unsub;
+
+    const unsubUpdate = window.api.onUpdateStatus((s: any) => {
+      if (s.state === 'available' || s.state === 'downloaded') {
+        setUpdateAvailable(s.version);
+      }
+    });
+
+    return () => { unsub(); unsubUpdate(); };
   }, []);
 
   async function copyCode() {
@@ -141,6 +149,21 @@ export function Dashboard() {
           opponentCharacterId={opponentCharacterId}
           playingSince={playingSince}
         />
+      )}
+
+      {updateAvailable && (
+        <div className="rounded-2xl border border-[#5865F2]/30 bg-[#5865F2]/5 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-white">v{updateAvailable} available</p>
+            <p className="text-xs text-gray-400">A new version of Slippi Friends is ready</p>
+          </div>
+          <button
+            onClick={() => window.api.downloadUpdate()}
+            className="shrink-0 rounded-lg bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4752C4] transition-colors"
+          >
+            Update
+          </button>
+        </div>
       )}
 
       {!connectCode && (
