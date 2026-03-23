@@ -102,7 +102,15 @@ async function stopAgentServices(): Promise<void> {
   stopWatcher();
 }
 
-async function pollFriendStatusesForNotifications(userId: string): Promise<void> {
+async function pollAllNotifications(userId: string): Promise<void> {
+  await Promise.all([
+    pollFriendOnlineStatuses(userId),
+    pollIncomingFriendRequests(userId),
+    pollPlayInvites(userId),
+  ]);
+}
+
+async function pollFriendOnlineStatuses(userId: string): Promise<void> {
   try {
     const st = getSettings();
     if (!st.showNotifications || !st.notifyFriendOnline) return;
@@ -135,9 +143,6 @@ async function pollFriendStatusesForNotifications(userId: string): Promise<void>
       previousFriendStatuses.set(code, newStatus);
     }
   } catch (e) { console.error('[main] friend status poll failed', e); }
-
-  pollIncomingFriendRequests(userId);
-  pollPlayInvites(userId);
 }
 
 async function pollIncomingFriendRequests(userId: string): Promise<void> {
@@ -235,8 +240,8 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
   await startPresenceLoop(identity.connectCode, identity.displayName || identity.connectCode, userId, st.replayDir);
 
   if (friendPollTimer) clearInterval(friendPollTimer);
-  friendPollTimer = setInterval(() => void pollFriendStatusesForNotifications(userId), 15_000);
-  void pollFriendStatusesForNotifications(userId);
+  friendPollTimer = setInterval(() => void pollAllNotifications(userId), 15_000);
+  void pollAllNotifications(userId);
 }
 
 async function refreshAgentState(): Promise<void> {

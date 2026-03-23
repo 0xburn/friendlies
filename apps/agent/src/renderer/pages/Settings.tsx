@@ -151,7 +151,7 @@ export function Settings() {
       </div>
 
       <p className="text-center text-xs text-gray-600">
-        Slippi Friends v0.1.29
+        Slippi Friends v0.1.30
       </p>
     </div>
   );
