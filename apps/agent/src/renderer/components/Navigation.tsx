@@ -37,7 +37,7 @@ export function Navigation() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.12</div>
+        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.13</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         {/* Top drag region for the content area */}

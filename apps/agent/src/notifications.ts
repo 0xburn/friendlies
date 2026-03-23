@@ -48,3 +48,20 @@ export function showFriendOnlineNotification(
     console.error('showFriendOnlineNotification failed', e);
   }
 }
+
+export function showFriendRequestNotification(
+  fromCode: string,
+  onClick?: () => void,
+): void {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: 'Slippi Friends',
+      body: `${fromCode} sent you a friend request`,
+    });
+    if (onClick) n.on('click', onClick);
+    n.show();
+  } catch (e) {
+    console.error('showFriendRequestNotification failed', e);
+  }
+}

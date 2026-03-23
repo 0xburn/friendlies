@@ -7,7 +7,7 @@ import {
 import { APP_PROTOCOL } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
-import { showFriendOnlineNotification, showOpponentNotification } from './notifications';
+import { showFriendOnlineNotification, showFriendRequestNotification, showOpponentNotification } from './notifications';
 import { supabase } from './supabase';
 import {
   getCurrentStatus, pushOfflineAndStop, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
@@ -22,6 +22,7 @@ import { setIdentityMismatchHandler, startWatcher, stopWatcher } from './watcher
 let mainWindow: BrowserWindow | null = null;
 let friendPollTimer: ReturnType<typeof setInterval> | null = null;
 const previousFriendStatuses = new Map<string, string>();
+const knownIncomingRequestIds = new Set<string>();
 
 function parseDotEnvContent(content: string): void {
   for (const line of content.split(/\r?\n/)) {
@@ -94,6 +95,7 @@ function createMainWindow(): BrowserWindow {
 async function stopAgentServices(): Promise<void> {
   if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
   previousFriendStatuses.clear();
+  knownIncomingRequestIds.clear();
   try { await stopPresenceLoop(); } catch (e) { console.error('stopPresenceLoop', e); }
   stopWatcher();
 }
@@ -130,6 +132,41 @@ async function pollFriendStatusesForNotifications(userId: string): Promise<void>
       previousFriendStatuses.set(code, newStatus);
     }
   } catch (e) { console.error('[main] friend status poll failed', e); }
+
+  pollIncomingFriendRequests(userId);
+}
+
+async function pollIncomingFriendRequests(userId: string): Promise<void> {
+  try {
+    if (!getSettings().showNotifications) return;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('connect_code')
+      .eq('id', userId)
+      .single();
+    if (!profile?.connect_code) return;
+
+    const { data: incoming } = await supabase
+      .from('friends')
+      .select('id, profiles!friends_user_id_fkey(connect_code)')
+      .eq('friend_connect_code', profile.connect_code)
+      .eq('status', 'pending');
+    if (!incoming) return;
+
+    for (const req of incoming) {
+      if (knownIncomingRequestIds.has(req.id)) continue;
+      knownIncomingRequestIds.add(req.id);
+      const fromCode = (req as any).profiles?.connect_code;
+      if (!fromCode) continue;
+      showFriendRequestNotification(fromCode, () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    }
+  } catch (e) { console.error('[main] incoming request poll failed', e); }
 }
 
 async function startAgentServices(identity: SlippiIdentity, userId: string): Promise<void> {
