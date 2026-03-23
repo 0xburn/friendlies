@@ -24,7 +24,7 @@ export function Navigation() {
   const handleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: `${window.location.origin}/friendlies/auth/callback` },
     });
   };
 
@@ -47,9 +47,9 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#21BA45] flex items-center justify-center font-display font-bold text-black text-sm">F</div>
-              <span className="font-display font-bold text-lg tracking-tight hidden sm:block">
-                <span className="text-[#21BA45]">Friendlies</span>
+              <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg" />
+              <span className="font-display font-bold text-lg tracking-tight text-white hidden sm:block">
+                friendlies
               </span>
             </Link>
 
@@ -74,21 +74,13 @@ export function Navigation() {
 
           <div className="flex items-center gap-3">
             {user ? (
-              <>
-                <Link
-                  href="/settings"
-                  className="text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Settings
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="text-sm text-gray-400 hover:text-red-400 transition-colors"
-                >
-                  Sign Out
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-sm text-gray-400 hover:text-red-400 transition-colors"
+              >
+                Sign Out
+              </button>
             ) : (
               <button
                 type="button"

@@ -12,7 +12,7 @@ export function DesktopBanner() {
           </p>
         </div>
         <a
-          href="https://github.com/slippi-friends/agent/releases"
+          href="https://github.com/0xburn/friendlies/releases"
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 rounded-lg bg-[#21BA45] px-5 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#1ea33e]"

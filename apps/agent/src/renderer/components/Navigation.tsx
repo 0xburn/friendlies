@@ -8,7 +8,7 @@ const links = [
 ];
 
 const SHARE_BLURB =
-  'Check out Friendlies — track your Melee opponents, see who\'s online, and manage your friend list.\nhttps://slippi-friends-web.vercel.app/';
+  'check out friendlies by lucky 7s: friends lists for slippi! see who\'s online, manage your friend list, and find new practice partners!\nhttps://luckystats.gg/friendlies';
 
 export function Navigation() {
   const [copied, setCopied] = useState(false);

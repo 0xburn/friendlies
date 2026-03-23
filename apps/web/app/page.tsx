@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import { DownloadButtons } from '@/components/DownloadButtons';
 
-const REPO = '0xburn/slippi-friends';
+const REPO = '0xburn/friendlies';
 
 async function getLatestRelease() {
   try {

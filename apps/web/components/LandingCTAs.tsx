@@ -11,7 +11,7 @@ export function LandingCTAs() {
     await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: `${origin}/auth/callback?next=/friends`,
+        redirectTo: `${origin}/friendlies/auth/callback?next=/friends`,
       },
     });
   }
@@ -19,7 +19,7 @@ export function LandingCTAs() {
   return (
     <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
       <a
-        href="https://github.com/slippi-friends/agent/releases"
+        href="https://github.com/0xburn/friendlies/releases"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex min-w-[200px] items-center justify-center rounded-lg bg-[#21BA45] px-8 py-4 text-base font-bold text-black transition hover:bg-[#1da63d] glow-green-hover"
