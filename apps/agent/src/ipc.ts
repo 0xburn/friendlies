@@ -302,12 +302,16 @@ export function registerIpcHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('presence:friendStatuses', async () => {
     try {
-      const friends = await supabase.from('friendships')
-        .select('friend_id, profiles!friendships_friend_id_fkey(connect_code)')
-        .eq('status', 'accepted');
-      if (!friends.data) return {};
+      const user = await getCurrentUser();
+      if (!user) return {};
 
-      const friendIds = friends.data.map((f: any) => f.friend_id).filter(Boolean);
+      const { data: friendRows } = await supabase.from('friends')
+        .select('friend_id, friend_connect_code, profiles!friends_friend_id_fkey(connect_code)')
+        .eq('user_id', user.id)
+        .eq('status', 'accepted');
+      if (!friendRows || friendRows.length === 0) return {};
+
+      const friendIds = friendRows.map((f: any) => f.friend_id).filter(Boolean);
       if (friendIds.length === 0) return {};
 
       const { data } = await supabase.from('presence_log')
@@ -315,12 +319,12 @@ export function registerIpcHandlers(win: BrowserWindow): void {
         .in('user_id', friendIds);
       if (!data) return {};
 
-      const staleMs = 20_000;
+      const staleMs = 45_000;
       const now = Date.now();
       const result: Record<string, any> = {};
       for (const row of data) {
-        const friend = friends.data.find((f: any) => f.friend_id === row.user_id);
-        const code = (friend as any)?.profiles?.connect_code;
+        const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
+        const code = (friend as any)?.profiles?.connect_code || friend?.friend_connect_code;
         if (!code) continue;
         const age = now - new Date(row.updated_at).getTime();
         result[code] = {

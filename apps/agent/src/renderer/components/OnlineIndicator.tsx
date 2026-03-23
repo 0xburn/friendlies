@@ -1,7 +1,11 @@
+import { getCharacterShortName } from '../lib/characters';
+
 interface OnlineIndicatorProps {
   status: 'online' | 'in-game' | 'offline';
   size?: 'sm' | 'md' | 'lg';
   opponentCode?: string | null;
+  opponentCharacterId?: number | null;
+  characterId?: number | null;
   playingSince?: string | null;
 }
 
@@ -27,11 +31,15 @@ function InGameIcon({ className }: { className?: string }) {
   );
 }
 
-export function OnlineIndicator({ status, size = 'md', opponentCode, playingSince }: OnlineIndicatorProps) {
+export function OnlineIndicator({
+  status, size = 'md', opponentCode, opponentCharacterId, characterId, playingSince,
+}: OnlineIndicatorProps) {
   const dotSizes = { sm: 'w-2 h-2', md: 'w-3 h-3', lg: 'w-4 h-4' };
   const iconSizes = { sm: 'w-3 h-3', md: 'w-4 h-4', lg: 'w-5 h-5' };
 
   const showOpponent = status === 'in-game' && opponentCode;
+  const myChar = characterId != null ? getCharacterShortName(characterId) : null;
+  const oppChar = opponentCharacterId != null ? getCharacterShortName(opponentCharacterId) : null;
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -47,7 +55,9 @@ export function OnlineIndicator({ status, size = 'md', opponentCode, playingSinc
       )}
       {showOpponent && (
         <span className="text-xs text-[#21BA45]/80 font-mono whitespace-nowrap">
+          {myChar && <span>{myChar} </span>}
           vs {opponentCode}
+          {oppChar && <span> ({oppChar})</span>}
           {playingSince && (
             <span className="text-[#21BA45]/50 ml-1">
               {formatDuration(playingSince)}

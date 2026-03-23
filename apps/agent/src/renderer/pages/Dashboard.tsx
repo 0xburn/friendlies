@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { RankBadge } from '../components/RankBadge';
 import { CharacterIcon } from '../components/CharacterIcon';
+import { getCharacterShortName } from '../lib/characters';
 
 interface ProfileData {
   connect_code: string;
@@ -37,6 +38,8 @@ export function Dashboard() {
   const [status, setStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [opponentCode, setOpponentCode] = useState<string | null>(null);
   const [playingSince, setPlayingSince] = useState<string | null>(null);
+  const [characterId, setCharacterId] = useState<number | null>(null);
+  const [opponentCharacterId, setOpponentCharacterId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -51,7 +54,9 @@ export function Dashboard() {
     const unsub = window.api.onLocalStatus((info: any) => {
       setStatus(info.status || 'online');
       setOpponentCode(info.opponentCode ?? null);
+      setOpponentCharacterId(info.opponentCharacterId ?? null);
       setPlayingSince(info.playingSince ?? null);
+      setCharacterId(info.characterId ?? null);
     });
     return unsub;
   }, []);
@@ -95,6 +100,8 @@ export function Dashboard() {
                     status={status}
                     size="lg"
                     opponentCode={opponentCode}
+                    opponentCharacterId={opponentCharacterId}
+                    characterId={characterId}
                     playingSince={playingSince}
                   />
                 </div>
@@ -126,6 +133,15 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {status === 'in-game' && (
+        <InGameBanner
+          characterId={characterId}
+          opponentCode={opponentCode}
+          opponentCharacterId={opponentCharacterId}
+          playingSince={playingSince}
+        />
+      )}
 
       {!connectCode && (
         <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-5">
@@ -205,6 +221,53 @@ export function Dashboard() {
           View Full Profile on slippi.gg →
         </button>
       )}
+    </div>
+  );
+}
+
+function formatDuration(sinceStr: string): string {
+  const ms = Date.now() - new Date(sinceStr).getTime();
+  const mins = Math.max(1, Math.floor(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function InGameBanner({
+  characterId,
+  opponentCode,
+  opponentCharacterId,
+  playingSince,
+}: {
+  characterId: number | null;
+  opponentCode: string | null;
+  opponentCharacterId: number | null;
+  playingSince: string | null;
+}) {
+  const myChar = characterId != null ? getCharacterShortName(characterId) : null;
+  const oppChar = opponentCharacterId != null ? getCharacterShortName(opponentCharacterId) : null;
+
+  let label: string;
+  if (opponentCode) {
+    const parts: string[] = [];
+    if (myChar) parts.push(`Playing ${myChar}`);
+    else parts.push('In Game');
+    parts.push(`vs ${opponentCode}`);
+    if (oppChar) parts.push(`(${oppChar})`);
+    if (playingSince) parts.push(`for ${formatDuration(playingSince)}`);
+    label = parts.join(' ');
+  } else {
+    label = myChar ? `In Game as ${myChar}` : 'In Game';
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#21BA45]/30 bg-[#21BA45]/5 p-4 flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        {characterId != null && <CharacterIcon characterId={characterId} size="md" />}
+        <span className="text-sm font-semibold text-[#21BA45]">{label}</span>
+        {opponentCharacterId != null && (
+          <CharacterIcon characterId={opponentCharacterId} size="md" />
+        )}
+      </div>
     </div>
   );
 }

@@ -143,6 +143,14 @@ export async function processNewReplay(
       }
     }
 
+    let playedAt: string;
+    try {
+      const fileStat = await fs.promises.stat(filePath);
+      playedAt = new Date(fileStat.mtimeMs).toISOString();
+    } catch {
+      playedAt = new Date().toISOString();
+    }
+
     const row = {
       user_id: userData.user.id,
       opponent_connect_code: oppCode,
@@ -154,7 +162,7 @@ export async function processNewReplay(
       game_mode: mapGameMode(settings.gameMode ?? settings.inGameMode),
       did_win: didWin,
       replay_filename: path.basename(filePath),
-      played_at: new Date().toISOString(),
+      played_at: playedAt,
     };
 
     const { error } = await supabase
@@ -186,18 +194,33 @@ export function startWatcher(
       console.error('Replay directory missing:', replayDir);
       return;
     }
-    watcher = chokidar.watch(path.join(replayDir, '**', '*.slp'), {
+    console.log(`[watcher] Starting — dir="${replayDir}" code="${localConnectCode}"`);
+    watcher = chokidar.watch(replayDir, {
       ignoreInitial: true,
+      depth: 3,
       awaitWriteFinish: {
         stabilityThreshold: 2000,
         pollInterval: 500,
       },
     });
+    watcher.on('ready', () => {
+      console.log('[watcher] Ready and watching for new replays');
+    });
+    watcher.on('error', (err) => {
+      console.error('[watcher] Error:', err);
+    });
     watcher.on('add', (filePath: string) => {
+      if (!filePath.toLowerCase().endsWith('.slp')) return;
+      console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
       void (async () => {
         try {
           const info = await processNewReplay(filePath, localConnectCode);
-          if (info) onOpponent(info);
+          if (info) {
+            console.log(`[watcher] Opponent: ${info.connectCode} (char ${info.characterId}) name="${info.displayName}"`);
+            onOpponent(info);
+          } else {
+            console.log('[watcher] processNewReplay returned null (no opponent found)');
+          }
         } catch (e) {
           console.error('watcher add handler failed', e);
         }

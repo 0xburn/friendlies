@@ -104,7 +104,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
   startWatcher(st.replayDir, identity.connectCode, (info) => {
     try {
       addRecentOpponent(info.connectCode, info.displayName);
-      setLastOpponent(info.connectCode);
+      setLastOpponent(info.connectCode, info.characterId);
       sendToRenderer('opponent:new', info);
       if (getSettings().showNotifications) {
         showOpponentNotification(info.connectCode, info.displayName, info.characterId);

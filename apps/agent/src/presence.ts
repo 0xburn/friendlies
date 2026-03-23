@@ -33,7 +33,9 @@ export interface OnlineUser {
 export interface LocalStatus {
   status: PresenceStatus;
   opponentCode: string | null;
+  opponentCharacterId: number | null;
   playingSince: string | null;
+  characterId: number | null;
 }
 
 type PresenceSyncCallback = (users: OnlineUser[]) => void;
@@ -45,6 +47,7 @@ let subscribed = false;
 let currentStatus: PresenceStatus = 'offline';
 let lastCharacterId: number | null = null;
 let lastOpponentCode: string | null = null;
+let lastOpponentCharacterId: number | null = null;
 let lastOpponentTimestamp: number = 0;
 let loopConnectCode = '';
 let loopDisplayName = '';
@@ -63,8 +66,9 @@ export function getLastPlayedCharacterId(): number | null {
   return lastCharacterId;
 }
 
-export function setLastOpponent(connectCode: string): void {
+export function setLastOpponent(connectCode: string, characterId?: number): void {
   lastOpponentCode = connectCode;
+  lastOpponentCharacterId = characterId ?? null;
   lastOpponentTimestamp = Date.now();
 }
 
@@ -97,7 +101,9 @@ function emitLocalStatus(): void {
   const info: LocalStatus = {
     status: currentStatus,
     opponentCode: opponent?.code ?? null,
+    opponentCharacterId: opponent ? lastOpponentCharacterId : null,
     playingSince: opponent?.since ?? null,
+    characterId: lastCharacterId,
   };
   for (const cb of localStatusCallbacks) {
     try { cb(info); } catch (e) { console.error('localStatusCallback', e); }
@@ -207,13 +213,11 @@ async function pushPresence(
     const row: Record<string, any> = {
       user_id: userId,
       status,
-      current_character: lastCharacterId,
+      current_character: status === 'in-game' ? lastCharacterId : null,
+      opponent_code: opponent?.code ?? null,
+      playing_since: opponent?.since ?? null,
       updated_at: new Date().toISOString(),
     };
-    if (opponent) {
-      row.opponent_code = opponent.code;
-      row.playing_since = opponent.since;
-    }
 
     const { error } = await supabase.from('presence_log').upsert(
       row,
@@ -248,13 +252,11 @@ async function pushPresence(
       connectCode,
       displayName,
       status,
-      currentCharacter: lastCharacterId,
+      currentCharacter: status === 'in-game' ? lastCharacterId : null,
+      opponentCode: opponent?.code ?? null,
+      playingSince: opponent?.since ?? null,
       updatedAt: new Date().toISOString(),
     };
-    if (opponent) {
-      payload.opponentCode = opponent.code;
-      payload.playingSince = opponent.since;
-    }
 
     await presenceChannel.track(payload);
   } catch (e) {
@@ -351,6 +353,18 @@ export async function startPresenceLoop(
         const launcherRunning = await isProcessRunning(SLIPPI_LAUNCHER_PROCESS_NAMES);
         const dolphinRunning = await isProcessRunning(DOLPHIN_PROCESS_NAMES);
         const next = resolvePresenceStatus(launcherRunning, dolphinRunning);
+        if (next === 'in-game' && currentStatus !== 'in-game') {
+          lastCharacterId = null;
+          lastOpponentCode = null;
+          lastOpponentCharacterId = null;
+          lastOpponentTimestamp = 0;
+        }
+        const opponent = next === 'in-game' ? getRecentOpponent() : null;
+        console.log(
+          `[presence] tick: launcher=${launcherRunning} dolphin=${dolphinRunning} → ${next}` +
+          (opponent ? ` opponent=${opponent.code} char=${lastOpponentCharacterId}` : '') +
+          (lastCharacterId != null ? ` myChar=${lastCharacterId}` : ''),
+        );
         currentStatus = next;
         emitLocalStatus();
         await pushPresence(

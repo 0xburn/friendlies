@@ -244,12 +244,22 @@ export function Opponents() {
   const loadedWeeks = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
-  useEffect(() => {
-    initialLoad();
-    loadFriendCodes();
+  const didInitialScan = useRef(false);
 
-    const unsub = window.api.onNewOpponent((opp) => {
-      setMatches((prev) => [opp, ...prev]);
+  useEffect(() => {
+    (async () => {
+      await refreshFromDb();
+      loadFriendCodes();
+      if (!didInitialScan.current) {
+        didInitialScan.current = true;
+        await window.api.backfillOpponents(ONE_WEEK, 0);
+        loadedWeeks.current = 1;
+        await refreshFromDb();
+      }
+    })();
+
+    const unsub = window.api.onNewOpponent(() => {
+      refreshFromDb();
     });
 
     pollRef.current = setInterval(() => {
@@ -280,21 +290,18 @@ export function Opponents() {
   }
 
   async function refreshFromDb() {
-    const data = await window.api.getOpponents(200);
-    setMatches(data);
+    try {
+      const data = await window.api.getOpponents(200);
+      setMatches(data);
+    } catch { /* ignore */ }
   }
 
-  async function initialLoad() {
-    const data = await window.api.getOpponents(200);
-    setMatches(data);
-    if (data.length === 0) {
-      setScanning(true);
-      await window.api.backfillOpponents(ONE_WEEK, 0);
-      loadedWeeks.current = 1;
-      const refreshed = await window.api.getOpponents(200);
-      setMatches(refreshed);
-      setScanning(false);
-    }
+  async function scanReplays() {
+    setScanning(true);
+    await window.api.backfillOpponents(ONE_WEEK, 0);
+    loadedWeeks.current = 1;
+    await refreshFromDb();
+    setScanning(false);
   }
 
   async function loadMore() {
@@ -331,12 +338,33 @@ export function Opponents() {
     return friendMap.get(code)?.discordUsername;
   }
 
+  async function rescan() {
+    setScanning(true);
+    const weeks = Math.max(loadedWeeks.current, 1);
+    for (let w = 0; w < weeks; w++) {
+      await window.api.backfillOpponents(ONE_WEEK, w * ONE_WEEK);
+    }
+    if (loadedWeeks.current === 0) loadedWeeks.current = 1;
+    await refreshFromDb();
+    setScanning(false);
+  }
+
   const sessions = groupIntoSessions(matches);
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-display font-bold">Recent Opponents</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-display font-bold">Recent Opponents</h1>
+          <button
+            onClick={rescan}
+            disabled={scanning}
+            className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1 text-xs text-gray-400 hover:text-white hover:border-[#21BA45]/30 transition-colors disabled:opacity-50"
+            title="Rescan replays to fix timestamps"
+          >
+            {scanning ? 'Scanning...' : 'Rescan'}
+          </button>
+        </div>
         <span className="text-sm text-gray-500">
           {sessions.length} session{sessions.length !== 1 ? 's' : ''}
           <span className="text-gray-600 ml-1">({matches.length} games)</span>
@@ -354,17 +382,14 @@ export function Opponents() {
         {!scanning && sessions.length === 0 && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center space-y-4">
             <p className="text-gray-500 text-sm">
-              No opponents from the past week.
+              No opponents found yet.
             </p>
-            {hasMore && (
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="rounded-lg bg-[#21BA45] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1ea33e] transition-colors disabled:opacity-50"
-              >
-                {loadingMore ? 'Scanning...' : 'Load Older Replays'}
-              </button>
-            )}
+            <button
+              onClick={scanReplays}
+              className="rounded-lg bg-[#21BA45] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1ea33e] transition-colors"
+            >
+              Scan Recent Replays
+            </button>
             <p className="text-gray-600 text-xs">
               New opponents appear automatically as you play.
             </p>
