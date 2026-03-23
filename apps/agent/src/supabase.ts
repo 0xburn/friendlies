@@ -1,9 +1,9 @@
 import './config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL_FALLBACK =
+export const SUPABASE_URL_FALLBACK =
   'https://hlpcaltsxcdxmolmpcxj.supabase.co';
-const SUPABASE_ANON_KEY_FALLBACK = 'sb_publishable_FDnNDoHM6fEyKd_cqtZuiQ_DGCjELGh';
+export const SUPABASE_ANON_KEY_FALLBACK = 'sb_publishable_FDnNDoHM6fEyKd_cqtZuiQ_DGCjELGh';
 
 let client: SupabaseClient | null = null;
 

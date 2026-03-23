@@ -4,7 +4,7 @@ import { shell } from 'electron';
 const Store = require('electron-store');
 
 import { APP_PROTOCOL } from './config';
-import { setSession, supabase } from './supabase';
+import { setSession, supabase, SUPABASE_URL_FALLBACK, SUPABASE_ANON_KEY_FALLBACK } from './supabase';
 
 const TOKEN_KEY_ACCESS = 'supabase_access_token';
 const TOKEN_KEY_REFRESH = 'supabase_refresh_token';
@@ -12,8 +12,8 @@ const TOKEN_KEY_REFRESH = 'supabase_refresh_token';
 const authStore = new Store({ name: 'slippi-friends-auth' });
 
 function getAuthorizeUrl(): string {
-  const base = process.env.SUPABASE_URL ?? '';
-  const anon = process.env.SUPABASE_ANON_KEY ?? '';
+  const base = process.env.SUPABASE_URL || SUPABASE_URL_FALLBACK;
+  const anon = process.env.SUPABASE_ANON_KEY || SUPABASE_ANON_KEY_FALLBACK;
   const redirectTo = `${APP_PROTOCOL}://auth-callback`;
   const u = new URL(`${base.replace(/\/$/, '')}/auth/v1/authorize`);
   u.searchParams.set('provider', 'discord');
@@ -22,10 +22,11 @@ function getAuthorizeUrl(): string {
   return u.toString();
 }
 
-export function startAuthFlow(): void {
+export async function startAuthFlow(): Promise<void> {
   try {
     const url = getAuthorizeUrl();
-    void shell.openExternal(url);
+    console.log('startAuthFlow opening:', url);
+    await shell.openExternal(url);
   } catch (e) {
     console.error('startAuthFlow failed', e);
   }

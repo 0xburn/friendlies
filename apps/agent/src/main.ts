@@ -135,7 +135,9 @@ async function handleDeepLink(url: string): Promise<void> {
 
 (app as any).isQuitting = false;
 
-if (!app.requestSingleInstanceLock()) {
+const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+
+if (!isDev && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {

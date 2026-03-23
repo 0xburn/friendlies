@@ -14,7 +14,7 @@ export function Navigation() {
         {/* Spacer for macOS traffic lights */}
         <div className="h-[52px] shrink-0 drag" />
         <div className="flex items-center gap-2.5 px-5 pb-4 no-drag">
-          <img src="./logo.png" alt="L7" className="w-8 h-8" />
+          <img src="./logo.png" alt="L7" className="w-8 h-8 rounded-lg" />
           <span className="font-display font-bold text-base tracking-tight">
             Slippi <span className="text-[#21BA45]">Friends</span>
           </span>
@@ -38,7 +38,7 @@ export function Navigation() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.0</div>
+        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.2</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         {/* Top drag region for the content area */}
