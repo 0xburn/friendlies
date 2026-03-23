@@ -130,8 +130,11 @@ function extractOnlineUsers(): OnlineUser[] {
 async function isProcessRunning(names: readonly string[]): Promise<boolean> {
   try {
     for (const name of names) {
-      const list = await find('name', name, true);
-      if (list.length > 0) return true;
+      const list = await find('name', name, false);
+      if (list.length > 0) {
+        console.log(`[presence] Process found: "${list[0].name}" (matched "${name}")`);
+        return true;
+      }
     }
   } catch (e) {
     console.error('isProcessRunning failed', e);

@@ -44,6 +44,10 @@ export function Dashboard() {
     window.api.getProfile().then(setProfile);
     window.api.getUser().then(setUser);
 
+    window.api.getLocalStatus().then((s: any) => {
+      if (s) setStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
+    });
+
     const unsub = window.api.onLocalStatus((info: any) => {
       setStatus(info.status || 'online');
       setOpponentCode(info.opponentCode ?? null);

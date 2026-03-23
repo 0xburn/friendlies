@@ -33,6 +33,7 @@ const api = {
   onIdentityMismatch: (cb: (info: any) => void): Unsubscribe => onEvent('identity:mismatch', cb),
 
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
+  getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),
   onPresenceUpdate: (cb: (users: any[]) => void): Unsubscribe => onEvent('presence:updated', cb),
   onLocalStatus: (cb: (info: any) => void): Unsubscribe => onEvent('presence:localStatus', cb),
 

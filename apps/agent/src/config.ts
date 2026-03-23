@@ -10,7 +10,9 @@ export const SLIPPI_LAUNCHER_PROCESS_NAMES = [
 
 export const DOLPHIN_PROCESS_NAMES = [
   'Slippi Dolphin',
+  'Slippi_Dolphin',
   'dolphin-emu',
+  'Dolphin',
   'Dolphin.exe',
   'AppRun',
 ] as const;
