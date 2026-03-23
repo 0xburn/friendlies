@@ -136,7 +136,7 @@ export default function FriendsPage() {
       <DesktopBanner />
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold text-white">Friends</h1>
-        <p className="mt-2 text-gray-400">People you have added on Slippi Friends.</p>
+        <p className="mt-2 text-gray-400">People you have added on Friendlies.</p>
       </div>
 
       <input

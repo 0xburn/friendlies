@@ -8,7 +8,7 @@ const links = [
 ];
 
 const SHARE_BLURB =
-  'Check out Slippi Friends — track opponents, see who\'s online, and manage your Melee friend list.\nhttps://slippi-friends-web.vercel.app/';
+  'Check out Friendlies — track your Melee opponents, see who\'s online, and manage your friend list.\nhttps://slippi-friends-web.vercel.app/';
 
 export function Navigation() {
   const [copied, setCopied] = useState(false);
@@ -29,7 +29,7 @@ export function Navigation() {
         <div className="flex items-center gap-2.5 px-5 pb-4 no-drag">
           <img src="./logo.png" alt="L7" className="w-8 h-8 rounded-lg" />
           <span className="font-display font-bold text-base tracking-tight">
-            Slippi <span className="text-[#21BA45]">Friends</span>
+            <span className="text-[#21BA45]">Friendlies</span>
           </span>
         </div>
         <nav className="flex-1 px-3 py-2 space-y-1">
@@ -60,7 +60,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.32</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.33</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         {/* Top drag region for the content area */}

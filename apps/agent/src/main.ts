@@ -305,7 +305,7 @@ async function handleDeepLink(url: string): Promise<void> {
 (app as any).isQuitting = false;
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.slippifriends.agent');
+  app.setAppUserModelId('com.friendlies.agent');
 }
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');

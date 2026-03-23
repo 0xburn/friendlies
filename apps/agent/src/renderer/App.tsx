@@ -34,7 +34,7 @@ function SlippiNotFound() {
           <div className="flex flex-col items-center gap-3">
             <img src="./logo.png" alt="L7" className="w-16 h-16" />
             <h1 className="text-3xl font-display font-bold">
-              Slippi <span className="text-[#21BA45]">Friends</span>
+              <span className="text-[#21BA45]">Friendlies</span>
             </h1>
           </div>
           <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-left">
@@ -43,7 +43,7 @@ function SlippiNotFound() {
             </p>
             <p className="text-xs text-gray-400 leading-relaxed">
               Open <strong className="text-white">Slippi Launcher</strong> and log in
-              to your Slippi account. Slippi Friends needs your connect code to identify you.
+              to your Slippi account. Friendlies needs your connect code to identify you.
             </p>
             <p className="text-xs text-gray-500 mt-3">
               Don't have Slippi Launcher?{' '}
@@ -97,7 +97,7 @@ function AuthPrompt({ connectCode, displayName }: { connectCode: string; display
           <div className="flex flex-col items-center gap-3">
             <img src="./logo.png" alt="L7" className="w-16 h-16 rounded-2xl" />
             <h1 className="text-3xl font-display font-bold">
-              Slippi <span className="text-[#21BA45]">Friends</span>
+              <span className="text-[#21BA45]">Friendlies</span>
             </h1>
           </div>
           <div className="rounded-xl border border-[#21BA45]/30 bg-[#21BA45]/5 p-5">
@@ -318,7 +318,7 @@ export function App() {
           <div className="flex flex-col items-center gap-3">
             <img src="./logo.png" alt="L7" className="w-16 h-16" />
             <h1 className="text-3xl font-display font-bold">
-              Slippi <span className="text-[#21BA45]">Friends</span>
+              <span className="text-[#21BA45]">Friendlies</span>
             </h1>
           </div>
           <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-left">

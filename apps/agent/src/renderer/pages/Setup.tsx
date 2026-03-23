@@ -70,7 +70,7 @@ export function Setup({ onComplete }: SetupProps) {
         <div className="fixed top-0 left-0 right-0 h-[52px] drag" />
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-display font-bold">
-            Slippi <span className="text-[#21BA45]">Friends</span>
+            <span className="text-[#21BA45]">Friendlies</span>
           </h1>
           <p className="text-sm text-gray-500 mt-2">Let's get you set up</p>
           <div className="flex justify-center gap-2 mt-6">
@@ -203,7 +203,7 @@ export function Setup({ onComplete }: SetupProps) {
               <div className="text-5xl">🚀</div>
               <h2 className="text-xl font-semibold">You're All Set!</h2>
               <p className="text-gray-400 text-sm leading-relaxed">
-                Slippi Friends will run in your menu bar, tracking your sessions
+                Friendlies will run in your menu bar, tracking your sessions
                 and keeping you connected with your community.
               </p>
               {error && <p className="text-red-400 text-sm">{error}</p>}

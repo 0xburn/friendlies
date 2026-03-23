@@ -155,7 +155,7 @@ export function Dashboard() {
         <div className="rounded-2xl border border-[#5865F2]/30 bg-[#5865F2]/5 p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-white">v{updateAvailable} available</p>
-            <p className="text-xs text-gray-400">A new version of Slippi Friends is ready</p>
+            <p className="text-xs text-gray-400">A new version of Friendlies is ready</p>
           </div>
           <button
             onClick={() => window.api.downloadUpdate()}
@@ -172,7 +172,7 @@ export function Dashboard() {
             Slippi identity not linked
           </p>
           <p className="text-xs text-gray-400 leading-relaxed">
-            Open Slippi Launcher and log in, then restart Slippi Friends to
+            Open Slippi Launcher and log in, then restart Friendlies to
             automatically detect your connect code.
           </p>
         </div>

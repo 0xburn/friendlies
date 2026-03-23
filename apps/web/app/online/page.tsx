@@ -117,7 +117,7 @@ export default function OnlinePage() {
         <div className="rounded-xl border border-dashed border-slippi-border bg-slippi-card/50 px-6 py-16 text-center">
           <p className="text-gray-400">No friends are online right now.</p>
           <p className="mt-2 text-sm text-gray-500">
-            Make sure friends are running the Slippi Friends agent while Dolphin is open.
+            Make sure friends are running Friendlies while Dolphin is open.
           </p>
         </div>
       ) : (

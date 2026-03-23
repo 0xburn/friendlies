@@ -28,12 +28,12 @@ function loadIcon(kind: PresenceStatus): Electron.NativeImage {
 
 function buildMenu(): Menu {
   const status = getStatusFn();
-  const statusLabel = status === 'in-game' ? 'In Game' : status === 'online' ? 'Online' : 'Offline';
+  const statusLabel = status === 'in-game' ? 'In Game' : status === 'online' ? 'Online' : 'Away';
 
   return Menu.buildFromTemplate([
     { label: `Status: ${statusLabel}`, enabled: false },
     { type: 'separator' },
-    { label: 'Show Slippi Friends', click: () => handlers.onShowWindow() },
+    { label: 'Show Friendlies', click: () => handlers.onShowWindow() },
     { type: 'separator' },
     { label: 'Quit', click: () => handlers.onQuit() },
   ]);
@@ -44,7 +44,7 @@ export function createTray(getStatus: () => PresenceStatus, h: TrayHandlers): vo
   handlers = h;
   const img = loadIcon(getStatus());
   tray = new Tray(img);
-  tray.setToolTip('Slippi Friends');
+  tray.setToolTip('Friendlies');
   tray.setContextMenu(buildMenu());
   tray.on('click', () => handlers.onShowWindow());
 }

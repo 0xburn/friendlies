@@ -5,8 +5,8 @@ import { Navigation } from '@/components/Navigation';
 import { PresenceProvider } from '@/components/PresenceProvider';
 
 export const metadata: Metadata = {
-  title: 'Slippi Friends',
-  description: 'The social companion for Super Smash Bros. Melee netplay — find friends, track opponents, see who\'s online.',
+  title: 'Friendlies',
+  description: 'The companion app for Melee netplay — find friends, track opponents, see who\'s online.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

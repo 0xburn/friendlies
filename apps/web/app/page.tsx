@@ -31,119 +31,102 @@ export default async function HomePage() {
   const release = await getLatestRelease();
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] overflow-hidden rounded-2xl border border-slippi-border bg-gradient-to-b from-[#0f0f0f] to-slippi-darker">
-      <div className="pointer-events-none absolute inset-0 bg-noise opacity-90" />
-      <div className="relative px-4 py-16 sm:py-24 lg:px-12">
-        <div className="mx-auto max-w-4xl text-center">
-          <div className="mx-auto mb-8 flex justify-center">
+    <div className="relative min-h-[calc(100vh-8rem)]">
+      {/* Hero */}
+      <section className="pt-16 pb-20 sm:pt-24 sm:pb-28">
+        <div className="mx-auto max-w-2xl text-center">
+          <div className="mb-6 flex justify-center">
             <Image
               src="/logo.png"
-              alt="Slippi Friends"
-              width={120}
-              height={120}
+              alt="Friendlies"
+              width={80}
+              height={80}
               className="rounded-2xl"
               priority
             />
           </div>
 
-          <h1 className="font-display text-4xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl">
-            Your Melee{' '}
-            <span className="text-gradient-green">Social Network</span>
+          <h1 className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">
+            Friendlies
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-400 sm:text-xl">
-            Track opponents from your Slippi replays, see when friends are
-            queueing, view live ranked stats, and manage your friend list — all
-            from one lightweight desktop app.
+          <p className="mt-4 text-lg text-gray-400">
+            A companion app for Melee netplay.
+            <br className="hidden sm:block" />
+            See who&apos;s playing, track your sets, add friends.
           </p>
 
-          <div className="mt-10">
+          <div className="mt-8">
             <DownloadButtons release={release} repo={REPO} />
           </div>
         </div>
+      </section>
 
-        <div className="mx-auto mt-20 grid max-w-5xl gap-6 sm:grid-cols-3">
+      {/* Features — minimal cards */}
+      <section className="mx-auto max-w-3xl grid gap-px sm:grid-cols-3 rounded-xl border border-[#2a2a2a] overflow-hidden">
+        {[
+          {
+            title: 'Live presence',
+            body: 'Know when friends are online, in queue, or mid-set.',
+          },
+          {
+            title: 'Match history',
+            body: 'Replays are scanned automatically. Every opponent, every game.',
+          },
+          {
+            title: 'Ranked stats',
+            body: 'ELO, win rate, mains, and placement pulled from Slippi.',
+          },
+        ].map((f) => (
+          <div
+            key={f.title}
+            className="bg-[#111] p-6"
+          >
+            <h2 className="text-sm font-semibold text-white">
+              {f.title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-500">
+              {f.body}
+            </p>
+          </div>
+        ))}
+      </section>
+
+      {/* How it works */}
+      <section className="mx-auto mt-20 max-w-2xl">
+        <h2 className="text-center text-sm font-semibold uppercase tracking-wider text-gray-500">
+          How it works
+        </h2>
+        <div className="mt-8 space-y-6">
           {[
-            {
-              icon: '⚔️',
-              title: 'Track Opponents',
-              body: 'Recent netplay matches surface automatically from your replay folder — revisit sets and add rivals as friends.',
-            },
-            {
-              icon: '🟢',
-              title: "See Who's Online",
-              body: 'Live presence shows who is in queue or in-game so you can shoot codes without digging through DMs.',
-            },
-            {
-              icon: '📊',
-              title: 'Live Ranked Stats',
-              body: "Click any player to see their ELO, win rate, mains, and global placement — pulled live from Slippi's API.",
-            },
-          ].map((f) => (
-            <div
-              key={f.title}
-              className="rounded-xl border border-slippi-border bg-slippi-card/60 p-6 backdrop-blur-sm transition hover:border-[#21BA45]/25 glow-green-hover"
-            >
-              <div className="mb-3 text-2xl">{f.icon}</div>
-              <h2 className="font-display text-lg font-semibold text-white">
-                {f.title}
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-gray-400">
-                {f.body}
-              </p>
+            ['Download', 'Grab the app. Point it at your Slippi replay folder.'],
+            ['Sign in', 'Link Discord to unlock friends, presence, and your profile.'],
+            ['Play', 'Opponents appear as you play. Add friends by connect code.'],
+          ].map(([title, body], i) => (
+            <div key={i} className="flex gap-4 items-start">
+              <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full border border-[#2a2a2a] text-xs font-mono text-gray-500">
+                {i + 1}
+              </span>
+              <div>
+                <p className="text-sm font-medium text-white">{title}</p>
+                <p className="text-sm text-gray-500">{body}</p>
+              </div>
             </div>
           ))}
         </div>
+      </section>
 
-        <section className="mx-auto mt-24 max-w-3xl">
-          <h2 className="text-center font-display text-2xl font-bold text-white">
-            How it works
-          </h2>
-          <div className="mt-10 grid gap-8 sm:grid-cols-3">
-            {[
-              {
-                step: '1',
-                title: 'Download & Install',
-                body: 'Grab the app for your platform. No account required to start — just point it at your Slippi replay folder.',
-              },
-              {
-                step: '2',
-                title: 'Sign in with Discord',
-                body: 'Link your Discord to unlock friend requests, presence, and your public profile.',
-              },
-              {
-                step: '3',
-                title: 'Play & Connect',
-                body: 'The app auto-scans replays, tracks opponents, and lets you add friends by connect code.',
-              },
-            ].map((s) => (
-              <div key={s.step} className="text-center">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#21BA45]/40 font-display text-lg font-bold text-[#21BA45]">
-                  {s.step}
-                </div>
-                <h3 className="mt-4 font-display font-semibold text-white">
-                  {s.title}
-                </h3>
-                <p className="mt-2 text-sm text-gray-400">{s.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <footer className="mx-auto mt-24 max-w-2xl text-center text-sm text-gray-500">
-          <p>
-            Open source on{' '}
-            <a
-              href={`https://github.com/${REPO}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#21BA45] underline underline-offset-2 hover:text-[#17cf97]"
-            >
-              GitHub
-            </a>
-            . Not affiliated with Slippi or Nintendo.
-          </p>
-        </footer>
-      </div>
+      <footer className="mt-20 pb-8 text-center text-xs text-gray-600">
+        Open source on{' '}
+        <a
+          href={`https://github.com/${REPO}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-500 hover:text-white transition-colors"
+        >
+          GitHub
+        </a>
+        . Not affiliated with Slippi or Nintendo.
+      </footer>
     </div>
   );
 }

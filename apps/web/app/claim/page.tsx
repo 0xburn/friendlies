@@ -61,7 +61,7 @@ export default async function ClaimPage() {
           <ol className="list-decimal space-y-4 pl-5 text-gray-300">
             <li>
               <span className="font-semibold text-white">Download the agent</span> — desktop app
-              from the Slippi Friends monorepo builds (see landing page).
+              from the Friendlies releases (see landing page).
             </li>
             <li>
               <span className="font-semibold text-white">Sign in</span> — use the same Discord

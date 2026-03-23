@@ -1,5 +1,5 @@
-appId: com.slippifriends.agent
-productName: Slippi Friends
+appId: com.friendlies.agent
+productName: Friendlies
 copyright: Copyright © 2026
 
 files:
@@ -28,10 +28,10 @@ nsis:
   oneClick: true
   perMachine: false
   allowToChangeInstallationDirectory: false
-  artifactName: "SlippiFriends-Setup-${version}.${ext}"
+  artifactName: "Friendlies-Setup-${version}.${ext}"
 
 portable:
-  artifactName: "SlippiFriends-${version}-portable.exe"
+  artifactName: "Friendlies-${version}-portable.exe"
 
 linux:
   target:

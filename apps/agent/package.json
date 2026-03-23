@@ -1,9 +1,9 @@
 {
   "name": "@slippi-friends/agent",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "private": true,
-  "description": "Slippi Friends desktop agent - track your Melee friends and opponents",
-  "author": "Slippi Friends",
+  "description": "Friendlies - the Melee companion app for tracking friends and opponents",
+  "author": "Friendlies",
   "repository": "https://github.com/0xburn/slippi-friends",
   "main": "dist/main.js",
   "scripts": {

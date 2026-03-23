@@ -13,7 +13,7 @@ interface Friend {
   avatarUrl?: string;
   rating: number | null;
   characterId: number | null;
-  status?: 'online' | 'in-game' | 'offline' | 'waiting';
+  status?: 'online' | 'in-game' | 'offline';
   onApp?: boolean;
   friendStatus?: 'pending' | 'accepted';
 }
@@ -57,7 +57,8 @@ export function Friends() {
   const [inviting, setInviting] = useState<string | null>(null);
   const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; created_at: string }[]>([]);
 
-  const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline' | 'waiting'>('offline');
+  const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'in-game' | 'offline'>('all');
   const [myIdentity, setMyIdentity] = useState<{ connectCode: string; displayName: string } | null>(null);
   const [myUser, setMyUser] = useState<{ avatar_url?: string; discord_name?: string } | null>(null);
   const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number } | null>(null);
@@ -81,7 +82,7 @@ export function Friends() {
       if (p) setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses });
     });
     window.api.getLocalStatus().then((s: any) => {
-      if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : s === 'waiting' ? 'waiting' : 'offline');
+      if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
 
     Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites()]).finally(() =>
@@ -181,7 +182,7 @@ export function Friends() {
 
   const { accepted, pendingOut } = useMemo(() => {
     const q = search.toLowerCase();
-    const list = q
+    let list = q
       ? enriched.filter(
           (f) =>
             f.connectCode?.toLowerCase().includes(q) ||
@@ -189,14 +190,28 @@ export function Friends() {
         )
       : enriched;
 
-    const order: Record<string, number> = { 'in-game': 0, online: 1, waiting: 2, offline: 3 };
-    const sorted = [...list].sort((a, b) => (order[a.status || 'offline'] ?? 2) - (order[b.status || 'offline'] ?? 2));
+    if (statusFilter !== 'all') {
+      list = list.filter((f) => {
+        const s = f.status || 'offline';
+        if (statusFilter === 'online') return s === 'online' || s === 'in-game';
+        return s === statusFilter;
+      });
+    }
+
+    function sortScore(f: typeof list[0]): number {
+      const s = f.status || 'offline';
+      if (s === 'in-game' && f.currentCharacter != null) return 0;
+      if (s === 'in-game') return 1;
+      if (s === 'online') return 2;
+      return 3;
+    }
+    const sorted = [...list].sort((a, b) => sortScore(a) - sortScore(b));
 
     return {
       accepted: sorted.filter((f) => f.friendStatus === 'accepted'),
       pendingOut: sorted.filter((f) => f.friendStatus === 'pending'),
     };
-  }, [enriched, search]);
+  }, [enriched, search, statusFilter]);
 
   async function handleAdd() {
     const code = addCode.trim().toUpperCase();
@@ -344,9 +359,21 @@ export function Friends() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-display font-bold">Friends</h1>
         {!initialLoading && (
-          <span className="text-sm text-gray-500">
-            {accepted.length} friend{accepted.length !== 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-2">
+            {(['all', 'online', 'in-game', 'offline'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  statusFilter === f
+                    ? 'bg-[#21BA45]/15 text-[#21BA45]'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                }`}
+              >
+                {f === 'all' ? `All (${enriched.filter(e => e.friendStatus === 'accepted').length})` : f === 'online' ? 'Online' : f === 'in-game' ? 'In Game' : 'Offline'}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 

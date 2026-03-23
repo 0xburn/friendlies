@@ -99,7 +99,7 @@ export default function SettingsPage() {
   }
 
   async function deleteAccount() {
-    if (!window.confirm('Delete your Slippi Friends account permanently? This cannot be undone.')) {
+    if (!window.confirm('Delete your Friendlies account permanently? This cannot be undone.')) {
       return;
     }
     setDeleting(true);
@@ -209,7 +209,7 @@ export default function SettingsPage() {
       <div className="mt-16 rounded-xl border border-red-900/40 bg-red-950/20 p-6">
         <h2 className="font-display text-lg font-semibold text-red-300">Danger zone</h2>
         <p className="mt-2 text-sm text-gray-400">
-          Remove your Slippi Friends account and Discord linkage. Your Slippi data on Slippi.gg is
+          Remove your Friendlies account and Discord linkage. Your Slippi data on Slippi.gg is
           unchanged.
         </p>
         <button

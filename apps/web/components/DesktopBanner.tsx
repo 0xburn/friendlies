@@ -7,7 +7,7 @@ export function DesktopBanner() {
             Get the full experience on desktop
           </p>
           <p className="mt-1 text-sm text-gray-400">
-            The Slippi Friends desktop agent gives you live presence,
+            The Friendlies desktop app gives you live presence,
             auto-detected opponents, and faster access to everything.
           </p>
         </div>
@@ -17,7 +17,7 @@ export function DesktopBanner() {
           rel="noopener noreferrer"
           className="shrink-0 rounded-lg bg-[#21BA45] px-5 py-2.5 text-sm font-bold text-black transition-colors hover:bg-[#1ea33e]"
         >
-          Download Agent
+          Download App
         </a>
       </div>
     </div>

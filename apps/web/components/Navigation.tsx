@@ -47,9 +47,9 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#21BA45] flex items-center justify-center font-display font-bold text-black text-sm">SF</div>
+              <div className="w-8 h-8 rounded-lg bg-[#21BA45] flex items-center justify-center font-display font-bold text-black text-sm">F</div>
               <span className="font-display font-bold text-lg tracking-tight hidden sm:block">
-                Slippi <span className="text-[#21BA45]">Friends</span>
+                <span className="text-[#21BA45]">Friendlies</span>
               </span>
             </Link>
 

@@ -23,7 +23,7 @@ export function showOpponentNotification(
     if (!Notification.isSupported()) return;
     const charName = characterLabel(characterId);
     const n = new Notification({
-      title: 'Slippi Friends',
+      title: 'Friendlies',
       body: `${opponentName || opponentCode} (${opponentCode}) — ${charName}`,
     });
     n.show();
@@ -38,9 +38,9 @@ export function showFriendOnlineNotification(
 ): void {
   try {
     if (!Notification.isSupported()) return;
-    const label = newStatus === 'in-game' ? 'is now in game' : newStatus === 'waiting' ? 'is on the app' : 'is now online';
+    const label = newStatus === 'in-game' ? 'is now in game' : 'is now online';
     const n = new Notification({
-      title: 'Slippi Friends',
+      title: 'Friendlies',
       body: `${connectCode} ${label}`,
     });
     n.show();
@@ -56,7 +56,7 @@ export function showFriendRequestNotification(
   try {
     if (!Notification.isSupported()) return;
     const n = new Notification({
-      title: 'Slippi Friends',
+      title: 'Friendlies',
       body: `${fromCode} sent you a friend request`,
     });
     if (onClick) n.on('click', onClick);
@@ -73,7 +73,7 @@ export function showPlayInviteNotification(
   try {
     if (!Notification.isSupported()) return;
     const n = new Notification({
-      title: 'Slippi Friends',
+      title: 'Friendlies',
       body: `${fromCode} wants to play!`,
     });
     if (onClick) n.on('click', onClick);
