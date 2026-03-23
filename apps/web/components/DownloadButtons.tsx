@@ -18,7 +18,7 @@ function detectPlatform(): 'win' | 'mac' | 'linux' | null {
 
 function findAsset(assets: Release extends null ? never : NonNullable<Release>['assets'], platform: string) {
   const patterns: Record<string, RegExp[]> = {
-    win: [/portable.*\.exe$/i, /\.exe$/i],
+    win: [/setup.*\.exe$/i, /\.exe$/i],
     mac: [/\.dmg$/i, /\.zip$/i],
     linux: [/\.AppImage$/i, /\.deb$/i],
   };

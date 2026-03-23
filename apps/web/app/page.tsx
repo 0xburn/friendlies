@@ -76,39 +76,27 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Features + setup steps */}
-      <section className="mx-auto mt-14 max-w-5xl grid gap-px sm:grid-cols-3 rounded-xl border border-[#2a2a2a] overflow-hidden">
-        <div className="bg-[#111] p-6">
-          <h2 className="text-sm font-semibold text-white">Live presence</h2>
-          <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            Know when friends are online, in queue, or mid-set.
-          </p>
-          <div className="mt-5 pt-5 border-t border-[#2a2a2a] space-y-3">
-            {[
-              ['1', 'Install friendlies'],
-              ['2', 'Sync with Discord'],
-              ['3', 'Play!'],
-            ].map(([n, label]) => (
-              <div key={n} className="flex items-center gap-3">
-                <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full border border-[#21BA45]/30 text-[10px] font-mono text-[#21BA45]">
-                  {n}
+      {/* Setup steps */}
+      <section className="mx-auto mt-14 max-w-3xl">
+        <div className="grid grid-cols-3 gap-6">
+          {[
+            { n: '1', label: 'Install friendlies', desc: 'Download the app above and run it.' },
+            { n: '2', label: 'Sync with Discord', desc: 'Sign in to link your Slippi tag.' },
+            { n: '3', label: 'Play!', desc: 'See who\u2019s online and start playing.' },
+          ].map((step, i) => (
+            <div key={step.n} className="flex flex-col items-center text-center">
+              <div className="flex items-center gap-3 w-full justify-center">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#21BA45]/40 text-sm font-mono font-semibold text-[#21BA45]">
+                  {step.n}
                 </span>
-                <span className="text-xs text-gray-400">{label}</span>
+                {i < 2 && (
+                  <span className="hidden sm:block flex-1 h-px bg-[#2a2a2a]" />
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-        <div className="bg-[#111] p-6">
-          <h2 className="text-sm font-semibold text-white">Match history</h2>
-          <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            Replays are scanned automatically. Every opponent, every game.
-          </p>
-        </div>
-        <div className="bg-[#111] p-6">
-          <h2 className="text-sm font-semibold text-white">Ranked stats</h2>
-          <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            ELO, win rate, mains, and placement pulled from Slippi.
-          </p>
+              <p className="mt-3 text-sm font-medium text-white">{step.label}</p>
+              <p className="mt-1 text-xs text-gray-500">{step.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 

@@ -21,7 +21,6 @@ mac:
 win:
   target:
     - nsis
-    - portable
   icon: assets/icon.png
 
 nsis:
@@ -29,9 +28,6 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: false
   artifactName: "friendlies-Setup-${version}.${ext}"
-
-portable:
-  artifactName: "friendlies-${version}-portable.exe"
 
 linux:
   target:
@@ -48,7 +44,7 @@ protocols:
 publish:
   provider: github
   owner: 0xburn
-  repo: slippi-friends
+  repo: friendlies
 
 directories:
   output: release
