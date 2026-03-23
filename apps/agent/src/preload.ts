@@ -28,6 +28,7 @@ const api = {
   removeFriend: (friendshipId: string) => ipcRenderer.invoke('friends:remove', friendshipId),
 
   getOpponents: (limit?: number) => ipcRenderer.invoke('opponents:list', limit),
+  getOpponentsPage: (before: string, limit?: number) => ipcRenderer.invoke('opponents:page', before, limit),
   getLatestMatchTimestamp: () => ipcRenderer.invoke('opponents:latestTimestamp'),
   backfillOpponents: (sinceMs?: number, beforeMs?: number) => ipcRenderer.invoke('opponents:backfill', sinceMs, beforeMs),
   onNewOpponent: (cb: (opponent: any) => void): Unsubscribe => onEvent('opponent:new', cb),

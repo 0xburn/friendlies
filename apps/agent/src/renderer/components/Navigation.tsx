@@ -1,8 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 const links = [
-  { to: '/', label: 'Dashboard', icon: '◉' },
-  { to: '/friends', label: 'Friends', icon: '♟' },
+  { to: '/', label: 'Friends', icon: '♟' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
@@ -38,7 +37,7 @@ export function Navigation() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.11</div>
+        <div className="px-5 py-3 text-[10px] text-gray-600">v0.1.12</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         {/* Top drag region for the content area */}

@@ -267,7 +267,7 @@ export async function backfillRecentReplays(
     const cutoffOld = now - sinceMs - beforeMs;
     const cutoffNew = beforeMs > 0 ? now - beforeMs : now;
 
-    const files = collectSlpFiles(replayDir, 2);
+    const files = await collectSlpFiles(replayDir, 2);
     const filtered = files
       .filter((f) => f.mtime >= cutoffOld && f.mtime <= cutoffNew)
       .sort((a, b) => b.mtime - a.mtime);
@@ -290,20 +290,30 @@ export async function backfillRecentReplays(
   return { processed, oldestMs };
 }
 
-function collectSlpFiles(dir: string, depth: number): Array<{ path: string; mtime: number }> {
+async function collectSlpFiles(dir: string, depth: number): Promise<Array<{ path: string; mtime: number }>> {
   const results: Array<{ path: string; mtime: number }> = [];
   if (depth < 0) return results;
   try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isFile() && entry.name.endsWith('.slp')) {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    const slpEntries = entries.filter(e => e.isFile() && e.name.endsWith('.slp'));
+    const dirEntries = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
+
+    const STAT_BATCH = 100;
+    for (let i = 0; i < slpEntries.length; i += STAT_BATCH) {
+      const batch = slpEntries.slice(i, i + STAT_BATCH);
+      const stats = await Promise.all(batch.map(async (entry) => {
+        const full = path.join(dir, entry.name);
         try {
-          const st = fs.statSync(full);
-          results.push({ path: full, mtime: st.mtimeMs });
-        } catch { /* skip */ }
-      } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
-        results.push(...collectSlpFiles(full, depth - 1));
-      }
+          const st = await fs.promises.stat(full);
+          return { path: full, mtime: st.mtimeMs };
+        } catch { return null; }
+      }));
+      for (const s of stats) { if (s) results.push(s); }
+    }
+
+    for (const d of dirEntries) {
+      const sub = await collectSlpFiles(path.join(dir, d.name), depth - 1);
+      results.push(...sub);
     }
   } catch { /* permission error, etc */ }
   return results;

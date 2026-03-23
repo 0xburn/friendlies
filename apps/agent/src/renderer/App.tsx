@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Navigation } from './components/Navigation';
 import { Setup } from './pages/Setup';
-import { Dashboard } from './pages/Dashboard';
 import { Friends } from './pages/Friends';
 import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
@@ -363,8 +362,7 @@ export function App() {
     <HashRouter>
       <Routes>
         <Route element={<Navigation />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/friends" element={<Friends />} />
+          <Route path="/" element={<Friends />} />
           <Route path="/opponents" element={<Opponents />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

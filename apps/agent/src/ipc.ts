@@ -306,6 +306,21 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     } catch (e) { console.error('opponents:list', e); return []; }
   });
 
+  ipcMain.handle('opponents:page', async (_e, before: string, limit = 50) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      const { data } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('user_id', user.id)
+        .lt('played_at', before)
+        .order('played_at', { ascending: false })
+        .limit(limit);
+      return data || [];
+    } catch (e) { console.error('opponents:page', e); return []; }
+  });
+
   ipcMain.handle('opponents:latestTimestamp', async () => {
     try {
       const user = await getCurrentUser();

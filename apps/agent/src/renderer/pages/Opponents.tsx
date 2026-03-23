@@ -235,39 +235,71 @@ function SessionRow({
   );
 }
 
+function SessionSkeleton() {
+  return (
+    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-3 flex items-center gap-3 animate-pulse">
+      <div className="flex items-center gap-1 shrink-0">
+        <div className="w-6 h-6 rounded-full bg-[#1a1a1a]" />
+        <span className="text-[10px] text-gray-700 font-bold">vs</span>
+        <div className="w-6 h-6 rounded-full bg-[#1a1a1a]" />
+      </div>
+      <div className="flex-1 space-y-2">
+        <div className="h-3.5 w-20 rounded bg-[#1a1a1a]" />
+        <div className="h-2.5 w-14 rounded bg-[#1a1a1a]" />
+      </div>
+      <div className="h-3.5 w-10 rounded bg-[#1a1a1a]" />
+      <div className="h-3 w-12 rounded bg-[#1a1a1a]" />
+    </div>
+  );
+}
+
 export function Opponents() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [friendMap, setFriendMap] = useState<Map<string, { status: 'pending' | 'accepted'; discordUsername?: string | null }>>(new Map());
   const [adding, setAdding] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [backgroundScanning, setBackgroundScanning] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const loadedWeeks = useRef(0);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const diskExhausted = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
-
   const didInitialScan = useRef(false);
+  const PAGE_SIZE = 50;
 
   useEffect(() => {
     (async () => {
-      await refreshFromDb();
+      const initial = await window.api.getOpponents(PAGE_SIZE);
+      setMatches(initial);
+      setInitialLoading(false);
       loadFriendCodes();
+
       if (!didInitialScan.current) {
         didInitialScan.current = true;
+        setBackgroundScanning(true);
         const latestTs = await window.api.getLatestMatchTimestamp();
         const sinceLatest = latestTs ? Date.now() - new Date(latestTs).getTime() : Infinity;
         const scanMs = Math.min(sinceLatest, TWO_DAYS);
-        await window.api.backfillOpponents(scanMs, 0);
-        loadedWeeks.current = 1;
-        await refreshFromDb();
+
+        window.api.backfillOpponents(scanMs, 0).then(async () => {
+          const refreshed = await window.api.getOpponents(Math.max(initial.length, PAGE_SIZE));
+          setMatches(refreshed);
+          setBackgroundScanning(false);
+        }).catch(() => setBackgroundScanning(false));
       }
     })();
 
-    const unsub = window.api.onNewOpponent(() => {
-      refreshFromDb();
+    const unsub = window.api.onNewOpponent(async () => {
+      const data = await window.api.getOpponents(PAGE_SIZE);
+      setMatches((prev) => {
+        if (prev.length <= PAGE_SIZE) return data;
+        const existingIds = new Set(data.map((m: Match) => m.id));
+        const older = prev.filter((m) => !existingIds.has(m.id));
+        return [...data, ...older];
+      });
     });
 
     pollRef.current = setInterval(() => {
-      refreshFromDb();
       loadFriendCodes();
     }, POLL_INTERVAL);
 
@@ -293,29 +325,48 @@ export function Opponents() {
     } catch { /* ignore */ }
   }
 
-  async function refreshFromDb() {
-    try {
-      const data = await window.api.getOpponents(200);
-      setMatches(data);
-    } catch { /* ignore */ }
-  }
-
-  async function scanReplays() {
-    setScanning(true);
-    await window.api.backfillOpponents(TWO_DAYS, 0);
-    loadedWeeks.current = 1;
-    await refreshFromDb();
-    setScanning(false);
-  }
-
   async function loadMore() {
+    if (loadingMore || backgroundScanning) return;
     setLoadingMore(true);
-    const beforeMs = loadedWeeks.current * ONE_WEEK;
+
+    const oldest = matches.length > 0
+      ? matches[matches.length - 1].played_at
+      : new Date().toISOString();
+
+    const dbPage = await window.api.getOpponentsPage(oldest, PAGE_SIZE);
+
+    if (dbPage.length > 0) {
+      setMatches((prev) => [...prev, ...dbPage]);
+    }
+
+    if (dbPage.length >= PAGE_SIZE) {
+      setLoadingMore(false);
+      return;
+    }
+
+    if (diskExhausted.current) {
+      if (dbPage.length === 0) setHasMore(false);
+      setLoadingMore(false);
+      return;
+    }
+
+    const oldestLoaded = dbPage.length > 0
+      ? dbPage[dbPage.length - 1].played_at
+      : oldest;
+    const beforeMs = Date.now() - new Date(oldestLoaded).getTime();
+
     const result = await window.api.backfillOpponents(ONE_WEEK, beforeMs);
-    loadedWeeks.current += 1;
-    if (result.processed === 0) setHasMore(false);
-    const refreshed = await window.api.getOpponents(200);
-    setMatches(refreshed);
+
+    if (result.processed > 0) {
+      const diskPage = await window.api.getOpponentsPage(oldestLoaded, PAGE_SIZE);
+      if (diskPage.length > 0) {
+        setMatches((prev) => [...prev, ...diskPage]);
+      }
+    } else {
+      diskExhausted.current = true;
+      if (dbPage.length === 0) setHasMore(false);
+    }
+
     setLoadingMore(false);
   }
 
@@ -344,12 +395,11 @@ export function Opponents() {
 
   async function rescan() {
     setScanning(true);
-    const weeks = Math.max(loadedWeeks.current, 1);
-    for (let w = 0; w < weeks; w++) {
-      await window.api.backfillOpponents(ONE_WEEK, w * ONE_WEEK);
-    }
-    if (loadedWeeks.current === 0) loadedWeeks.current = 1;
-    await refreshFromDb();
+    diskExhausted.current = false;
+    setHasMore(true);
+    await window.api.backfillOpponents(TWO_DAYS, 0);
+    const data = await window.api.getOpponents(PAGE_SIZE);
+    setMatches(data);
     setScanning(false);
   }
 
@@ -369,28 +419,38 @@ export function Opponents() {
             {scanning ? 'Scanning...' : 'Rescan'}
           </button>
         </div>
-        <span className="text-sm text-gray-500">
-          {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-          <span className="text-gray-600 ml-1">({matches.length} games)</span>
-        </span>
+        {!initialLoading && (
+          <span className="text-sm text-gray-500">
+            {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+            <span className="text-gray-600 ml-1">({matches.length} games)</span>
+          </span>
+        )}
       </div>
 
       <div className="space-y-2">
-        {scanning && matches.length === 0 && (
+        {initialLoading && (
+          <>
+            <SessionSkeleton />
+            <SessionSkeleton />
+            <SessionSkeleton />
+            <SessionSkeleton />
+          </>
+        )}
+        {!initialLoading && (scanning || backgroundScanning) && matches.length === 0 && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
             <p className="text-[#21BA45] text-sm animate-pulse">
-              Scanning last week's replays...
+              Scanning recent replays...
             </p>
           </div>
         )}
-        {!scanning && sessions.length === 0 && (
+        {!initialLoading && !scanning && !backgroundScanning && sessions.length === 0 && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center space-y-4">
             <p className="text-gray-500 text-sm">
               No opponents found yet.
             </p>
             <button
-              onClick={scanReplays}
-              className="rounded-lg bg-[#21BA45] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1ea33e] transition-colors"
+            onClick={rescan}
+            className="rounded-lg bg-[#21BA45] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1ea33e] transition-colors"
             >
               Scan Recent Replays
             </button>
@@ -408,13 +468,16 @@ export function Opponents() {
             discordUsername={getDiscordUsername(s.opponentCode)}
           />
         ))}
+        {backgroundScanning && matches.length > 0 && (
+          <p className="text-center text-xs text-[#21BA45]/60 py-2 animate-pulse">Scanning recent replays in background...</p>
+        )}
         {matches.length > 0 && hasMore && (
           <button
             onClick={loadMore}
-            disabled={loadingMore}
+            disabled={loadingMore || backgroundScanning}
             className="w-full rounded-xl border border-[#2a2a2a] bg-[#141414] px-4 py-3 text-sm text-gray-400 transition-colors hover:text-white hover:border-[#21BA45]/30 disabled:opacity-50"
           >
-            {loadingMore ? 'Scanning older replays...' : 'Load More'}
+            {loadingMore ? 'Loading...' : 'Load More'}
           </button>
         )}
         {!hasMore && sessions.length > 0 && (

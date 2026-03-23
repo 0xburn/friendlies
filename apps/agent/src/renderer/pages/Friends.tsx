@@ -1,5 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
+import { OnlineIndicator } from '../components/OnlineIndicator';
 import { PlayerCard } from '../components/PlayerCard';
+import { RankBadge } from '../components/RankBadge';
+import { getCharacterShortName } from '../lib/characters';
 
 interface Friend {
   id: string;
@@ -26,6 +29,19 @@ interface IncomingRequest {
   characterId: number | null;
 }
 
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-3 flex items-center gap-3 animate-pulse">
+      <div className="w-8 h-8 rounded-full bg-[#1a1a1a]" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3.5 w-24 rounded bg-[#1a1a1a]" />
+        <div className="h-2.5 w-16 rounded bg-[#1a1a1a]" />
+      </div>
+      <div className="h-3 w-10 rounded bg-[#1a1a1a]" />
+    </div>
+  );
+}
+
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
@@ -36,11 +52,39 @@ export function Friends() {
   const [addLoading, setAddLoading] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [responding, setResponding] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
+  const [myIdentity, setMyIdentity] = useState<{ connectCode: string; displayName: string } | null>(null);
+  const [myUser, setMyUser] = useState<{ avatar_url?: string; discord_name?: string } | null>(null);
+  const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number } | null>(null);
+  const [myOpponentCode, setMyOpponentCode] = useState<string | null>(null);
+  const [myCharacterId, setMyCharacterId] = useState<number | null>(null);
+  const [myOppCharId, setMyOppCharId] = useState<number | null>(null);
+  const [myPlayingSince, setMyPlayingSince] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
   useEffect(() => {
-    loadFriends();
-    loadIncoming();
-    pollFriendStatuses();
+    window.api.getIdentity().then((id) => {
+      if (id) setMyIdentity({ connectCode: id.connectCode, displayName: id.displayName });
+    });
+    window.api.getUser().then((u: any) => {
+      if (u) setMyUser({
+        avatar_url: u.user_metadata?.avatar_url,
+        discord_name: u.user_metadata?.full_name || u.user_metadata?.name,
+      });
+    });
+    window.api.getProfile().then((p: any) => {
+      if (p) setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses });
+    });
+    window.api.getLocalStatus().then((s: any) => {
+      if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
+    });
+
+    Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses()]).finally(() =>
+      setInitialLoading(false),
+    );
 
     const unsub = window.api.onPresenceUpdate((users) => {
       const map: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }> = {};
@@ -55,12 +99,24 @@ export function Friends() {
       setOnlineMap((prev) => ({ ...prev, ...map }));
     });
 
+    const unsubStatus = window.api.onLocalStatus((info: any) => {
+      setMyStatus(info.status || 'online');
+      setMyOpponentCode(info.opponentCode ?? null);
+      setMyOppCharId(info.opponentCharacterId ?? null);
+      setMyPlayingSince(info.playingSince ?? null);
+      setMyCharacterId(info.characterId ?? null);
+    });
+
+    const unsubUpdate = window.api.onUpdateStatus((s: any) => {
+      if (s.state === 'available' || s.state === 'downloaded') setUpdateAvailable(s.version);
+    });
+
     const dbPoll = setInterval(() => {
       pollFriendStatuses();
       loadFriends();
       loadIncoming();
     }, 10_000);
-    return () => { unsub(); clearInterval(dbPoll); };
+    return () => { unsub(); unsubStatus(); unsubUpdate(); clearInterval(dbPoll); };
   }, []);
 
   async function pollFriendStatuses() {
@@ -164,13 +220,84 @@ export function Friends() {
     await window.api.copyToClipboard(code);
   }
 
+  async function copyCode() {
+    if (!myIdentity?.connectCode) return;
+    await window.api.copyToClipboard(myIdentity.connectCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const wins = myProfile?.wins ?? 0;
+  const losses = myProfile?.losses ?? 0;
+  const total = wins + losses;
+
   return (
     <div className="space-y-6 max-w-2xl">
+      {/* Player status card */}
+      {myIdentity && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
+          <div className="flex items-center gap-4">
+            {myUser?.avatar_url && (
+              <img src={myUser.avatar_url} alt="" className="w-10 h-10 rounded-full border border-[#2a2a2a] shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2.5">
+                <span className="text-lg font-mono font-bold tracking-wider text-white">
+                  {myIdentity.connectCode}
+                </span>
+                <OnlineIndicator
+                  status={myStatus}
+                  size="md"
+                  opponentCode={myOpponentCode}
+                  opponentCharacterId={myOppCharId}
+                  characterId={myCharacterId}
+                  playingSince={myPlayingSince}
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                {myIdentity.displayName && (
+                  <span className="text-xs text-gray-500">{myIdentity.displayName}</span>
+                )}
+                {myProfile?.rating_ordinal && (
+                  <RankBadge rating={myProfile.rating_ordinal} />
+                )}
+                {total > 0 && (
+                  <span className="text-xs text-gray-600">{wins}W {losses}L</span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={copyCode}
+              className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-all"
+            >
+              {copied ? '✓' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div className="rounded-xl border border-[#5865F2]/30 bg-[#5865F2]/5 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-white">v{updateAvailable} available</p>
+            <p className="text-[10px] text-gray-400">A new version is ready</p>
+          </div>
+          <button
+            onClick={() => window.api.downloadUpdate()}
+            className="shrink-0 rounded-lg bg-[#5865F2] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#4752C4] transition-colors"
+          >
+            Update
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-display font-bold">Friends</h1>
-        <span className="text-sm text-gray-500">
-          {accepted.length} friend{accepted.length !== 1 ? 's' : ''}
-        </span>
+        {!initialLoading && (
+          <span className="text-sm text-gray-500">
+            {accepted.length} friend{accepted.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -284,7 +411,14 @@ export function Friends() {
 
       {/* Accepted Friends */}
       <div className="space-y-2">
-        {accepted.length === 0 && pendingOut.length === 0 && incoming.length === 0 && (
+        {initialLoading && (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        )}
+        {!initialLoading && accepted.length === 0 && pendingOut.length === 0 && incoming.length === 0 && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
             <p className="text-gray-500 text-sm">
               No friends yet. Add someone by their connect code!
