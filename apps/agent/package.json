@@ -4,6 +4,7 @@
   "private": true,
   "description": "Slippi Friends desktop agent - track your Melee friends and opponents",
   "author": "Slippi Friends",
+  "repository": "https://github.com/0xburn/slippi-friends",
   "main": "dist/main.js",
   "scripts": {
     "dev": "concurrently -n tsc,vite,electron \"tsc -w --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && NODE_ENV=development electron .\"",
