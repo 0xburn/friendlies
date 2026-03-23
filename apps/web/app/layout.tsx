@@ -7,6 +7,10 @@ import { PresenceProvider } from '@/components/PresenceProvider';
 export const metadata: Metadata = {
   title: 'friendlies',
   description: 'enable friends lists for Melee',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
