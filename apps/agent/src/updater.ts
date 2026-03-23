@@ -40,7 +40,12 @@ export function initAutoUpdater(win: BrowserWindow): void {
   });
 
   autoUpdater.on('error', (err) => {
-    send({ state: 'error', message: err?.message ?? String(err) });
+    const msg = err?.message ?? String(err);
+    if (msg.includes('404') || msg.includes('net::ERR_')) {
+      console.warn('[updater] transient error, will retry:', msg);
+      return;
+    }
+    send({ state: 'error', message: msg });
   });
 }
 
