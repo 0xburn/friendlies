@@ -79,6 +79,19 @@ export async function handleAuthCallback(url: string): Promise<void> {
   }
 }
 
+export function listenForTokenRefresh(): void {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (
+      (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') &&
+      session?.access_token &&
+      session?.refresh_token
+    ) {
+      authStore.set(TOKEN_KEY_ACCESS, session.access_token);
+      authStore.set(TOKEN_KEY_REFRESH, session.refresh_token);
+    }
+  });
+}
+
 export async function restoreSession(): Promise<void> {
   try {
     const access = authStore.get(TOKEN_KEY_ACCESS) as string | undefined;

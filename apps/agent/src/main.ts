@@ -2,7 +2,7 @@ import * as path from 'path';
 import { BrowserWindow, app, ipcMain, shell } from 'electron';
 import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
-  logout, restoreSession, startAuthFlow,
+  listenForTokenRefresh, logout, restoreSession, startAuthFlow,
 } from './auth';
 import { APP_PROTOCOL } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
@@ -300,6 +300,7 @@ app.whenReady().then(async () => {
     const st0 = getSettings();
     app.setLoginItemSettings({ openAtLogin: st0.autoLaunch, openAsHidden: true });
 
+    listenForTokenRefresh();
     await restoreSession();
 
     mainWindow = createMainWindow();
