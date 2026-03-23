@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 const Store = require('electron-store');
@@ -13,28 +14,47 @@ export interface SlippiIdentity {
   uid: string;
   connectCode: string;
   displayName: string;
+  staleAccount?: boolean;
 }
 
 function normalizeConnectCode(code: string): string {
-  return code.replace(/\u8194/g, '#').trim();
+  return code.replace(/[^A-Za-z0-9]/g, '#').replace(/#+/g, '#').trim();
+}
+
+function getLauncherActiveUid(): string | null {
+  try {
+    const home = os.homedir();
+    const settingsPaths = process.platform === 'win32'
+      ? [path.join(home, 'AppData', 'Roaming', 'Slippi Launcher', 'Settings')]
+      : process.platform === 'darwin'
+        ? [path.join(home, 'Library', 'Application Support', 'Slippi Launcher', 'Settings')]
+        : [path.join(home, '.config', 'Slippi Launcher', 'Settings')];
+
+    for (const p of settingsPaths) {
+      if (!fs.existsSync(p)) continue;
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const activeId = data?.accounts?.activeId;
+      if (activeId && typeof activeId === 'string') {
+        console.log(`[identity] Launcher activeId: ${activeId}`);
+        return activeId;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
 }
 
 export function findUserJson(): string | null {
   try {
     const paths = getSlippiUserJsonPaths();
-    console.log(`[identity] scanning ${paths.length} candidate paths...`);
     for (const p of paths) {
-      const exists = fs.existsSync(p);
-      if (exists) {
+      if (fs.existsSync(p)) {
         console.log(`[identity] FOUND user.json at: ${p}`);
         identityStore.set(KEY_USER_JSON_PATH, p);
         return p;
       }
     }
-    console.log('[identity] no user.json found in candidates, checking cache...');
     const cached = identityStore.get(KEY_USER_JSON_PATH) as string | undefined;
     if (cached && fs.existsSync(cached)) {
-      console.log(`[identity] using cached path: ${cached}`);
       return cached;
     }
     console.log('[identity] no user.json found anywhere');
@@ -96,10 +116,20 @@ export async function verifyIdentity(
 export function getIdentity(): SlippiIdentity | null {
   try {
     const found = findUserJson();
-    if (!found) {
-      return null;
+    if (!found) return null;
+    const identity = readSlippiIdentity(found);
+    if (!identity) return null;
+
+    const launcherUid = getLauncherActiveUid();
+    if (launcherUid && launcherUid !== identity.uid) {
+      console.warn(
+        `[identity] user.json has uid ${identity.uid} but Launcher active account is ${launcherUid}. ` +
+        `user.json is stale — user needs to open a game to update it.`,
+      );
+      identity.staleAccount = true;
     }
-    return readSlippiIdentity(found);
+
+    return identity;
   } catch (e) {
     console.error('getIdentity failed', e);
     return null;

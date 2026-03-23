@@ -29,7 +29,7 @@ interface IncomingRequest {
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
-  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; playingSince?: string }>>({});
+  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }>>({});
   const [search, setSearch] = useState('');
   const [addCode, setAddCode] = useState('');
   const [addError, setAddError] = useState('');
@@ -43,18 +43,23 @@ export function Friends() {
     pollFriendStatuses();
 
     const unsub = window.api.onPresenceUpdate((users) => {
-      const map: Record<string, { status: string; opponentCode?: string; playingSince?: string }> = {};
+      const map: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }> = {};
       users.forEach((u: any) => {
         map[u.connectCode] = {
           status: u.status,
           opponentCode: u.opponentCode ?? undefined,
+          currentCharacter: u.currentCharacter ?? null,
           playingSince: u.playingSince ?? undefined,
         };
       });
       setOnlineMap((prev) => ({ ...prev, ...map }));
     });
 
-    const dbPoll = setInterval(pollFriendStatuses, 10_000);
+    const dbPoll = setInterval(() => {
+      pollFriendStatuses();
+      loadFriends();
+      loadIncoming();
+    }, 10_000);
     return () => { unsub(); clearInterval(dbPoll); };
   }, []);
 
@@ -62,7 +67,16 @@ export function Friends() {
     try {
       const statuses = await window.api.getFriendStatuses();
       if (statuses && typeof statuses === 'object') {
-        setOnlineMap((prev) => ({ ...prev, ...statuses }));
+        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }> = {};
+        for (const [code, val] of Object.entries(statuses as Record<string, any>)) {
+          mapped[code] = {
+            status: val.status,
+            opponentCode: val.opponentCode ?? undefined,
+            currentCharacter: val.currentCharacter ?? null,
+            playingSince: val.playingSince ?? undefined,
+          };
+        }
+        setOnlineMap((prev) => ({ ...prev, ...mapped }));
       }
     } catch {}
   }
@@ -83,6 +97,7 @@ export function Friends() {
       return {
         ...f,
         status: (presence?.status || 'offline') as Friend['status'],
+        currentCharacter: presence?.currentCharacter ?? null,
         opponentCode: presence?.opponentCode ?? null,
         playingSince: presence?.playingSince ?? null,
       };
@@ -288,6 +303,7 @@ export function Friends() {
                   rating: f.rating,
                   characterId: f.characterId,
                   status: f.status,
+                  currentCharacter: f.currentCharacter,
                   opponentCode: f.opponentCode,
                   playingSince: f.playingSince,
                 }}

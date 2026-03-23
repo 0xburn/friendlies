@@ -2,11 +2,14 @@ import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import { getCurrentUser, isAuthenticated, logout, startAuthFlow } from './auth';
 import { getIdentity, verifyIdentity } from './identity';
+import { showFriendOnlineNotification } from './notifications';
 import { getCurrentStatus, getOnlineUsers, onLocalStatusChange, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
+
+const previousFriendStatuses = new Map<string, string>();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -211,6 +214,15 @@ export function registerIpcHandlers(win: BrowserWindow): void {
       const user = await getCurrentUser();
       if (!user) return { error: 'Not authenticated' };
 
+      const { data: self } = await supabase
+        .from('profiles')
+        .select('connect_code')
+        .eq('id', user.id)
+        .single();
+      if (self?.connect_code === connectCode) {
+        return { error: "You can't add yourself" };
+      }
+
       const { data: target } = await supabase
         .from('profiles')
         .select('id, connect_code')
@@ -297,6 +309,21 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     } catch (e) { console.error('opponents:list', e); return []; }
   });
 
+  ipcMain.handle('opponents:latestTimestamp', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from('matches')
+        .select('played_at')
+        .eq('user_id', user.id)
+        .order('played_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.played_at ?? null;
+    } catch (e) { console.error('opponents:latestTimestamp', e); return null; }
+  });
+
   ipcMain.handle('presence:online', () => getOnlineUsers());
   ipcMain.handle('presence:localStatus', () => getCurrentStatus());
 
@@ -315,23 +342,33 @@ export function registerIpcHandlers(win: BrowserWindow): void {
       if (friendIds.length === 0) return {};
 
       const { data } = await supabase.from('presence_log')
-        .select('user_id, status, opponent_code, playing_since, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, updated_at')
         .in('user_id', friendIds);
       if (!data) return {};
 
       const staleMs = 45_000;
       const now = Date.now();
       const result: Record<string, any> = {};
+      const showNotifs = getSettings().showNotifications;
       for (const row of data) {
         const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
         const code = (friend as any)?.profiles?.connect_code || friend?.friend_connect_code;
         if (!code) continue;
         const age = now - new Date(row.updated_at).getTime();
+        const isStale = age > staleMs;
+        const newStatus = isStale ? 'offline' : row.status;
         result[code] = {
-          status: age > staleMs ? 'offline' : row.status,
-          opponentCode: row.opponent_code,
-          playingSince: row.playing_since,
+          status: newStatus,
+          currentCharacter: isStale ? null : (row as any).current_character ?? null,
+          opponentCode: isStale ? null : row.opponent_code,
+          playingSince: isStale ? null : row.playing_since,
         };
+
+        const prev = previousFriendStatuses.get(code);
+        if (showNotifs && prev && prev === 'offline' && (newStatus === 'online' || newStatus === 'in-game')) {
+          showFriendOnlineNotification(code, newStatus);
+        }
+        previousFriendStatuses.set(code, newStatus);
       }
       return result;
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }

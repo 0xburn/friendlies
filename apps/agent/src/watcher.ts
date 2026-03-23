@@ -23,7 +23,7 @@ export type IdentityMismatch = {
 };
 
 function normalizeConnectCode(code: string): string {
-  return code.replace(/\u8194/g, '#').trim().toUpperCase();
+  return code.replace(/[^A-Za-z0-9]/g, '#').replace(/#+/g, '#').trim().toUpperCase();
 }
 
 function mapGameMode(mode: number | null | undefined): string | null {
@@ -53,9 +53,24 @@ export async function processNewReplay(
     const humans = settings.players.filter(
       (p) => p.type === 0 || p.type === null,
     );
+
+    const playersWithCodes = humans.filter(
+      (p) => normalizeConnectCode(p.connectCode || '').length > 0,
+    );
+    if (playersWithCodes.length === 0) {
+      console.log('[watcher] Skipping offline/local replay (no connect codes)');
+      return null;
+    }
+
     const localPlayer = settings.players.find(
       (p) => normalizeConnectCode(p.connectCode || '') === localNorm,
     );
+
+    if (localPlayer) {
+      console.log(`[watcher] Matched local player at port ${localPlayer.port} (code ${localNorm}, char ${localPlayer.characterId})`);
+    } else {
+      console.log(`[watcher] Local player not found for ${localNorm} — players: ${playersWithCodes.map((p) => normalizeConnectCode(p.connectCode || '')).join(', ')}`);
+    }
 
     // Identity mismatch detection: if this is an online game with human
     // players but none of them match the claimed connect code, the user
@@ -64,7 +79,13 @@ export async function processNewReplay(
       const actualCodes = humans
         .map((p) => normalizeConnectCode(p.connectCode || ''))
         .filter(Boolean);
-      if (actualCodes.length > 0) {
+      const localAlpha = localNorm.replace(/[^A-Z0-9]/g, '');
+      const isEncodingMismatch = actualCodes.some(
+        (c) => c.replace(/[^A-Z0-9]/g, '') === localAlpha,
+      );
+      if (isEncodingMismatch) {
+        console.log(`[identity] Encoding-only mismatch for ${localNorm} — not a spoof`);
+      } else if (actualCodes.length > 0) {
         const replayName = path.basename(filePath);
         const mismatch: IdentityMismatch = {
           claimedCode: localNorm,
@@ -231,10 +252,12 @@ export function startWatcher(
   }
 }
 
+const BACKFILL_BATCH_SIZE = 5;
+
 export async function backfillRecentReplays(
   replayDir: string,
   localConnectCode: string,
-  sinceMs = 7 * 24 * 60 * 60 * 1000,
+  sinceMs = 2 * 24 * 60 * 60 * 1000,
   beforeMs = 0,
 ): Promise<{ processed: number; oldestMs: number }> {
   let processed = 0;
@@ -249,13 +272,20 @@ export async function backfillRecentReplays(
       .filter((f) => f.mtime >= cutoffOld && f.mtime <= cutoffNew)
       .sort((a, b) => b.mtime - a.mtime);
 
-    for (const f of filtered) {
+    console.log(`[backfill] Processing ${filtered.length} replays (cutoff ${Math.round(sinceMs / 3600000)}h)`);
+
+    for (let i = 0; i < filtered.length; i++) {
+      const f = filtered[i];
       try {
         await processNewReplay(f.path, localConnectCode);
         processed++;
         if (f.mtime < oldestMs) oldestMs = f.mtime;
       } catch { /* skip bad replays */ }
+      if ((i + 1) % BACKFILL_BATCH_SIZE === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
+    console.log(`[backfill] Done — ${processed}/${filtered.length} processed`);
   } catch (e) { console.error('backfillRecentReplays', e); }
   return { processed, oldestMs };
 }

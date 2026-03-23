@@ -1,13 +1,9 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import {
   DOLPHIN_PROCESS_NAMES,
   OPPONENT_RECENT_THRESHOLD,
   PRESENCE_POLL_INTERVAL,
-  REPLAY_ACTIVE_THRESHOLD,
   SLIPPI_LAUNCHER_PROCESS_NAMES,
 } from './config';
 import { supabase } from './supabase';
@@ -52,11 +48,12 @@ let lastOpponentTimestamp: number = 0;
 let loopConnectCode = '';
 let loopDisplayName = '';
 let loopUserId = '';
-let replayDirForPoll = '';
 let onlineUsers: OnlineUser[] = [];
 let syncCallbacks: PresenceSyncCallback[] = [];
 let localStatusCallbacks: LocalStatusCallback[] = [];
 let channelRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let channelRetryCount = 0;
+const MAX_CHANNEL_RETRIES = 1;
 
 export function setLastPlayedCharacterId(id: number | null): void {
   lastCharacterId = id;
@@ -136,45 +133,14 @@ function extractOnlineUsers(): OnlineUser[] {
 
 async function isProcessRunning(names: readonly string[]): Promise<boolean> {
   try {
-    for (const name of names) {
-      const list = await find('name', name, false);
-      if (list.length > 0) {
-        console.log(`[presence] Process found: "${list[0].name}" (matched "${name}")`);
-        return true;
-      }
+    const results = await Promise.all(
+      names.map((name) => find('name', name, false).catch(() => [] as any[])),
+    );
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].length > 0) return true;
     }
   } catch (e) {
     console.error('isProcessRunning failed', e);
-  }
-  return false;
-}
-
-async function hasRecentReplayActivity(dir: string): Promise<boolean> {
-  try {
-    if (!fs.existsSync(dir)) return false;
-    const now = Date.now();
-
-    const checkDir = async (d: string): Promise<boolean> => {
-      const entries = await fs.promises.readdir(d, { withFileTypes: true });
-      for (const entry of entries) {
-        const full = path.join(d, entry.name);
-        if (entry.isFile() && entry.name.toLowerCase().endsWith('.slp')) {
-          const st = await fs.promises.stat(full).catch(() => null);
-          if (st && now - st.mtimeMs <= REPLAY_ACTIVE_THRESHOLD) return true;
-        }
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
-          const dirStat = await fs.promises.stat(full).catch(() => null);
-          if (dirStat && now - dirStat.mtimeMs <= REPLAY_ACTIVE_THRESHOLD) {
-            if (await checkDir(full)) return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    return await checkDir(dir);
-  } catch (e) {
-    console.error('hasRecentReplayActivity failed', e);
   }
   return false;
 }
@@ -292,7 +258,7 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(
         () => reject(new Error('presence subscribe timeout')),
-        20000,
+        4000,
       );
       presenceChannel!.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -322,13 +288,18 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
 }
 
 function scheduleChannelRetry(): void {
-  if (channelRetryTimer) return;
+  if (channelRetryTimer || channelRetryCount >= MAX_CHANNEL_RETRIES) return;
   channelRetryTimer = setTimeout(async () => {
     channelRetryTimer = null;
     if (subscribed || !loopConnectCode) return;
-    console.log('[presence] Retrying channel subscription...');
+    channelRetryCount++;
+    console.log(`[presence] Retrying channel subscription (${channelRetryCount}/${MAX_CHANNEL_RETRIES})...`);
     const ok = await subscribeChannel(loopConnectCode);
-    if (!ok) scheduleChannelRetry();
+    if (!ok && channelRetryCount >= MAX_CHANNEL_RETRIES) {
+      console.log('[presence] Realtime channel unavailable — using DB polling only');
+    } else if (!ok) {
+      scheduleChannelRetry();
+    }
   }, 30_000);
 }
 
@@ -343,7 +314,6 @@ export async function startPresenceLoop(
     loopConnectCode = connectCode;
     loopDisplayName = displayName;
     loopUserId = userId;
-    replayDirForPoll = replayDir;
 
     const channelOk = await subscribeChannel(connectCode);
     if (!channelOk) scheduleChannelRetry();
@@ -360,11 +330,13 @@ export async function startPresenceLoop(
           lastOpponentTimestamp = 0;
         }
         const opponent = next === 'in-game' ? getRecentOpponent() : null;
-        console.log(
-          `[presence] tick: launcher=${launcherRunning} dolphin=${dolphinRunning} → ${next}` +
-          (opponent ? ` opponent=${opponent.code} char=${lastOpponentCharacterId}` : '') +
-          (lastCharacterId != null ? ` myChar=${lastCharacterId}` : ''),
-        );
+        if (next !== currentStatus) {
+          console.log(
+            `[presence] ${currentStatus} → ${next}` +
+            (opponent ? ` opponent=${opponent.code}` : '') +
+            (lastCharacterId != null ? ` myChar=${lastCharacterId}` : ''),
+          );
+        }
         currentStatus = next;
         emitLocalStatus();
         await pushPresence(
@@ -441,6 +413,6 @@ export async function pushOfflineAndStop(): Promise<void> {
   } catch (e) { console.error('pushOfflineAndStop failed', e); }
 }
 
-export function updatePresenceReplayDir(dir: string): void {
-  replayDirForPoll = dir;
+export function updatePresenceReplayDir(_dir: string): void {
+  // kept for API compat
 }

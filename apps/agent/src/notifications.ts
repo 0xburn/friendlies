@@ -31,3 +31,20 @@ export function showOpponentNotification(
     console.error('showOpponentNotification failed', e);
   }
 }
+
+export function showFriendOnlineNotification(
+  connectCode: string,
+  newStatus: string,
+): void {
+  try {
+    if (!Notification.isSupported()) return;
+    const label = newStatus === 'in-game' ? 'is now in game' : 'is now online';
+    const n = new Notification({
+      title: 'Slippi Friends',
+      body: `${connectCode} ${label}`,
+    });
+    n.show();
+  } catch (e) {
+    console.error('showFriendOnlineNotification failed', e);
+  }
+}

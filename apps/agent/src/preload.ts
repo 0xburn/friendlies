@@ -16,7 +16,7 @@ const api = {
   logout: () => ipcRenderer.invoke('auth:logout'),
   onAuthChanged: (cb: (user: any) => void): Unsubscribe => onEvent('auth:changed', cb),
 
-  getIdentity: () => ipcRenderer.invoke('identity:get'),
+  getIdentity: () => ipcRenderer.invoke('identity:get') as Promise<{ uid: string; connectCode: string; displayName: string; staleAccount?: boolean } | null>,
   linkIdentity: () => ipcRenderer.invoke('identity:link'),
   getProfile: () => ipcRenderer.invoke('identity:profile'),
 
@@ -28,9 +28,11 @@ const api = {
   removeFriend: (friendshipId: string) => ipcRenderer.invoke('friends:remove', friendshipId),
 
   getOpponents: (limit?: number) => ipcRenderer.invoke('opponents:list', limit),
+  getLatestMatchTimestamp: () => ipcRenderer.invoke('opponents:latestTimestamp'),
   backfillOpponents: (sinceMs?: number, beforeMs?: number) => ipcRenderer.invoke('opponents:backfill', sinceMs, beforeMs),
   onNewOpponent: (cb: (opponent: any) => void): Unsubscribe => onEvent('opponent:new', cb),
   onIdentityMismatch: (cb: (info: any) => void): Unsubscribe => onEvent('identity:mismatch', cb),
+  onCodeClaimed: (cb: (info: any) => void): Unsubscribe => onEvent('identity:codeClaimed', cb),
 
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
   getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),
@@ -42,6 +44,7 @@ const api = {
   updateSettings: (partial: Record<string, any>) => ipcRenderer.invoke('settings:update', partial),
   browseDirectory: () => ipcRenderer.invoke('settings:browse'),
   isSetupComplete: () => ipcRenderer.invoke('setup:isComplete'),
+  refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),
 
   lookupSlippiPlayer: (connectCode: string) => ipcRenderer.invoke('slippi:lookup', connectCode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

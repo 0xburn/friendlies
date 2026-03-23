@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { BrowserWindow, app, shell } from 'electron';
+import { BrowserWindow, app, ipcMain, shell } from 'electron';
 import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   logout, restoreSession, startAuthFlow,
@@ -8,6 +8,7 @@ import { APP_PROTOCOL } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
 import { showOpponentNotification } from './notifications';
+import { supabase } from './supabase';
 import {
   getCurrentStatus, pushOfflineAndStop, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
 } from './presence';
@@ -77,9 +78,11 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show());
   win.on('close', (e) => {
-    if (!(app as any).isQuitting) {
+    if (process.platform === 'darwin' && !(app as any).isQuitting) {
       e.preventDefault();
       win.hide();
+    } else {
+      (app as any).isQuitting = true;
     }
   });
 
@@ -121,7 +124,32 @@ async function refreshAgentState(): Promise<void> {
     const user = await getCurrentUser();
     const identity = getIdentity();
     if (authed && identity && user) {
-      void verifyIdentity(identity).catch((e) => console.error('verifyIdentity', e));
+      // Ensure profile has connect_code + slippi_uid synced (with claim check)
+      const { data: existingClaim } = await supabase.from('profiles')
+        .select('id, verified')
+        .eq('connect_code', identity.connectCode)
+        .neq('id', user.id)
+        .maybeSingle();
+
+      if (existingClaim?.verified) {
+        console.warn(`[main] connect code ${identity.connectCode} is already claimed by another verified user`);
+        await stopAgentServices();
+        sendToRenderer('identity:codeClaimed', { connectCode: identity.connectCode });
+        updateTrayStatus(getCurrentStatus());
+        return;
+      }
+
+      const { error: syncErr } = await supabase.from('profiles').update({
+        connect_code: identity.connectCode,
+        slippi_uid: identity.uid,
+        display_name: identity.displayName || null,
+        verified: true,
+        verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', user.id);
+      if (syncErr) console.error('[main] profile sync failed:', syncErr.message);
+      else console.log('[main] profile synced:', identity.connectCode);
+
       await startAgentServices(identity, user.id);
     } else {
       await stopAgentServices();
@@ -191,6 +219,11 @@ app.whenReady().then(async () => {
 
     mainWindow = createMainWindow();
     registerIpcHandlers(mainWindow);
+
+    ipcMain.handle('agent:refresh', async () => {
+      await refreshAgentState();
+      return { ok: true };
+    });
 
     if (!isDev) {
       initAutoUpdater(mainWindow);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CharacterIcon } from '../components/CharacterIcon';
 import { PlayerStatsPanel } from '../components/PlayerStatsPanel';
 
+const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
 const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
 const POLL_INTERVAL = 30_000;
 const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes between games = new session
@@ -252,7 +253,10 @@ export function Opponents() {
       loadFriendCodes();
       if (!didInitialScan.current) {
         didInitialScan.current = true;
-        await window.api.backfillOpponents(ONE_WEEK, 0);
+        const latestTs = await window.api.getLatestMatchTimestamp();
+        const sinceLatest = latestTs ? Date.now() - new Date(latestTs).getTime() : Infinity;
+        const scanMs = Math.min(sinceLatest, TWO_DAYS);
+        await window.api.backfillOpponents(scanMs, 0);
         loadedWeeks.current = 1;
         await refreshFromDb();
       }
@@ -298,7 +302,7 @@ export function Opponents() {
 
   async function scanReplays() {
     setScanning(true);
-    await window.api.backfillOpponents(ONE_WEEK, 0);
+    await window.api.backfillOpponents(TWO_DAYS, 0);
     loadedWeeks.current = 1;
     await refreshFromDb();
     setScanning(false);

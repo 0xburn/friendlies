@@ -11,6 +11,7 @@ import { UpdateBanner } from './components/UpdateBanner';
 type BootState =
   | { phase: 'loading' }
   | { phase: 'no-slippi' }
+  | { phase: 'stale-account'; connectCode: string }
   | { phase: 'banned'; reason: string; claimedCode?: string; actualCode?: string }
   | { phase: 'need-auth'; connectCode: string; displayName: string }
   | { phase: 'need-setup'; connectCode: string }
@@ -158,19 +159,27 @@ function AuthPrompt({ connectCode, displayName }: { connectCode: string; display
 export function App() {
   const [state, setState] = useState<BootState>({ phase: 'loading' });
   const [mismatch, setMismatch] = useState<{ claimedCode: string; actualCode: string } | null>(null);
+  const [codeClaimed, setCodeClaimed] = useState<string | null>(null);
 
   useEffect(() => {
     boot();
-    const unsub = window.api.onIdentityMismatch((info) => {
+    const unsub1 = window.api.onIdentityMismatch((info) => {
       setMismatch({ claimedCode: info.claimedCode, actualCode: info.actualCode });
     });
-    return unsub;
+    const unsub2 = window.api.onCodeClaimed((info) => {
+      setCodeClaimed(info.connectCode);
+    });
+    return () => { unsub1(); unsub2(); };
   }, []);
 
   async function boot() {
     const identity = await window.api.getIdentity();
     if (!identity) {
       setState({ phase: 'no-slippi' });
+      return;
+    }
+    if (identity.staleAccount) {
+      setState({ phase: 'stale-account', connectCode: identity.connectCode });
       return;
     }
 
@@ -198,6 +207,7 @@ export function App() {
     }
 
     setState({ phase: 'ready' });
+    window.api.refreshAgentState().catch(() => {});
   }
 
   if (mismatch) {
@@ -224,6 +234,37 @@ export function App() {
             className="w-full rounded-xl bg-[#21BA45] px-6 py-3 font-semibold text-white transition-all hover:bg-[#1ea33e]"
           >
             Restart
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (codeClaimed) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="fixed top-0 left-0 right-0 h-[52px] drag" />
+        <div className="w-full max-w-md px-8 text-center space-y-6">
+          <div className="text-5xl">🔒</div>
+          <h1 className="text-2xl font-display font-bold text-yellow-400">
+            Connect Code Unavailable
+          </h1>
+          <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-5 text-left space-y-3">
+            <p className="text-sm text-yellow-200/90">
+              The connect code <strong className="font-mono text-white">{codeClaimed}</strong> is
+              already linked to another Discord account.
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              If this is your connect code, contact{' '}
+              <span className="text-white font-medium">lucky7smelee@gmail.com</span> to
+              resolve the conflict.
+            </p>
+          </div>
+          <button
+            onClick={() => { setCodeClaimed(null); window.location.reload(); }}
+            className="w-full rounded-xl bg-[#21BA45] px-6 py-3 font-semibold text-white transition-all hover:bg-[#1ea33e]"
+          >
+            Retry
           </button>
         </div>
       </div>
@@ -269,6 +310,38 @@ export function App() {
   }
 
   if (state.phase === 'no-slippi') return <SlippiNotFound />;
+
+  if (state.phase === 'stale-account') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="fixed top-0 left-0 right-0 h-[52px] drag" />
+        <div className="w-full max-w-md px-8 text-center space-y-6">
+          <div className="flex flex-col items-center gap-3">
+            <img src="./logo.png" alt="L7" className="w-16 h-16" />
+            <h1 className="text-3xl font-display font-bold">
+              Slippi <span className="text-[#21BA45]">Friends</span>
+            </h1>
+          </div>
+          <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-6 text-left">
+            <p className="text-sm text-yellow-200/90 font-medium mb-2">
+              Account out of sync
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              You switched accounts in Slippi Launcher, but the local identity still shows{' '}
+              <strong className="text-white font-mono">{state.connectCode}</strong>.
+              Open a game in Slippi to sync your new account, then retry.
+            </p>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full rounded-xl bg-[#21BA45] px-6 py-3 font-semibold text-white transition-all hover:bg-[#1ea33e]"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (state.phase === 'need-auth') {
     return <AuthPrompt connectCode={state.connectCode} displayName={state.displayName} />;

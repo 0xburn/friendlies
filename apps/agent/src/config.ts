@@ -127,6 +127,27 @@ function findUserJsonInDir(dir: string, maxDepth: number): string | null {
 
 export function getDefaultReplayDir(): string {
   const home = os.homedir();
+
+  // Try reading from Slippi Launcher settings
+  try {
+    const launcherSettingsPaths = process.platform === 'win32'
+      ? [path.join(home, 'AppData', 'Roaming', 'Slippi Launcher', 'Settings')]
+      : process.platform === 'darwin'
+        ? [path.join(home, 'Library', 'Application Support', 'Slippi Launcher', 'Settings')]
+        : [path.join(home, '.config', 'Slippi Launcher', 'Settings')];
+
+    for (const p of launcherSettingsPaths) {
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const rootSlpPath = data?.settings?.rootSlpPath;
+        if (rootSlpPath && typeof rootSlpPath === 'string' && fs.existsSync(rootSlpPath)) {
+          console.log(`[config] Replay dir from Slippi Launcher: ${rootSlpPath}`);
+          return rootSlpPath;
+        }
+      }
+    }
+  } catch { /* fall through to default */ }
+
   if (process.platform === 'win32') {
     return path.join(home, 'Documents', 'Slippi');
   }
