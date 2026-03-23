@@ -300,6 +300,39 @@ export function registerIpcHandlers(win: BrowserWindow): void {
   ipcMain.handle('presence:online', () => getOnlineUsers());
   ipcMain.handle('presence:localStatus', () => getCurrentStatus());
 
+  ipcMain.handle('presence:friendStatuses', async () => {
+    try {
+      const friends = await supabase.from('friendships')
+        .select('friend_id, profiles!friendships_friend_id_fkey(connect_code)')
+        .eq('status', 'accepted');
+      if (!friends.data) return {};
+
+      const friendIds = friends.data.map((f: any) => f.friend_id).filter(Boolean);
+      if (friendIds.length === 0) return {};
+
+      const { data } = await supabase.from('presence_log')
+        .select('user_id, status, opponent_code, playing_since, updated_at')
+        .in('user_id', friendIds);
+      if (!data) return {};
+
+      const staleMs = 20_000;
+      const now = Date.now();
+      const result: Record<string, any> = {};
+      for (const row of data) {
+        const friend = friends.data.find((f: any) => f.friend_id === row.user_id);
+        const code = (friend as any)?.profiles?.connect_code;
+        if (!code) continue;
+        const age = now - new Date(row.updated_at).getTime();
+        result[code] = {
+          status: age > staleMs ? 'offline' : row.status,
+          opponentCode: row.opponent_code,
+          playingSince: row.playing_since,
+        };
+      }
+      return result;
+    } catch (e) { console.error('presence:friendStatuses', e); return {}; }
+  });
+
   onPresenceSync((users) => { sendToRenderer('presence:updated', users); });
   onLocalStatusChange((info) => { sendToRenderer('presence:localStatus', info); });
 

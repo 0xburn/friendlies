@@ -147,19 +147,26 @@ async function hasRecentReplayActivity(dir: string): Promise<boolean> {
   try {
     if (!fs.existsSync(dir)) return false;
     const now = Date.now();
-    const names = await fs.promises.readdir(dir);
-    for (const name of names) {
-      if (!name.toLowerCase().endsWith('.slp')) continue;
-      const full = path.join(dir, name);
-      const st = await fs.promises.stat(full).catch(() => null);
-      if (
-        st &&
-        st.isFile() &&
-        now - st.mtimeMs <= REPLAY_ACTIVE_THRESHOLD
-      ) {
-        return true;
+
+    const checkDir = async (d: string): Promise<boolean> => {
+      const entries = await fs.promises.readdir(d, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(d, entry.name);
+        if (entry.isFile() && entry.name.toLowerCase().endsWith('.slp')) {
+          const st = await fs.promises.stat(full).catch(() => null);
+          if (st && now - st.mtimeMs <= REPLAY_ACTIVE_THRESHOLD) return true;
+        }
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          const dirStat = await fs.promises.stat(full).catch(() => null);
+          if (dirStat && now - dirStat.mtimeMs <= REPLAY_ACTIVE_THRESHOLD) {
+            if (await checkDir(full)) return true;
+          }
+        }
       }
-    }
+      return false;
+    };
+
+    return await checkDir(dir);
   } catch (e) {
     console.error('hasRecentReplayActivity failed', e);
   }
@@ -391,6 +398,35 @@ export async function stopPresenceLoop(): Promise<void> {
   } catch (e) {
     console.error('stopPresenceLoop failed', e);
   }
+}
+
+export async function pushOfflineAndStop(): Promise<void> {
+  try {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (channelRetryTimer) { clearTimeout(channelRetryTimer); channelRetryTimer = null; }
+    currentStatus = 'offline';
+
+    if (loopUserId) {
+      await supabase.from('presence_log').upsert(
+        {
+          user_id: loopUserId,
+          status: 'offline',
+          current_character: null,
+          opponent_code: null,
+          playing_since: null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+    }
+
+    if (presenceChannel && subscribed) {
+      try { await presenceChannel.untrack(); } catch {}
+      try { await presenceChannel.unsubscribe(); } catch {}
+      subscribed = false;
+      presenceChannel = null;
+    }
+  } catch (e) { console.error('pushOfflineAndStop failed', e); }
 }
 
 export function updatePresenceReplayDir(dir: string): void {

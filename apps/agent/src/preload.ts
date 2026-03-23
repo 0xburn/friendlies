@@ -34,6 +34,7 @@ const api = {
 
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
   getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),
+  getFriendStatuses: () => ipcRenderer.invoke('presence:friendStatuses'),
   onPresenceUpdate: (cb: (users: any[]) => void): Unsubscribe => onEvent('presence:updated', cb),
   onLocalStatus: (cb: (info: any) => void): Unsubscribe => onEvent('presence:localStatus', cb),
 

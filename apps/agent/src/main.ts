@@ -9,7 +9,7 @@ import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
 import { showOpponentNotification } from './notifications';
 import {
-  getCurrentStatus, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
+  getCurrentStatus, pushOfflineAndStop, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
 } from './presence';
 import { getSettings, isSetupComplete, updateSettings } from './settings';
 import {
@@ -169,10 +169,16 @@ app.on('open-url', (event, url) => {
   void handleDeepLink(url);
 });
 
-app.on('before-quit', () => {
-  (app as any).isQuitting = true;
-  void stopAgentServices();
-  destroyTray();
+app.on('before-quit', async (e) => {
+  if (!(app as any).isQuitting) {
+    e.preventDefault();
+    (app as any).isQuitting = true;
+    try {
+      await pushOfflineAndStop();
+    } catch (err) { console.error('before-quit cleanup failed', err); }
+    destroyTray();
+    app.quit();
+  }
 });
 
 app.whenReady().then(async () => {

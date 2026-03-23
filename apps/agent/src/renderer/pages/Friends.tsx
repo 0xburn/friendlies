@@ -40,6 +40,8 @@ export function Friends() {
   useEffect(() => {
     loadFriends();
     loadIncoming();
+    pollFriendStatuses();
+
     const unsub = window.api.onPresenceUpdate((users) => {
       const map: Record<string, { status: string; opponentCode?: string; playingSince?: string }> = {};
       users.forEach((u: any) => {
@@ -49,10 +51,21 @@ export function Friends() {
           playingSince: u.playingSince ?? undefined,
         };
       });
-      setOnlineMap(map);
+      setOnlineMap((prev) => ({ ...prev, ...map }));
     });
-    return unsub;
+
+    const dbPoll = setInterval(pollFriendStatuses, 10_000);
+    return () => { unsub(); clearInterval(dbPoll); };
   }, []);
+
+  async function pollFriendStatuses() {
+    try {
+      const statuses = await window.api.getFriendStatuses();
+      if (statuses && typeof statuses === 'object') {
+        setOnlineMap((prev) => ({ ...prev, ...statuses }));
+      }
+    } catch {}
+  }
 
   async function loadFriends() {
     const data = await window.api.getFriends();

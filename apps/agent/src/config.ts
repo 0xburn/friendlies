@@ -18,7 +18,7 @@ export const DOLPHIN_PROCESS_NAMES = [
   'AppRun',
 ] as const;
 
-export const PRESENCE_POLL_INTERVAL = 15_000;
+export const PRESENCE_POLL_INTERVAL = 5_000;
 export const REPLAY_ACTIVE_THRESHOLD = 30_000;
 export const OPPONENT_RECENT_THRESHOLD = 10 * 60 * 1000;
 export const PRESENCE_STALE_THRESHOLD = 45_000;
