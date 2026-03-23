@@ -42,7 +42,7 @@ export function Settings() {
 
   async function handleLogout() {
     await window.api.logout();
-    window.location.hash = '/setup';
+    window.location.reload();
   }
 
   function flash() {
@@ -104,7 +104,7 @@ export function Settings() {
       </div>
 
       <p className="text-center text-xs text-gray-600">
-        Slippi Friends v0.1.22
+        Slippi Friends v0.1.23
       </p>
     </div>
   );

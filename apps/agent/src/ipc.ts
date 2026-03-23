@@ -16,7 +16,10 @@ export function sendToRenderer(channel: string, ...args: any[]): void {
   }
 }
 
-export function registerIpcHandlers(win: BrowserWindow): void {
+export function registerIpcHandlers(
+  win: BrowserWindow,
+  opts?: { onLogout?: () => Promise<void> },
+): void {
   mainWindow = win;
 
   ipcMain.handle('auth:start', () => startAuthFlow());
@@ -27,7 +30,11 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     try { return await isAuthenticated(); } catch { return false; }
   });
   ipcMain.handle('auth:logout', async () => {
-    try { await logout(); sendToRenderer('auth:changed', null); } catch (e) { console.error('auth:logout', e); }
+    try {
+      if (opts?.onLogout) await opts.onLogout();
+      await logout();
+      sendToRenderer('auth:changed', null);
+    } catch (e) { console.error('auth:logout', e); }
   });
 
   ipcMain.handle('identity:get', () => {

@@ -304,7 +304,7 @@ app.whenReady().then(async () => {
     await restoreSession();
 
     mainWindow = createMainWindow();
-    registerIpcHandlers(mainWindow);
+    registerIpcHandlers(mainWindow, { onLogout: stopAgentServices });
 
     ipcMain.handle('agent:refresh', async () => {
       await refreshAgentState();
