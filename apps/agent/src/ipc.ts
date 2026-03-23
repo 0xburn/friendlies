@@ -2,14 +2,11 @@ import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import { getCurrentUser, isAuthenticated, logout, startAuthFlow } from './auth';
 import { getIdentity, verifyIdentity } from './identity';
-import { showFriendOnlineNotification } from './notifications';
 import { getCurrentStatus, getOnlineUsers, onLocalStatusChange, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
-
-const previousFriendStatuses = new Map<string, string>();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -349,7 +346,6 @@ export function registerIpcHandlers(win: BrowserWindow): void {
       const staleMs = 45_000;
       const now = Date.now();
       const result: Record<string, any> = {};
-      const showNotifs = getSettings().showNotifications;
       for (const row of data) {
         const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
         const code = (friend as any)?.profiles?.connect_code || friend?.friend_connect_code;
@@ -363,12 +359,6 @@ export function registerIpcHandlers(win: BrowserWindow): void {
           opponentCode: isStale ? null : row.opponent_code,
           playingSince: isStale ? null : row.playing_since,
         };
-
-        const prev = previousFriendStatuses.get(code);
-        if (showNotifs && prev && prev === 'offline' && (newStatus === 'online' || newStatus === 'in-game')) {
-          showFriendOnlineNotification(code, newStatus);
-        }
-        previousFriendStatuses.set(code, newStatus);
       }
       return result;
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }

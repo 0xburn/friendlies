@@ -7,7 +7,7 @@ import {
 import { APP_PROTOCOL } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
-import { showOpponentNotification } from './notifications';
+import { showFriendOnlineNotification, showOpponentNotification } from './notifications';
 import { supabase } from './supabase';
 import {
   getCurrentStatus, pushOfflineAndStop, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
@@ -20,6 +20,8 @@ import { checkForUpdates, initAutoUpdater } from './updater';
 import { setIdentityMismatchHandler, startWatcher, stopWatcher } from './watcher';
 
 let mainWindow: BrowserWindow | null = null;
+let friendPollTimer: ReturnType<typeof setInterval> | null = null;
+const previousFriendStatuses = new Map<string, string>();
 
 function parseDotEnvContent(content: string): void {
   for (const line of content.split(/\r?\n/)) {
@@ -90,8 +92,44 @@ function createMainWindow(): BrowserWindow {
 }
 
 async function stopAgentServices(): Promise<void> {
+  if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
+  previousFriendStatuses.clear();
   try { await stopPresenceLoop(); } catch (e) { console.error('stopPresenceLoop', e); }
   stopWatcher();
+}
+
+async function pollFriendStatusesForNotifications(userId: string): Promise<void> {
+  try {
+    if (!getSettings().showNotifications) return;
+    const { data: friendRows } = await supabase.from('friends')
+      .select('friend_id, friend_connect_code, profiles!friends_friend_id_fkey(connect_code)')
+      .eq('user_id', userId)
+      .eq('status', 'accepted');
+    if (!friendRows?.length) return;
+
+    const friendIds = friendRows.map((f: any) => f.friend_id).filter(Boolean);
+    if (!friendIds.length) return;
+
+    const { data } = await supabase.from('presence_log')
+      .select('user_id, status, updated_at')
+      .in('user_id', friendIds);
+    if (!data) return;
+
+    const staleMs = 45_000;
+    const now = Date.now();
+    for (const row of data) {
+      const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
+      const code = (friend as any)?.profiles?.connect_code || friend?.friend_connect_code;
+      if (!code) continue;
+      const age = now - new Date(row.updated_at).getTime();
+      const newStatus = age > staleMs ? 'offline' : row.status;
+      const prev = previousFriendStatuses.get(code);
+      if (prev && prev === 'offline' && (newStatus === 'online' || newStatus === 'in-game')) {
+        showFriendOnlineNotification(code, newStatus);
+      }
+      previousFriendStatuses.set(code, newStatus);
+    }
+  } catch (e) { console.error('[main] friend status poll failed', e); }
 }
 
 async function startAgentServices(identity: SlippiIdentity, userId: string): Promise<void> {
@@ -116,6 +154,10 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
     } catch (e) { console.error('opponent callback', e); }
   });
   await startPresenceLoop(identity.connectCode, identity.displayName || identity.connectCode, userId, st.replayDir);
+
+  if (friendPollTimer) clearInterval(friendPollTimer);
+  friendPollTimer = setInterval(() => void pollFriendStatusesForNotifications(userId), 15_000);
+  void pollFriendStatusesForNotifications(userId);
 }
 
 async function refreshAgentState(): Promise<void> {
