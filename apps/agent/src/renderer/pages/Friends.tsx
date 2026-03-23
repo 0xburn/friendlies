@@ -55,6 +55,7 @@ export function Friends() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [inviteSent, setInviteSent] = useState<Record<string, string | true>>({});
   const [inviting, setInviting] = useState<string | null>(null);
+  const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; created_at: string }[]>([]);
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [myIdentity, setMyIdentity] = useState<{ connectCode: string; displayName: string } | null>(null);
@@ -83,7 +84,7 @@ export function Friends() {
       if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
 
-    Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses()]).finally(() =>
+    Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites()]).finally(() =>
       setInitialLoading(false),
     );
 
@@ -112,6 +113,7 @@ export function Friends() {
       pollFriendStatuses();
       loadFriends();
       loadIncoming();
+      loadPlayInvites();
     }, 10_000);
     return () => { unsub(); unsubStatus(); clearInterval(dbPoll); };
   }, []);
@@ -142,6 +144,26 @@ export function Friends() {
   async function loadIncoming() {
     const data = await window.api.getIncomingRequests();
     setIncoming(data);
+  }
+
+  async function loadPlayInvites() {
+    try {
+      const data = await window.api.getPendingInvites();
+      const invites = (data || []).slice(0, 3).map((d: any) => ({
+        id: d.id,
+        connectCode: d.connectCode || '',
+        displayName: d.displayName,
+        created_at: d.created_at,
+      }));
+      setPlayInvites(invites);
+    } catch {}
+  }
+
+  async function clearPlayInvites() {
+    for (const inv of playInvites) {
+      await window.api.dismissInvite(inv.id);
+    }
+    setPlayInvites([]);
   }
 
   const enriched = useMemo(() => {
@@ -286,6 +308,36 @@ export function Friends() {
               {copied ? '✓' : 'Copy'}
             </button>
           </div>
+        </div>
+      )}
+
+      {playInvites.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-amber-400">
+              🎮 Wants to play
+            </h2>
+            <button
+              onClick={clearPlayInvites}
+              className="text-[10px] font-medium text-amber-500/60 hover:text-amber-400 transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+          {playInvites.map((inv) => {
+            const ago = Math.round((Date.now() - new Date(inv.created_at).getTime()) / 60_000);
+            return (
+              <div key={inv.id} className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-white text-sm">{inv.connectCode}</span>
+                  {inv.displayName && (
+                    <span className="text-xs text-gray-500">{inv.displayName}</span>
+                  )}
+                </div>
+                <span className="text-[10px] text-amber-500/50">{ago < 1 ? 'just now' : `${ago}m ago`}</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
