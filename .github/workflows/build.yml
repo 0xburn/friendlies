@@ -39,7 +39,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        shell: bash
+        run: |
+          rm -f package-lock.json
+          npm install --no-package-lock
 
       - name: Create .env for agent
         shell: bash
