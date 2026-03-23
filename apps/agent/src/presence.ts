@@ -54,6 +54,7 @@ let localStatusCallbacks: LocalStatusCallback[] = [];
 let channelRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let channelRetryCount = 0;
 const MAX_CHANNEL_RETRIES = 1;
+let lastRlsWarning = 0;
 
 export function setLastPlayedCharacterId(id: number | null): void {
   lastCharacterId = id;
@@ -189,6 +190,14 @@ async function pushPresence(
       { onConflict: 'user_id' },
     );
     if (error) {
+      if (error.message.includes('row-level security')) {
+        const now = Date.now();
+        if (now - lastRlsWarning > 60_000) {
+          console.warn('[presence] RLS rejection — auth session may have expired. Will retry silently.');
+          lastRlsWarning = now;
+        }
+        return;
+      }
       console.error('[presence] DB upsert failed:', error.message);
       if (error.message.includes('opponent_code') || error.message.includes('playing_since')) {
         const { error: retryErr } = await supabase.from('presence_log').upsert(
