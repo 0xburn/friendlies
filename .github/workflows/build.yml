@@ -41,18 +41,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native modules for electron-builder
+        shell: bash
+        working-directory: apps/agent
+        run: npx electron-builder install-app-deps
+
       - name: Create .env for agent
         shell: bash
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
 
-      - name: Build agent (${{ matrix.platform }})
+      - name: Build agent
+        shell: bash
         working-directory: apps/agent
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: Package (${{ matrix.platform }})
+        shell: bash
+        working-directory: apps/agent
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
