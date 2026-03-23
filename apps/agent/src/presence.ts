@@ -324,7 +324,6 @@ export async function startPresenceLoop(
         const dolphinRunning = await isProcessRunning(DOLPHIN_PROCESS_NAMES);
         const next = resolvePresenceStatus(launcherRunning, dolphinRunning);
         if (next === 'in-game' && currentStatus !== 'in-game') {
-          lastCharacterId = null;
           lastOpponentCode = null;
           lastOpponentCharacterId = null;
           lastOpponentTimestamp = 0;
