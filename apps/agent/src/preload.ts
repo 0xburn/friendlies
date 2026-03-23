@@ -43,6 +43,11 @@ const api = {
   lookupSlippiPlayer: (connectCode: string) => ipcRenderer.invoke('slippi:lookup', connectCode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   copyToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
+
+  onUpdateStatus: (cb: (status: any) => void): Unsubscribe => onEvent('updater:status', cb),
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
 };
 
 export type ElectronAPI = typeof api;

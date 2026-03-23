@@ -5,6 +5,7 @@ import { getIdentity, verifyIdentity } from './identity';
 import { getOnlineUsers, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
+import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
 
 let mainWindow: BrowserWindow | null = null;
@@ -381,4 +382,8 @@ export function registerIpcHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
   ipcMain.handle('clipboard:write', (_e, text: string) => { clipboard.writeText(text); });
+
+  ipcMain.handle('updater:check', () => checkForUpdates());
+  ipcMain.handle('updater:download', () => downloadUpdate());
+  ipcMain.handle('updater:install', () => quitAndInstall());
 }

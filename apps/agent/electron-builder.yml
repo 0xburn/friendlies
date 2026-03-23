@@ -44,5 +44,10 @@ protocols:
     schemes:
       - slippi-friends
 
+publish:
+  provider: github
+  owner: 0xburn
+  repo: slippi-friends
+
 directories:
   output: release

@@ -15,6 +15,7 @@ import { getSettings, isSetupComplete, updateSettings } from './settings';
 import {
   addRecentOpponent, createTray, destroyTray, updateTrayStatus,
 } from './tray';
+import { checkForUpdates, initAutoUpdater } from './updater';
 import { setIdentityMismatchHandler, startWatcher, stopWatcher } from './watcher';
 
 let mainWindow: BrowserWindow | null = null;
@@ -183,6 +184,12 @@ app.whenReady().then(async () => {
 
     mainWindow = createMainWindow();
     registerIpcHandlers(mainWindow);
+
+    if (!isDev) {
+      initAutoUpdater(mainWindow);
+      checkForUpdates();
+      setInterval(checkForUpdates, 60 * 60 * 1000);
+    }
 
     createTray(getCurrentStatus, {
       onShowWindow: () => { mainWindow?.show(); mainWindow?.focus(); },

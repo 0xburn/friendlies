@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Friends } from './pages/Friends';
 import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
+import { UpdateBanner } from './components/UpdateBanner';
 
 type BootState =
   | { phase: 'loading' }
@@ -296,6 +297,7 @@ export function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <UpdateBanner />
     </HashRouter>
   );
 }
