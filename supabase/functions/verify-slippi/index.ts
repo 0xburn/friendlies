@@ -85,6 +85,24 @@ serve(async (req) => {
       );
     }
 
+    // First-come-first-claimed: reject if another verified user owns this code
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id, verified')
+      .eq('connect_code', connectCode)
+      .neq('id', authUser.id)
+      .maybeSingle();
+
+    if (existing?.verified) {
+      return new Response(
+        JSON.stringify({
+          verified: false,
+          error: 'This connect code is already claimed by another account. If this is your code, email lucky7smelee@gmail.com to recover your profile.',
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     await supabase.from('profiles').upsert({
       id: authUser.id,
       slippi_uid: slippiUid,
