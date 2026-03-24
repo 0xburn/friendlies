@@ -19,6 +19,7 @@ apps/agent/release/
 *.blockmap
 
 # IDE / tool
+.agents/
 .claude/
 .cursor/
 skills-lock.json

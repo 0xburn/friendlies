@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 const links = [
@@ -12,6 +12,15 @@ const SHARE_BLURB =
 
 export function Navigation() {
   const [copied, setCopied] = useState(false);
+  const [playerCount, setPlayerCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
+    const interval = setInterval(() => {
+      window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function handleShare() {
     try {
@@ -60,11 +69,17 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.36</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.37</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
-        {/* Top drag region for the content area */}
-        <div className="h-[52px] shrink-0 drag" />
+        <div className="h-[52px] shrink-0 drag relative">
+          {playerCount != null && (
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 no-drag">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] animate-pulse" />
+              <span className="text-[10px] text-gray-500">{playerCount} players on friendlies</span>
+            </div>
+          )}
+        </div>
         <div className="px-6 pb-6">
           <Outlet />
         </div>

@@ -461,6 +461,16 @@ export function registerIpcHandlers(
     } catch (e) { console.error('opponents:latestTimestamp', e); return null; }
   });
 
+  ipcMain.handle('stats:playerCount', async () => {
+    try {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+      if (error) return 0;
+      return count ?? 0;
+    } catch { return 0; }
+  });
+
   ipcMain.handle('presence:online', () => getOnlineUsers());
   ipcMain.handle('presence:localStatus', () => getCurrentStatus());
 
