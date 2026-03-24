@@ -69,6 +69,7 @@ export function Friends() {
   const [myCharacterId, setMyCharacterId] = useState<number | null>(null);
   const [myOppCharId, setMyOppCharId] = useState<number | null>(null);
   const [myPlayingSince, setMyPlayingSince] = useState<string | null>(null);
+  const [hideRegion, setHideRegion] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -88,6 +89,7 @@ export function Friends() {
       if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
     window.api.isLookingToPlay().then((v: boolean) => setLfg(v));
+    window.api.getPrivacy().then((p) => setHideRegion(p.hideRegion)).catch(() => {});
 
     Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites()]).finally(() =>
       setInitialLoading(false),
@@ -334,7 +336,7 @@ export function Friends() {
                 {myIdentity.displayName && (
                   <span className="text-xs text-gray-500">{myIdentity.displayName}</span>
                 )}
-                {myProfile?.region && (
+                {myProfile?.region && !hideRegion && (
                   <span className="text-[10px] text-gray-600">{myProfile.region}</span>
                 )}
                 {myProfile?.rating_ordinal && (
