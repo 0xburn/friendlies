@@ -2,7 +2,7 @@
 
 ## Supabase Connection
 
-- **Connection string:** `postgresql://postgres.hlpcaltsxcdxmolmpcxj:WaBYgMnHS8VL77YL@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
+- **Connection string:** stored in root `.env` as `DATABASE_URL` (not committed to git)
 - Use this for migrations, debugging RLS issues, and direct SQL queries.
 
 ## Version Bump & Release Process

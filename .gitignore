@@ -23,3 +23,6 @@ apps/agent/release/
 .claude/
 .cursor/
 skills-lock.json
+
+# Supabase local dev
+supabase/.temp/
