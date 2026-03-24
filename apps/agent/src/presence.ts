@@ -6,6 +6,13 @@ import {
   PRESENCE_POLL_INTERVAL,
   SLIPPI_LAUNCHER_PROCESS_NAMES,
 } from './config';
+import {
+  isDirty as _isDirty,
+  isOpponentRecent as _isOpponentRecent,
+  resolvePresenceStatus,
+  shouldWriteDb as _shouldWriteDb,
+  type PresenceStatus,
+} from './presence-logic';
 import { supabase } from './supabase';
 
 const find = require('find-process') as (
@@ -14,7 +21,7 @@ const find = require('find-process') as (
   strict?: boolean,
 ) => Promise<Array<{ name: string; pid: number }>>;
 
-export type PresenceStatus = 'offline' | 'online' | 'in-game';
+export type { PresenceStatus };
 
 export interface OnlineUser {
   connectCode: string;
@@ -171,23 +178,12 @@ async function isProcessRunning(names: readonly string[]): Promise<boolean> {
   return false;
 }
 
-function resolvePresenceStatus(
-  launcherRunning: boolean,
-  dolphinRunning: boolean,
-): PresenceStatus {
-  if (dolphinRunning) return 'in-game';
-  return 'online';
-}
-
 function getRecentOpponent(): { code: string; since: string } | null {
-  if (
-    !lastOpponentCode ||
-    Date.now() - lastOpponentTimestamp > OPPONENT_RECENT_THRESHOLD
-  ) {
+  if (!_isOpponentRecent(lastOpponentCode, lastOpponentTimestamp, OPPONENT_RECENT_THRESHOLD)) {
     return null;
   }
   return {
-    code: lastOpponentCode,
+    code: lastOpponentCode!,
     since: new Date(lastOpponentTimestamp).toISOString(),
   };
 }
@@ -203,14 +199,9 @@ async function pushPresence(
     const character = status === 'in-game' ? lastCharacterId : null;
     const opCode = opponent?.code ?? null;
 
-    const dirty =
-      status !== lastPushedStatus ||
-      character !== lastPushedCharacter ||
-      opCode !== lastPushedOpponentCode;
-
+    const dirty = _isDirty(status, character, opCode, lastPushedStatus, lastPushedCharacter, lastPushedOpponentCode);
     const now = Date.now();
-    const heartbeatDue = now - lastDbWriteTime >= DB_HEARTBEAT_INTERVAL;
-    const shouldWriteDb = dirty || heartbeatDue;
+    const shouldWriteDb = _shouldWriteDb(dirty, lastDbWriteTime, DB_HEARTBEAT_INTERVAL, now);
 
     if (!shouldWriteDb) {
       presenceStats.upsertSkipped++;

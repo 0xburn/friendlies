@@ -3,6 +3,7 @@ import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity } from './identity';
+import { resolvePresenceRow } from './presence-logic';
 import { getCurrentStatus, getOnlineUsers, getPresenceStats, onLocalStatusChange, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
@@ -513,22 +514,13 @@ export function registerIpcHandlers(
         .in('user_id', friendIds);
       if (!data) return {};
 
-      const staleMs = PRESENCE_STALE_THRESHOLD;
       const now = Date.now();
       const result: Record<string, any> = {};
       for (const row of data) {
         const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
         const code = (friend as any)?.profiles?.connect_code || friend?.friend_connect_code;
         if (!code) continue;
-        const age = now - new Date(row.updated_at).getTime();
-        const isStale = age > staleMs;
-        const newStatus = isStale ? 'offline' : row.status;
-        result[code] = {
-          status: newStatus,
-          currentCharacter: isStale ? null : (row as any).current_character ?? null,
-          opponentCode: isStale ? null : row.opponent_code,
-          playingSince: isStale ? null : row.playing_since,
-        };
+        result[code] = resolvePresenceRow(row as any, PRESENCE_STALE_THRESHOLD, now);
       }
       return result;
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }

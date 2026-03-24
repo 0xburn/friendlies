@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import chokidar from 'chokidar';
 
+import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
 
 const { SlippiGame, GameMode } = require('@slippi/slippi-js') as {
@@ -21,10 +22,6 @@ export type IdentityMismatch = {
   actualCode: string;
   replayFile: string;
 };
-
-function normalizeConnectCode(code: string): string {
-  return code.replace(/[^A-Za-z0-9]/g, '#').replace(/#+/g, '#').trim().toUpperCase();
-}
 
 function mapGameMode(mode: number | null | undefined): string | null {
   if (mode === null || mode === undefined) return null;
