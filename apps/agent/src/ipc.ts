@@ -117,7 +117,7 @@ export function registerIpcHandlers(
       if (!user) return [];
       const { data } = await supabase
         .from('friends')
-        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, avatar_url, region, hide_region, hide_discord_unless_friends)')
+        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, hide_region, hide_discord_unless_friends)')
         .eq('user_id', user.id);
       if (!data) return [];
 
@@ -143,6 +143,7 @@ export function registerIpcHandlers(
           connectCode: code,
           displayName: p?.display_name || c.display_name || null,
           discordUsername: showDiscord ? (p?.discord_username || null) : null,
+          discordId: showDiscord ? (p?.discord_id || null) : null,
           avatarUrl: p?.avatar_url || null,
           region: p?.hide_region ? null : (p?.region || null),
           rating: c.rating_ordinal ?? null,
@@ -167,7 +168,7 @@ export function registerIpcHandlers(
 
       const { data } = await supabase
         .from('friends')
-        .select('id, user_id, friend_connect_code, status, created_at, profiles!friends_user_id_fkey(connect_code, display_name, discord_username, avatar_url, hide_discord_unless_friends)')
+        .select('id, user_id, friend_connect_code, status, created_at, profiles!friends_user_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, hide_discord_unless_friends)')
         .eq('friend_connect_code', profile.connect_code)
         .eq('status', 'pending');
       if (!data) return [];
@@ -189,6 +190,7 @@ export function registerIpcHandlers(
           connectCode: code,
           displayName: p?.display_name || c.display_name || null,
           discordUsername: p?.hide_discord_unless_friends ? null : (p?.discord_username || null),
+          discordId: p?.hide_discord_unless_friends ? null : (p?.discord_id || null),
           avatarUrl: p?.avatar_url || null,
           rating: c.rating_ordinal ?? null,
           characterId: c.characters?.[0]?.character ?? null,
@@ -579,7 +581,7 @@ export function registerIpcHandlers(
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region, hide_region, hide_discord_unless_friends, discord_username')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region, hide_region, hide_discord_unless_friends, discord_username, discord_id')
         .in('id', candidateIds);
       if (!profiles) return [];
       const profileMap: Record<string, any> = {};
@@ -625,6 +627,7 @@ export function registerIpcHandlers(
             connectCode: p.connect_code,
             displayName: p.display_name || c.display_name || null,
             discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
+            discordId: p.hide_discord_unless_friends ? null : (p.discord_id || null),
             avatarUrl: p.avatar_url || null,
             rating: c.rating_ordinal ?? null,
             topCharacters: Array.isArray(p.top_characters) ? p.top_characters : [],

@@ -286,10 +286,14 @@ async function refreshAgentState(): Promise<void> {
       }
 
       const appVersion = app.getVersion();
+      const meta = user.user_metadata || {};
       const profileUpdate: Record<string, any> = {
         connect_code: identity.connectCode,
         slippi_uid: identity.uid,
         display_name: identity.displayName || null,
+        discord_username: meta.full_name || meta.name || null,
+        discord_id: meta.provider_id || null,
+        avatar_url: meta.avatar_url || null,
         verified: true,
         verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

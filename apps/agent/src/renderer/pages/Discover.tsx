@@ -6,6 +6,7 @@ interface DiscoverPlayer {
   connectCode: string;
   displayName?: string;
   discordUsername?: string | null;
+  discordId?: string | null;
   avatarUrl?: string;
   rating: number | null;
   topCharacters: { characterId: number; gameCount: number }[];
@@ -131,6 +132,7 @@ export function Discover() {
                       connectCode: p.connectCode,
                       displayName: p.displayName,
                       discordUsername: p.discordUsername ?? undefined,
+                      discordId: p.discordId,
                       avatarUrl: p.avatarUrl,
                       rating: p.rating,
                       topCharacters: p.topCharacters,

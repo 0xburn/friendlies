@@ -10,6 +10,7 @@ interface Friend {
   connectCode: string;
   displayName?: string;
   discordUsername?: string;
+  discordId?: string | null;
   avatarUrl?: string;
   region?: string | null;
   rating: number | null;
@@ -504,6 +505,7 @@ export function Friends() {
                     connectCode: f.connectCode,
                     displayName: f.displayName,
                     discordUsername: f.discordUsername,
+                    discordId: f.discordId,
                     avatarUrl: f.avatarUrl,
                     region: f.region,
                     rating: f.rating,
@@ -570,6 +572,7 @@ export function Friends() {
                     connectCode: f.connectCode,
                     displayName: f.displayName,
                     discordUsername: f.discordUsername,
+                    discordId: f.discordId,
                     avatarUrl: f.avatarUrl,
                     region: f.region,
                     rating: f.rating,

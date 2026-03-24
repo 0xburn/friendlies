@@ -17,6 +17,7 @@ interface PlayerCardProps {
     connectCode: string;
     displayName?: string;
     discordUsername?: string;
+    discordId?: string | null;
     avatarUrl?: string;
     rating?: number | null;
     characterId?: number | null;
@@ -78,10 +79,21 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
               <p className="text-sm text-gray-400 truncate">{player.displayName}</p>
             )}
             {player.discordUsername && (
-              <span className="inline-flex items-center gap-1 shrink-0 rounded-md bg-[#5865F2]/10 px-1.5 py-0.5">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (player.discordId) {
+                    window.api.openExternal(`https://discord.com/users/${player.discordId}`);
+                  }
+                }}
+                className={`inline-flex items-center gap-1 shrink-0 rounded-md bg-[#5865F2]/10 px-1.5 py-0.5 transition-colors ${
+                  player.discordId ? 'hover:bg-[#5865F2]/25 cursor-pointer' : 'cursor-default'
+                }`}
+                title={player.discordId ? 'Open in Discord' : undefined}
+              >
                 <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
                 <span className="text-xs font-medium text-[#5865F2]">@{player.discordUsername}</span>
-              </span>
+              </button>
             )}
             {player.region && (
               <span className="text-[10px] text-gray-600 shrink-0">{player.region}</span>
