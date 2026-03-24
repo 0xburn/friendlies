@@ -270,6 +270,14 @@ async function refreshAgentState(): Promise<void> {
     const user = await getCurrentUser();
     const identity = getIdentity();
     if (authed && identity && user) {
+      if (identity.staleAccount) {
+        console.warn(`[main] identity is stale (user.json uid ≠ Launcher activeId) — stopping services`);
+        await stopAgentServices();
+        sendToRenderer('identity:staleAccount', { connectCode: identity.connectCode });
+        updateTrayStatus(getCurrentStatus());
+        return;
+      }
+
       // Ensure profile has connect_code + slippi_uid synced (with claim check)
       const { data: existingClaim } = await supabase.from('profiles')
         .select('id, verified')

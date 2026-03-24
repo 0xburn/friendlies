@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import chokidar from 'chokidar';
 
+import { getIdentity } from './identity';
 import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
 
@@ -90,8 +91,16 @@ export async function processNewReplay(
       const isEncodingMismatch = actualCodes.some(
         (c) => c.replace(/[^A-Z0-9]/g, '') === localAlpha,
       );
+      // Re-read user.json fresh in case the user switched Slippi accounts mid-session.
+      // If the fresh identity matches a code in the replay, it's not a spoof.
+      const freshIdentity = getIdentity();
+      const freshNorm = freshIdentity ? normalizeConnectCode(freshIdentity.connectCode) : '';
+      const freshMatchesReplay = freshNorm && actualCodes.includes(freshNorm);
+
       if (isEncodingMismatch) {
         console.log(`[identity] Encoding-only mismatch for ${localNorm} — not a spoof`);
+      } else if (freshMatchesReplay) {
+        console.log(`[identity] user.json updated to ${freshNorm} which matches replay — account switch, not a spoof`);
       } else if (actualCodes.length > 0) {
         const replayName = path.basename(filePath);
         const mismatch: IdentityMismatch = {
