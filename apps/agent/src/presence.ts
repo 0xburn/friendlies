@@ -206,11 +206,9 @@ async function pushPresence(
       character !== lastPushedCharacter ||
       opCode !== lastPushedOpponentCode;
 
-    if (!dirty) {
-      presenceStats.upsertSkipped++;
-      return;
-    }
-
+    // Always write to DB (heartbeat keeps updated_at fresh so other clients
+    // don't mark us as stale/offline). This is the source of truth for old
+    // clients that don't have Realtime.
     const row: Record<string, any> = {
       user_id: userId,
       status,
@@ -248,12 +246,20 @@ async function pushPresence(
         );
         if (retryErr) console.error('[presence] DB upsert retry failed:', retryErr.message);
       }
+    } else {
+      presenceStats.upsertOk++;
+    }
+
+    // Realtime track: only push when status/character/opponent actually changed.
+    // This is the instant path — connected clients see updates immediately.
+    if (!dirty) {
+      presenceStats.upsertSkipped++;
+      return;
     }
 
     lastPushedStatus = status;
     lastPushedCharacter = character;
     lastPushedOpponentCode = opCode;
-    presenceStats.upsertOk++;
 
     if (status === 'offline') {
       if (presenceChannel && subscribed) {
