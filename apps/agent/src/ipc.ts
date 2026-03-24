@@ -415,7 +415,7 @@ export function registerIpcHandlers(
       const senderIds = data.map((d: any) => d.sender_id);
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name')
+        .select('id, connect_code, display_name, discord_username')
         .in('id', senderIds);
       const profileMap: Record<string, any> = {};
       (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
@@ -424,6 +424,7 @@ export function registerIpcHandlers(
         ...d,
         connectCode: profileMap[d.sender_id]?.connect_code,
         displayName: profileMap[d.sender_id]?.display_name,
+        discordUsername: profileMap[d.sender_id]?.discord_username,
       }));
     } catch { return []; }
   });
