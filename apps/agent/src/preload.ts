@@ -64,6 +64,7 @@ const api = {
 
   lookupSlippiPlayer: (connectCode: string) => ipcRenderer.invoke('slippi:lookup', connectCode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  openDiscordProfile: (discordId: string) => ipcRenderer.invoke('discord:openProfile', discordId),
   copyToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
 
   onUpdateStatus: (cb: (status: any) => void): Unsubscribe => onEvent('updater:status', cb),

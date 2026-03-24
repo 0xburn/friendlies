@@ -83,7 +83,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
                 onClick={(e) => {
                   e.stopPropagation();
                   if (player.discordId) {
-                    window.api.openExternal(`https://discord.com/users/${player.discordId}`);
+                    window.api.openDiscordProfile(player.discordId);
                   }
                 }}
                 className={`inline-flex items-center gap-1 shrink-0 rounded-md bg-[#5865F2]/10 px-1.5 py-0.5 transition-colors ${

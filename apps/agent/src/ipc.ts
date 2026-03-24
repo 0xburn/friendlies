@@ -779,6 +779,38 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
+
+  let discordProtocolSupported: boolean | null = null;
+  ipcMain.handle('discord:openProfile', async (_e, discordId: string) => {
+    if (discordProtocolSupported === null) {
+      if (process.platform === 'win32') {
+        try {
+          const { execSync } = require('child_process');
+          const out = execSync('reg query HKCR\\discord /ve 2>nul', { encoding: 'utf8', timeout: 3000 });
+          discordProtocolSupported = out.includes('URL:');
+        } catch {
+          discordProtocolSupported = false;
+        }
+      } else if (process.platform === 'darwin') {
+        try {
+          const { execSync } = require('child_process');
+          const out = execSync('/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -dump | grep -c "discord:"', { encoding: 'utf8', timeout: 5000 });
+          discordProtocolSupported = parseInt(out.trim(), 10) > 0;
+        } catch {
+          discordProtocolSupported = true;
+        }
+      } else {
+        discordProtocolSupported = false;
+      }
+      console.log('[discord] protocol supported:', discordProtocolSupported);
+    }
+
+    if (discordProtocolSupported) {
+      await shell.openExternal(`discord://-/users/${discordId}`);
+    } else {
+      await shell.openExternal(`https://discord.com/users/${discordId}`);
+    }
+  });
   ipcMain.handle('clipboard:write', (_e, text: string) => { clipboard.writeText(text); });
 
   ipcMain.handle('updater:check', () => checkForUpdates());
