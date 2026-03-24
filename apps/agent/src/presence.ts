@@ -62,6 +62,8 @@ let subscribeGeneration = 0;
 let lastPushedStatus: PresenceStatus = 'offline';
 let lastPushedCharacter: number | null = null;
 let lastPushedOpponentCode: string | null = null;
+let lastDbWriteTime = 0;
+const DB_HEARTBEAT_INTERVAL = 60_000;
 
 const presenceStats = {
   upsertOk: 0,
@@ -206,56 +208,56 @@ async function pushPresence(
       character !== lastPushedCharacter ||
       opCode !== lastPushedOpponentCode;
 
-    // Always write to DB (heartbeat keeps updated_at fresh so other clients
-    // don't mark us as stale/offline). This is the source of truth for old
-    // clients that don't have Realtime.
-    const row: Record<string, any> = {
-      user_id: userId,
-      status,
-      current_character: character,
-      opponent_code: opCode,
-      playing_since: opponent?.since ?? null,
-      updated_at: new Date().toISOString(),
-    };
+    const now = Date.now();
+    const heartbeatDue = now - lastDbWriteTime >= DB_HEARTBEAT_INTERVAL;
+    const shouldWriteDb = dirty || heartbeatDue;
 
-    const { error } = await supabase.from('presence_log').upsert(
-      row,
-      { onConflict: 'user_id' },
-    );
-    if (error) {
-      presenceStats.upsertFail++;
-      presenceStats.lastError = `upsert: ${error.message}`;
-      if (error.message.includes('row-level security')) {
-        const now = Date.now();
-        if (now - lastRlsWarning > 60_000) {
-          console.warn('[presence] RLS rejection — auth session may have expired. Will retry silently.');
-          lastRlsWarning = now;
-        }
-        return;
-      }
-      console.error('[presence] DB upsert failed:', error.message);
-      if (error.message.includes('opponent_code') || error.message.includes('playing_since')) {
-        const { error: retryErr } = await supabase.from('presence_log').upsert(
-          {
-            user_id: userId,
-            status,
-            current_character: lastCharacterId,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' },
-        );
-        if (retryErr) console.error('[presence] DB upsert retry failed:', retryErr.message);
-      }
-    } else {
-      presenceStats.upsertOk++;
-    }
-
-    // Realtime track: only push when status/character/opponent actually changed.
-    // This is the instant path — connected clients see updates immediately.
-    if (!dirty) {
+    if (!shouldWriteDb) {
       presenceStats.upsertSkipped++;
-      return;
+    } else {
+      const row: Record<string, any> = {
+        user_id: userId,
+        status,
+        current_character: character,
+        opponent_code: opCode,
+        playing_since: opponent?.since ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('presence_log').upsert(
+        row,
+        { onConflict: 'user_id' },
+      );
+      if (error) {
+        presenceStats.upsertFail++;
+        presenceStats.lastError = `upsert: ${error.message}`;
+        if (error.message.includes('row-level security')) {
+          if (now - lastRlsWarning > 60_000) {
+            console.warn('[presence] RLS rejection — auth session may have expired. Will retry silently.');
+            lastRlsWarning = now;
+          }
+        } else {
+          console.error('[presence] DB upsert failed:', error.message);
+          if (error.message.includes('opponent_code') || error.message.includes('playing_since')) {
+            const { error: retryErr } = await supabase.from('presence_log').upsert(
+              {
+                user_id: userId,
+                status,
+                current_character: lastCharacterId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' },
+            );
+            if (retryErr) console.error('[presence] DB upsert retry failed:', retryErr.message);
+          }
+        }
+      } else {
+        lastDbWriteTime = now;
+        presenceStats.upsertOk++;
+      }
     }
+
+    if (!dirty) return;
 
     lastPushedStatus = status;
     lastPushedCharacter = character;
@@ -417,12 +419,14 @@ export async function startPresenceLoop(
   replayDir: string,
 ): Promise<void> {
   try {
-    stopPresenceLoop();
+    await stopPresenceLoop();
     loopConnectCode = connectCode;
     loopDisplayName = displayName;
     loopUserId = userId;
+    console.log('[presence] startPresenceLoop — subscribing channel...');
 
     const channelOk = await subscribeChannel(connectCode);
+    console.log('[presence] startPresenceLoop — channelOk:', channelOk);
     if (!channelOk) scheduleChannelRetry();
 
     const tick = async () => {
@@ -493,6 +497,7 @@ export async function stopPresenceLoop(): Promise<void> {
     lastPushedStatus = 'offline';
     lastPushedCharacter = null;
     lastPushedOpponentCode = null;
+    lastDbWriteTime = 0;
   } catch (e) {
     console.error('stopPresenceLoop failed', e);
   }
@@ -507,6 +512,7 @@ export async function pushOfflineAndStop(): Promise<void> {
     lastPushedStatus = 'offline';
     lastPushedCharacter = null;
     lastPushedOpponentCode = null;
+    lastDbWriteTime = 0;
 
     if (loopUserId) {
       await supabase.from('presence_log').upsert(
