@@ -20,6 +20,7 @@ interface PlayerCardProps {
     avatarUrl?: string;
     rating?: number | null;
     characterId?: number | null;
+    topCharacters?: { characterId: number; gameCount: number }[];
     status?: 'online' | 'in-game' | 'offline';
     currentCharacter?: number | null;
     opponentCode?: string | null;
@@ -83,6 +84,13 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
             )}
           </div>
         </div>
+        {player.topCharacters && player.topCharacters.length > 0 && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {player.topCharacters.slice(0, 3).map((tc) => (
+              <CharacterIcon key={tc.characterId} characterId={tc.characterId} size="sm" />
+            ))}
+          </div>
+        )}
         <RankBadge rating={player.rating ?? null} />
         {expandable && (
           <svg className={`w-4 h-4 text-gray-600 transition-transform ${expanded ? 'rotate-180' : ''}`}

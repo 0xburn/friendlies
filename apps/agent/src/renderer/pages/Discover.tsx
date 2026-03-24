@@ -7,7 +7,7 @@ interface DiscoverPlayer {
   displayName?: string;
   avatarUrl?: string;
   rating: number | null;
-  characterId: number | null;
+  topCharacters: { characterId: number; gameCount: number }[];
   status: 'online' | 'in-game';
   currentCharacter: number | null;
   opponentCode: string | null;
@@ -110,7 +110,7 @@ export function Discover() {
                     displayName: p.displayName,
                     avatarUrl: p.avatarUrl,
                     rating: p.rating,
-                    characterId: p.characterId,
+                    topCharacters: p.topCharacters,
                     status: p.status,
                     currentCharacter: p.currentCharacter,
                     opponentCode: p.opponentCode,

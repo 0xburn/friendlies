@@ -562,7 +562,7 @@ export function registerIpcHandlers(
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name, avatar_url, latitude, longitude')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters')
         .in('id', candidateIds);
       if (!profiles) return [];
       const profileMap: Record<string, any> = {};
@@ -592,7 +592,7 @@ export function registerIpcHandlers(
             displayName: p.display_name || c.display_name || null,
             avatarUrl: p.avatar_url || null,
             rating: c.rating_ordinal ?? null,
-            characterId: c.characters?.[0]?.character ?? null,
+            topCharacters: Array.isArray(p.top_characters) ? p.top_characters : [],
             status: r.status,
             currentCharacter: r.current_character,
             opponentCode: r.opponent_code,
