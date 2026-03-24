@@ -54,6 +54,8 @@ const api = {
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (partial: Record<string, any>) => ipcRenderer.invoke('settings:update', partial),
+  getPrivacy: () => ipcRenderer.invoke('privacy:get') as Promise<{ hideRegion: boolean; hideDiscordUnlessFriends: boolean }>,
+  updatePrivacy: (partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean }) => ipcRenderer.invoke('privacy:update', partial),
   browseDirectory: () => ipcRenderer.invoke('settings:browse'),
   isSetupComplete: () => ipcRenderer.invoke('setup:isComplete'),
   refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),

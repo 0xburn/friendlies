@@ -31,6 +31,7 @@ export function Settings() {
     notifyFriendOnline: true,
     notifyPlayInvite: true,
   });
+  const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export function Settings() {
         notifyPlayInvite: s.notifyPlayInvite !== false,
       });
     });
+    window.api.getPrivacy().then(setPrivacy).catch(() => {});
     window.api.getIdentity().then((id) => {
       if (id?.connectCode) setMyCode(id.connectCode);
     });
@@ -71,6 +73,13 @@ export function Settings() {
     const next = !settings[key];
     setSettings((s) => ({ ...s, [key]: next }));
     await window.api.updateSettings({ [key]: next });
+    flash();
+  }
+
+  async function togglePrivacy(key: keyof typeof privacy) {
+    const next = !privacy[key];
+    setPrivacy((s) => ({ ...s, [key]: next }));
+    await window.api.updatePrivacy({ [key]: next });
     flash();
   }
 
@@ -149,6 +158,27 @@ export function Settings() {
         />
       </div>
 
+      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+        <div className="p-5">
+          <p className="text-sm font-medium text-gray-300">Privacy</p>
+          <p className="text-xs text-gray-500 mt-0.5">Control what other players can see about you</p>
+        </div>
+        <ToggleRow
+          label="Hide Location"
+          description="Don't show your region on Discover or Friends pages"
+          checked={privacy.hideRegion}
+          onChange={() => togglePrivacy('hideRegion')}
+          indent
+        />
+        <ToggleRow
+          label="Hide Discord from Non-Friends"
+          description="Only show your Discord username to accepted friends"
+          checked={privacy.hideDiscordUnlessFriends}
+          onChange={() => togglePrivacy('hideDiscordUnlessFriends')}
+          indent
+        />
+      </div>
+
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
         <div className="flex gap-3">
@@ -202,7 +232,7 @@ export function Settings() {
       )}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.51
+      friendlies v0.1.52
       </p>
     </div>
   );

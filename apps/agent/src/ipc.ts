@@ -117,7 +117,7 @@ export function registerIpcHandlers(
       if (!user) return [];
       const { data } = await supabase
         .from('friends')
-        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, avatar_url, region)')
+        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, avatar_url, region, hide_region, hide_discord_unless_friends)')
         .eq('user_id', user.id);
       if (!data) return [];
 
@@ -135,14 +135,16 @@ export function registerIpcHandlers(
         const p = f.profiles as any;
         const code = p?.connect_code || f.friend_connect_code;
         const c = cacheMap[code] || {};
+        const isAccepted = f.status === 'accepted';
+        const showDiscord = isAccepted || !p?.hide_discord_unless_friends;
         return {
           id: f.id,
           friendId: f.friend_id,
           connectCode: code,
           displayName: p?.display_name || c.display_name || null,
-          discordUsername: p?.discord_username || null,
+          discordUsername: showDiscord ? (p?.discord_username || null) : null,
           avatarUrl: p?.avatar_url || null,
-          region: p?.region || null,
+          region: p?.hide_region ? null : (p?.region || null),
           rating: c.rating_ordinal ?? null,
           characterId: c.characters?.[0]?.character ?? null,
           onApp: !!f.friend_id,
@@ -165,7 +167,7 @@ export function registerIpcHandlers(
 
       const { data } = await supabase
         .from('friends')
-        .select('id, user_id, friend_connect_code, status, created_at, profiles!friends_user_id_fkey(connect_code, display_name, discord_username, avatar_url)')
+        .select('id, user_id, friend_connect_code, status, created_at, profiles!friends_user_id_fkey(connect_code, display_name, discord_username, avatar_url, hide_discord_unless_friends)')
         .eq('friend_connect_code', profile.connect_code)
         .eq('status', 'pending');
       if (!data) return [];
@@ -186,7 +188,7 @@ export function registerIpcHandlers(
           fromUserId: f.user_id,
           connectCode: code,
           displayName: p?.display_name || c.display_name || null,
-          discordUsername: p?.discord_username || null,
+          discordUsername: p?.hide_discord_unless_friends ? null : (p?.discord_username || null),
           avatarUrl: p?.avatar_url || null,
           rating: c.rating_ordinal ?? null,
           characterId: c.characters?.[0]?.character ?? null,
@@ -577,7 +579,7 @@ export function registerIpcHandlers(
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region, hide_region, hide_discord_unless_friends, discord_username')
         .in('id', candidateIds);
       if (!profiles) return [];
       const profileMap: Record<string, any> = {};
@@ -622,10 +624,11 @@ export function registerIpcHandlers(
             userId: p.id,
             connectCode: p.connect_code,
             displayName: p.display_name || c.display_name || null,
+            discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
             avatarUrl: p.avatar_url || null,
             rating: c.rating_ordinal ?? null,
             topCharacters: Array.isArray(p.top_characters) ? p.top_characters : [],
-            region: p.region || null,
+            region: p.hide_region ? null : (p.region || null),
             status: r.status,
             currentCharacter: r.current_character,
             opponentCode: r.opponent_code,
@@ -668,6 +671,31 @@ export function registerIpcHandlers(
     return result.filePaths[0];
   });
   ipcMain.handle('setup:isComplete', () => isSetupComplete());
+
+  ipcMain.handle('privacy:get', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { hideRegion: false, hideDiscordUnlessFriends: false };
+      const { data } = await supabase.from('profiles').select('hide_region, hide_discord_unless_friends').eq('id', user.id).single();
+      return {
+        hideRegion: data?.hide_region ?? false,
+        hideDiscordUnlessFriends: data?.hide_discord_unless_friends ?? false,
+      };
+    } catch { return { hideRegion: false, hideDiscordUnlessFriends: false }; }
+  });
+
+  ipcMain.handle('privacy:update', async (_e, partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean }) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+      const update: Record<string, any> = {};
+      if (partial.hideRegion !== undefined) update.hide_region = partial.hideRegion;
+      if (partial.hideDiscordUnlessFriends !== undefined) update.hide_discord_unless_friends = partial.hideDiscordUnlessFriends;
+      const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
+      if (error) return { error: error.message };
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
 
   ipcMain.handle('auth:checkBlacklist', async () => {
     try {
