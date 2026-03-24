@@ -253,7 +253,7 @@ export function startWatcher(
   }
 }
 
-const BACKFILL_BATCH_SIZE = 5;
+const BACKFILL_MAX_PER_CALL = 10;
 
 export async function backfillRecentReplays(
   replayDir: string,
@@ -271,20 +271,17 @@ export async function backfillRecentReplays(
     const files = await collectSlpFiles(replayDir, 2);
     const filtered = files
       .filter((f) => f.mtime >= cutoffOld && f.mtime <= cutoffNew)
-      .sort((a, b) => b.mtime - a.mtime);
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(0, BACKFILL_MAX_PER_CALL);
 
-    console.log(`[backfill] Processing ${filtered.length} replays (cutoff ${Math.round(sinceMs / 3600000)}h)`);
+    console.log(`[backfill] Processing ${filtered.length} replays (max ${BACKFILL_MAX_PER_CALL} per call)`);
 
-    for (let i = 0; i < filtered.length; i++) {
-      const f = filtered[i];
+    for (const f of filtered) {
       try {
         await processNewReplay(f.path, localConnectCode);
         processed++;
         if (f.mtime < oldestMs) oldestMs = f.mtime;
       } catch { /* skip bad replays */ }
-      if ((i + 1) % BACKFILL_BATCH_SIZE === 0) {
-        await new Promise((r) => setTimeout(r, 0));
-      }
     }
     console.log(`[backfill] Done — ${processed}/${filtered.length} processed`);
   } catch (e) { console.error('backfillRecentReplays', e); }

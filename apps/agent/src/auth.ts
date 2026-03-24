@@ -34,7 +34,6 @@ export async function startAuthFlow(): Promise<string> {
     console.error('shell.openExternal failed, trying platform fallback', e);
   }
 
-  // Windows fallback — shell.openExternal can silently fail
   if (process.platform === 'win32') {
     try {
       await new Promise<void>((resolve, reject) => {
@@ -46,7 +45,17 @@ export async function startAuthFlow(): Promise<string> {
     }
   }
 
-  // Last resort: copy URL to clipboard so user can paste manually
+  if (process.platform === 'linux') {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        exec(`xdg-open "${url}"`, (err) => (err ? reject(err) : resolve()));
+      });
+      return url;
+    } catch (e) {
+      console.error('xdg-open failed', e);
+    }
+  }
+
   try {
     clipboard.writeText(url);
     console.log('Auth URL copied to clipboard as last resort');

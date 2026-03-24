@@ -16,6 +16,7 @@ const api = {
   logout: () => ipcRenderer.invoke('auth:logout'),
   onAuthChanged: (cb: (user: any) => void): Unsubscribe => onEvent('auth:changed', cb),
 
+  handleAuthCallback: (url: string) => ipcRenderer.invoke('auth:callback', url),
   getIdentity: () => ipcRenderer.invoke('identity:get') as Promise<{ uid: string; connectCode: string; displayName: string; staleAccount?: boolean } | null>,
   linkIdentity: () => ipcRenderer.invoke('identity:link'),
   getProfile: () => ipcRenderer.invoke('identity:profile'),

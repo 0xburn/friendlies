@@ -22,6 +22,7 @@ import { setIdentityMismatchHandler, startWatcher, stopWatcher } from './watcher
 let mainWindow: BrowserWindow | null = null;
 let friendPollTimer: ReturnType<typeof setInterval> | null = null;
 let serviceStartedAt: string | null = null;
+let firstPollDone = false;
 const previousFriendStatuses = new Map<string, string>();
 const knownIncomingRequestIds = new Set<string>();
 const knownPlayInviteIds = new Set<string>();
@@ -97,6 +98,7 @@ function createMainWindow(): BrowserWindow {
 async function stopAgentServices(): Promise<void> {
   if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
   serviceStartedAt = null;
+  firstPollDone = false;
   previousFriendStatuses.clear();
   knownIncomingRequestIds.clear();
   knownPlayInviteIds.clear();
@@ -105,14 +107,16 @@ async function stopAgentServices(): Promise<void> {
 }
 
 async function pollAllNotifications(userId: string): Promise<void> {
+  const suppressNotifs = !firstPollDone;
   await Promise.all([
-    pollFriendOnlineStatuses(userId),
-    pollIncomingFriendRequests(userId),
+    pollFriendOnlineStatuses(userId, suppressNotifs),
+    pollIncomingFriendRequests(userId, suppressNotifs),
     pollPlayInvites(userId),
   ]);
+  firstPollDone = true;
 }
 
-async function pollFriendOnlineStatuses(userId: string): Promise<void> {
+async function pollFriendOnlineStatuses(userId: string, suppressNotifs = false): Promise<void> {
   try {
     const st = getSettings();
     if (!st.showNotifications || !st.notifyFriendOnline) return;
@@ -139,7 +143,7 @@ async function pollFriendOnlineStatuses(userId: string): Promise<void> {
       const age = now - new Date(row.updated_at).getTime();
       const newStatus = age > staleMs ? 'offline' : row.status;
       const prev = previousFriendStatuses.get(code);
-      if (prev && prev === 'offline' && newStatus !== 'offline') {
+      if (!suppressNotifs && prev && prev === 'offline' && newStatus !== 'offline') {
         showFriendOnlineNotification(code, newStatus);
       }
       previousFriendStatuses.set(code, newStatus);
@@ -147,7 +151,7 @@ async function pollFriendOnlineStatuses(userId: string): Promise<void> {
   } catch (e) { console.error('[main] friend status poll failed', e); }
 }
 
-async function pollIncomingFriendRequests(userId: string): Promise<void> {
+async function pollIncomingFriendRequests(userId: string, suppressNotifs = false): Promise<void> {
   try {
     if (!getSettings().showNotifications) return;
 
@@ -168,6 +172,7 @@ async function pollIncomingFriendRequests(userId: string): Promise<void> {
     for (const req of incoming) {
       if (knownIncomingRequestIds.has(req.id)) continue;
       knownIncomingRequestIds.add(req.id);
+      if (suppressNotifs) continue;
       const fromCode = (req as any).profiles?.connect_code;
       if (!fromCode) continue;
       showFriendRequestNotification(fromCode, () => {

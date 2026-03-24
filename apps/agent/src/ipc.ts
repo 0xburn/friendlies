@@ -1,6 +1,6 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
-import { getCurrentUser, isAuthenticated, logout, startAuthFlow } from './auth';
+import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow } from './auth';
 import { getIdentity, verifyIdentity } from './identity';
 import { getCurrentStatus, getOnlineUsers, onLocalStatusChange, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
@@ -23,6 +23,11 @@ export function registerIpcHandlers(
   mainWindow = win;
 
   ipcMain.handle('auth:start', () => startAuthFlow());
+  ipcMain.handle('auth:callback', async (_e, url: string) => {
+    await handleAuthCallback(url);
+    const user = await getCurrentUser();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('auth:changed', user);
+  });
   ipcMain.handle('auth:getUser', async () => {
     try { return await getCurrentUser(); } catch { return null; }
   });

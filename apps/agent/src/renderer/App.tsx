@@ -71,6 +71,8 @@ function SlippiNotFound() {
 function AuthPrompt({ connectCode, displayName }: { connectCode: string; displayName: string }) {
   const [waiting, setWaiting] = useState(false);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [manualUrl, setManualUrl] = useState('');
+  const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
     const unsub = window.api.onAuthChanged((user) => {
@@ -86,6 +88,16 @@ function AuthPrompt({ connectCode, displayName }: { connectCode: string; display
       if (url) setAuthUrl(url);
     } catch {
       setWaiting(false);
+    }
+  }
+
+  async function handleManualPaste() {
+    const url = manualUrl.trim();
+    if (!url.includes('auth-callback')) return;
+    try {
+      await (window.api as any).handleAuthCallback(url);
+    } catch {
+      window.location.reload();
     }
   }
 
@@ -142,7 +154,36 @@ function AuthPrompt({ connectCode, displayName }: { connectCode: string; display
                 </div>
               )}
               <button
-                onClick={() => { setWaiting(false); setAuthUrl(null); }}
+                onClick={() => setShowManual(!showManual)}
+                className="text-xs text-gray-600 hover:text-gray-400"
+              >
+                {showManual ? 'Hide manual link entry' : 'Browser redirect not working? Paste link manually'}
+              </button>
+              {showManual && (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-gray-500 text-left">
+                    Copy the <code className="text-gray-400">slippi-friends://auth-callback...</code> URL from your browser and paste it here:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualUrl}
+                      onChange={(e) => setManualUrl(e.target.value)}
+                      placeholder="slippi-friends://auth-callback#..."
+                      className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-2 text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:border-[#21BA45]/50"
+                    />
+                    <button
+                      onClick={handleManualPaste}
+                      disabled={!manualUrl.includes('auth-callback')}
+                      className="shrink-0 rounded-lg bg-[#21BA45] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => { setWaiting(false); setAuthUrl(null); setShowManual(false); }}
                 className="text-xs text-gray-600 hover:text-gray-400"
               >
                 Try again

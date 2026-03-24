@@ -1,5 +1,5 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 
 export type UpdateStatus =
   | { state: 'checking' }
@@ -62,5 +62,7 @@ export function downloadUpdate(): void {
 }
 
 export function quitAndInstall(): void {
+  (app as any).isQuitting = true;
   autoUpdater.quitAndInstall(false, true);
+  setTimeout(() => app.exit(0), 3000);
 }
