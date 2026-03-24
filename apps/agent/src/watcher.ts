@@ -43,6 +43,7 @@ export function setIdentityMismatchHandler(handler: (info: IdentityMismatch) => 
 export async function processNewReplay(
   filePath: string,
   localConnectCode: string,
+  isLive = false,
 ): Promise<OpponentInfo | null> {
   try {
     const game = new SlippiGame(filePath);
@@ -72,10 +73,10 @@ export async function processNewReplay(
       console.log(`[watcher] Local player not found for ${localNorm} — players: ${playersWithCodes.map((p) => normalizeConnectCode(p.connectCode || '')).join(', ')}`);
     }
 
-    // Identity mismatch detection: if this is an online game with human
-    // players but none of them match the claimed connect code, the user
-    // is spoofing their identity via user.json.
-    if (!localPlayer && humans.length >= 2) {
+    // Identity mismatch detection: only for live replays (not backfill).
+    // If this is an online game with human players but none match the
+    // claimed connect code, the user is spoofing via user.json.
+    if (isLive && !localPlayer && humans.length >= 2) {
       const actualCodes = humans
         .map((p) => normalizeConnectCode(p.connectCode || ''))
         .filter(Boolean);
@@ -235,7 +236,7 @@ export function startWatcher(
       console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
       void (async () => {
         try {
-          const info = await processNewReplay(filePath, localConnectCode);
+          const info = await processNewReplay(filePath, localConnectCode, true);
           if (info) {
             console.log(`[watcher] Opponent: ${info.connectCode} (char ${info.characterId}) name="${info.displayName}"`);
             onOpponent(info);
