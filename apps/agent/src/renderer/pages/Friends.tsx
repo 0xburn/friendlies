@@ -204,7 +204,8 @@ export function Friends() {
       ? enriched.filter(
           (f) =>
             f.connectCode?.toLowerCase().includes(q) ||
-            f.displayName?.toLowerCase().includes(q)
+            f.displayName?.toLowerCase().includes(q) ||
+            f.discordUsername?.toLowerCase().includes(q)
         )
       : enriched;
 
