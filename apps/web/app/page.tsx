@@ -52,7 +52,7 @@ export default async function HomePage() {
             friendlies
           </h1>
           <p className="mt-4 text-lg text-gray-400 px-4">
-            friends lists for Melee &mdash;{' '}
+          a friends list for melee &mdash;{' '}
             see who&apos;s online, manage your friend list, and find new practice partners!
           </p>
 

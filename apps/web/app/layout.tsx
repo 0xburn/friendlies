@@ -8,7 +8,7 @@ const prefix = process.env.NEXT_PUBLIC_ASSET_PREFIX || '';
 
 export const metadata: Metadata = {
   title: 'friendlies',
-  description: 'enable friends lists for Melee',
+  description: 'a friends list for melee',
   icons: {
     icon: `${prefix}/logo.png`,
     apple: `${prefix}/logo.png`,

@@ -8,7 +8,7 @@ const links = [
 ];
 
 const SHARE_BLURB =
-  'check out friendlies by lucky 7s: friends lists for Melee! see who\'s online, manage your friend list, and find new practice partners!\nhttps://luckystats.gg/friendlies';
+  'check out friendlies, a friends list for melee by Lucky 7s! see who\'s online, manage your friend list, and find new practice partners!\nhttps://luckystats.gg/friendlies';
 
 export function Navigation() {
   const [copied, setCopied] = useState(false);
