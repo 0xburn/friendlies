@@ -232,7 +232,7 @@ export function Settings() {
       )}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.62
+      friendlies v0.1.63
       </p>
     </div>
   );

@@ -23,6 +23,14 @@ export type IdentityMismatch = {
   replayFile: string;
 };
 
+function isReplayFilenameRecent(filePath: string, thresholdMs: number): boolean {
+  const base = path.basename(filePath, '.slp');
+  const m = base.match(/^Game_(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return true; // can't parse → assume live to be safe
+  const gameTime = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+  return Date.now() - gameTime.getTime() < thresholdMs;
+}
+
 function mapGameMode(mode: number | null | undefined): string | null {
   if (mode === null || mode === undefined) return null;
   if (mode === GameMode.ONLINE) return 'unranked';
@@ -70,10 +78,11 @@ export async function processNewReplay(
       console.log(`[watcher] Local player not found for ${localNorm} — players: ${playersWithCodes.map((p) => normalizeConnectCode(p.connectCode || '')).join(', ')}`);
     }
 
-    // Identity mismatch detection: only for live replays (not backfill).
-    // If this is an online game with human players but none match the
-    // claimed connect code, the user is spoofing via user.json.
-    if (isLive && !localPlayer && humans.length >= 2) {
+    // Identity mismatch detection: only for live replays (not backfill)
+    // whose game timestamp (from filename) is within the last 5 minutes.
+    // This avoids false positives from downloaded/moved replay files.
+    const recentEnough = isLive && isReplayFilenameRecent(filePath, 5 * 60 * 1000);
+    if (recentEnough && !localPlayer && humans.length >= 2) {
       const actualCodes = humans
         .map((p) => normalizeConnectCode(p.connectCode || ''))
         .filter(Boolean);
