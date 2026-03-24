@@ -4,7 +4,7 @@ import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   listenForTokenRefresh, logout, restoreSession, startAuthFlow,
 } from './auth';
-import { APP_PROTOCOL } from './config';
+import { APP_PROTOCOL, PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
 import { showFriendOnlineNotification, showFriendRequestNotification, showOpponentNotification, showPlayInviteNotification } from './notifications';
@@ -134,7 +134,7 @@ async function pollFriendOnlineStatuses(userId: string, suppressNotifs = false):
       .in('user_id', friendIds);
     if (!data) return;
 
-    const staleMs = 45_000;
+    const staleMs = PRESENCE_STALE_THRESHOLD;
     const now = Date.now();
     for (const row of data) {
       const friend = friendRows.find((f: any) => f.friend_id === row.user_id);
@@ -249,7 +249,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
   await startPresenceLoop(identity.connectCode, identity.displayName || identity.connectCode, userId, st.replayDir);
 
   if (friendPollTimer) clearInterval(friendPollTimer);
-  friendPollTimer = setInterval(() => void pollAllNotifications(userId), 15_000);
+  friendPollTimer = setInterval(() => void pollAllNotifications(userId), 30_000);
   void pollAllNotifications(userId);
 }
 

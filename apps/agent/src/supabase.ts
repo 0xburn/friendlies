@@ -1,5 +1,12 @@
 import './config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
+
+// Node.js (Electron main process) has no native WebSocket — polyfill for
+// Supabase Realtime which needs a WebSocket constructor.
+if (typeof globalThis.WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = WebSocket;
+}
 
 export const SUPABASE_URL_FALLBACK =
   'https://hlpcaltsxcdxmolmpcxj.supabase.co';
@@ -12,6 +19,11 @@ function getOrCreateClient(): SupabaseClient {
     client = createClient(
       process.env.SUPABASE_URL ?? SUPABASE_URL_FALLBACK,
       process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY_FALLBACK,
+      {
+        realtime: {
+          transport: WebSocket as any,
+        },
+      },
     );
   }
   return client;

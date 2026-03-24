@@ -115,7 +115,7 @@ export function Friends() {
       loadFriends();
       loadIncoming();
       loadPlayInvites();
-    }, 10_000);
+    }, 30_000);
     return () => { unsub(); unsubStatus(); clearInterval(dbPoll); };
   }, []);
 

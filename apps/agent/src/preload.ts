@@ -41,6 +41,7 @@ const api = {
   onCodeClaimed: (cb: (info: any) => void): Unsubscribe => onEvent('identity:codeClaimed', cb),
 
   getPlayerCount: () => ipcRenderer.invoke('stats:playerCount'),
+  getPresenceStats: () => ipcRenderer.invoke('stats:presence'),
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
   getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),
   getFriendStatuses: () => ipcRenderer.invoke('presence:friendStatuses'),

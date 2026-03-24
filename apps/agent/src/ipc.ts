@@ -1,8 +1,9 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
+import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity } from './identity';
-import { getCurrentStatus, getOnlineUsers, onLocalStatusChange, onPresenceSync } from './presence';
+import { getCurrentStatus, getOnlineUsers, getPresenceStats, onLocalStatusChange, onPresenceSync } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
@@ -491,6 +492,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('presence:online', () => getOnlineUsers());
   ipcMain.handle('presence:localStatus', () => getCurrentStatus());
+  ipcMain.handle('stats:presence', () => getPresenceStats());
 
   ipcMain.handle('presence:friendStatuses', async () => {
     try {
@@ -511,7 +513,7 @@ export function registerIpcHandlers(
         .in('user_id', friendIds);
       if (!data) return {};
 
-      const staleMs = 45_000;
+      const staleMs = PRESENCE_STALE_THRESHOLD;
       const now = Date.now();
       const result: Record<string, any> = {};
       for (const row of data) {

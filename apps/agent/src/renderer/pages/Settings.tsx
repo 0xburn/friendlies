@@ -8,7 +8,22 @@ interface SettingsState {
   notifyPlayInvite: boolean;
 }
 
+interface PresenceStats {
+  upsertOk: number;
+  upsertFail: number;
+  upsertSkipped: number;
+  trackOk: number;
+  trackFail: number;
+  subscribeFail: number;
+  lastError: string;
+  realtimeConnected: boolean;
+}
+
+const DEBUG_CONNECT_CODES = ['SMOK#1'];
+
 export function Settings() {
+  const [pStats, setPStats] = useState<PresenceStats | null>(null);
+  const [myCode, setMyCode] = useState<string | null>(null);
   const [settings, setSettings] = useState<SettingsState>({
     replayDir: '',
     autoLaunch: false,
@@ -29,11 +44,18 @@ export function Settings() {
         notifyPlayInvite: s.notifyPlayInvite !== false,
       });
     });
-    return window.api.onUpdateStatus((s: any) => {
+    window.api.getIdentity().then((id) => {
+      if (id?.connectCode) setMyCode(id.connectCode);
+    });
+    const fetchStats = () => (window.api as any).getPresenceStats?.().then((s: PresenceStats) => setPStats(s)).catch(() => {});
+    fetchStats();
+    const statsInterval = setInterval(fetchStats, 10_000);
+    const unsub = window.api.onUpdateStatus((s: any) => {
       if (s.state === 'not-available') setUpdateMsg('Up to date');
       else if (s.state === 'available') setUpdateMsg(null);
       else if (s.state === 'error') setUpdateMsg(null);
     });
+    return () => { unsub(); clearInterval(statsInterval); };
   }, []);
 
   async function handleBrowse() {
@@ -150,8 +172,37 @@ export function Settings() {
         </div>
       </div>
 
+      {pStats && myCode && DEBUG_CONNECT_CODES.includes(myCode) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Connection Health</h3>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Realtime</span>
+              <span className={pStats.realtimeConnected ? 'text-[#21BA45]' : 'text-red-400'}>
+                {pStats.realtimeConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">DB writes</span>
+              <span className="text-gray-300">{pStats.upsertOk} ok / {pStats.upsertFail} fail</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Writes skipped</span>
+              <span className="text-gray-300">{pStats.upsertSkipped}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Realtime tracks</span>
+              <span className="text-gray-300">{pStats.trackOk} ok / {pStats.trackFail} fail</span>
+            </div>
+          </div>
+          {pStats.lastError && (
+            <p className="mt-2 text-[10px] text-red-400/70 truncate">Last error: {pStats.lastError}</p>
+          )}
+        </div>
+      )}
+
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.40
+      friendlies v0.1.41
       </p>
     </div>
   );

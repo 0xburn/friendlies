@@ -18,7 +18,7 @@ export function Navigation() {
     window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     const interval = setInterval(() => {
       window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
-    }, 60_000);
+    }, 300_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -69,7 +69,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.40</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.41</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

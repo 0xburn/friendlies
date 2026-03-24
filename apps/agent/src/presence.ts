@@ -53,8 +53,25 @@ let syncCallbacks: PresenceSyncCallback[] = [];
 let localStatusCallbacks: LocalStatusCallback[] = [];
 let channelRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let channelRetryCount = 0;
-const MAX_CHANNEL_RETRIES = 1;
+const MAX_CHANNEL_RETRIES = 5;
+const BASE_RETRY_DELAY = 10_000;
 let lastRlsWarning = 0;
+let periodicRetryTimer: ReturnType<typeof setInterval> | null = null;
+
+let lastPushedStatus: PresenceStatus = 'offline';
+let lastPushedCharacter: number | null = null;
+let lastPushedOpponentCode: string | null = null;
+
+const presenceStats = {
+  upsertOk: 0,
+  upsertFail: 0,
+  upsertSkipped: 0,
+  trackOk: 0,
+  trackFail: 0,
+  subscribeFail: 0,
+  lastError: '',
+  realtimeConnected: false,
+};
 
 export function setLastPlayedCharacterId(id: number | null): void {
   lastCharacterId = id;
@@ -72,6 +89,11 @@ export function setLastOpponent(connectCode: string, characterId?: number): void
 
 export function getCurrentStatus(): PresenceStatus {
   return currentStatus;
+}
+
+export function getPresenceStats() {
+  presenceStats.realtimeConnected = subscribed;
+  return { ...presenceStats };
 }
 
 export function getOnlineUsers(): OnlineUser[] {
@@ -175,12 +197,24 @@ async function pushPresence(
 ): Promise<void> {
   try {
     const opponent = status === 'in-game' ? getRecentOpponent() : null;
+    const character = status === 'in-game' ? lastCharacterId : null;
+    const opCode = opponent?.code ?? null;
+
+    const dirty =
+      status !== lastPushedStatus ||
+      character !== lastPushedCharacter ||
+      opCode !== lastPushedOpponentCode;
+
+    if (!dirty) {
+      presenceStats.upsertSkipped++;
+      return;
+    }
 
     const row: Record<string, any> = {
       user_id: userId,
       status,
-      current_character: status === 'in-game' ? lastCharacterId : null,
-      opponent_code: opponent?.code ?? null,
+      current_character: character,
+      opponent_code: opCode,
       playing_since: opponent?.since ?? null,
       updated_at: new Date().toISOString(),
     };
@@ -190,6 +224,8 @@ async function pushPresence(
       { onConflict: 'user_id' },
     );
     if (error) {
+      presenceStats.upsertFail++;
+      presenceStats.lastError = `upsert: ${error.message}`;
       if (error.message.includes('row-level security')) {
         const now = Date.now();
         if (now - lastRlsWarning > 60_000) {
@@ -213,6 +249,11 @@ async function pushPresence(
       }
     }
 
+    lastPushedStatus = status;
+    lastPushedCharacter = character;
+    lastPushedOpponentCode = opCode;
+    presenceStats.upsertOk++;
+
     if (status === 'offline') {
       if (presenceChannel && subscribed) {
         await presenceChannel.untrack();
@@ -226,14 +267,22 @@ async function pushPresence(
       connectCode,
       displayName,
       status,
-      currentCharacter: status === 'in-game' ? lastCharacterId : null,
-      opponentCode: opponent?.code ?? null,
+      currentCharacter: character,
+      opponentCode: opCode,
       playingSince: opponent?.since ?? null,
       updatedAt: new Date().toISOString(),
     };
 
-    await presenceChannel.track(payload);
+    try {
+      await presenceChannel.track(payload);
+      presenceStats.trackOk++;
+    } catch (trackErr) {
+      presenceStats.trackFail++;
+      presenceStats.lastError = `track: ${trackErr}`;
+    }
   } catch (e) {
+    presenceStats.upsertFail++;
+    presenceStats.lastError = `upsert: ${e}`;
     console.error('pushPresence failed', e);
   }
 }
@@ -249,6 +298,10 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
     presenceChannel = null;
     subscribed = false;
   }
+
+  console.log('[presence] Creating Realtime channel for', connectCode);
+  console.log('[presence] WebSocket available:', typeof globalThis.WebSocket !== 'undefined');
+
   presenceChannel = supabase.channel('presence:global', {
     config: {
       presence: {
@@ -265,23 +318,31 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
   try {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(
-        () => reject(new Error('presence subscribe timeout')),
-        4000,
+        () => reject(new Error('presence subscribe timeout (10s)')),
+        10_000,
       );
-      presenceChannel!.subscribe((status) => {
+      console.log('[presence] Calling channel.subscribe()...');
+      presenceChannel!.subscribe((status, err) => {
+        console.log('[presence] subscribe status:', status, err ? `error: ${err}` : '');
         if (status === 'SUBSCRIBED') {
           clearTimeout(t);
           subscribed = true;
           resolve();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           clearTimeout(t);
-          reject(new Error(`presence subscribe ${status}`));
+          reject(new Error(`presence subscribe ${status}${err ? ': ' + err : ''}`));
         }
       });
     });
+    channelRetryCount = 0;
+    presenceStats.realtimeConnected = true;
+    console.log('[presence] Realtime channel CONNECTED');
     return true;
-  } catch (e) {
-    console.error('subscribeChannel failed', e);
+  } catch (e: any) {
+    console.error('[presence] subscribeChannel failed:', e?.message ?? e);
+    presenceStats.subscribeFail++;
+    presenceStats.lastError = `subscribe: ${e?.message ?? e}`;
+    presenceStats.realtimeConnected = false;
     subscribed = false;
     if (presenceChannel) {
       try {
@@ -296,19 +357,36 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
 }
 
 function scheduleChannelRetry(): void {
-  if (channelRetryTimer || channelRetryCount >= MAX_CHANNEL_RETRIES) return;
+  if (channelRetryTimer || channelRetryCount >= MAX_CHANNEL_RETRIES) {
+    if (channelRetryCount >= MAX_CHANNEL_RETRIES && !periodicRetryTimer) {
+      console.log('[presence] Retries exhausted — will re-attempt every 5 minutes');
+      periodicRetryTimer = setInterval(async () => {
+        if (subscribed || !loopConnectCode) return;
+        console.log('[presence] Periodic re-attempt of Realtime subscription...');
+        channelRetryCount = 0;
+        const ok = await subscribeChannel(loopConnectCode);
+        if (ok && periodicRetryTimer) {
+          clearInterval(periodicRetryTimer);
+          periodicRetryTimer = null;
+        }
+      }, 5 * 60 * 1000);
+    }
+    return;
+  }
+  const delay = BASE_RETRY_DELAY * Math.pow(2, channelRetryCount);
   channelRetryTimer = setTimeout(async () => {
     channelRetryTimer = null;
     if (subscribed || !loopConnectCode) return;
     channelRetryCount++;
-    console.log(`[presence] Retrying channel subscription (${channelRetryCount}/${MAX_CHANNEL_RETRIES})...`);
+    console.log(`[presence] Retrying channel subscription (${channelRetryCount}/${MAX_CHANNEL_RETRIES}) — next in ${delay * 2 / 1000}s...`);
     const ok = await subscribeChannel(loopConnectCode);
-    if (!ok && channelRetryCount >= MAX_CHANNEL_RETRIES) {
-      console.log('[presence] Realtime channel unavailable — using DB polling only');
-    } else if (!ok) {
+    if (!ok) {
       scheduleChannelRetry();
+    } else if (periodicRetryTimer) {
+      clearInterval(periodicRetryTimer);
+      periodicRetryTimer = null;
     }
-  }, 30_000);
+  }, delay);
 }
 
 export async function startPresenceLoop(
@@ -371,6 +449,10 @@ export async function stopPresenceLoop(): Promise<void> {
       clearTimeout(channelRetryTimer);
       channelRetryTimer = null;
     }
+    if (periodicRetryTimer) {
+      clearInterval(periodicRetryTimer);
+      periodicRetryTimer = null;
+    }
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -386,6 +468,9 @@ export async function stopPresenceLoop(): Promise<void> {
       presenceChannel = null;
     }
     currentStatus = 'offline';
+    lastPushedStatus = 'offline';
+    lastPushedCharacter = null;
+    lastPushedOpponentCode = null;
   } catch (e) {
     console.error('stopPresenceLoop failed', e);
   }
@@ -395,7 +480,11 @@ export async function pushOfflineAndStop(): Promise<void> {
   try {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (channelRetryTimer) { clearTimeout(channelRetryTimer); channelRetryTimer = null; }
+    if (periodicRetryTimer) { clearInterval(periodicRetryTimer); periodicRetryTimer = null; }
     currentStatus = 'offline';
+    lastPushedStatus = 'offline';
+    lastPushedCharacter = null;
+    lastPushedOpponentCode = null;
 
     if (loopUserId) {
       await supabase.from('presence_log').upsert(
