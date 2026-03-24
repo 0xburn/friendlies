@@ -1,14 +1,18 @@
 'use client';
 
 import Image from 'next/image';
+import { useEffect, useState } from 'react';
 
 const IMG_PREFIX = process.env.NEXT_PUBLIC_ASSET_PREFIX || '';
 
 export function Navigation() {
-  const homeHref =
-    typeof window !== 'undefined' && window.location.pathname.startsWith('/friendlies')
-      ? '/friendlies'
-      : '/';
+  const [homeHref, setHomeHref] = useState('/');
+
+  useEffect(() => {
+    if (window.location.pathname.startsWith('/friendlies')) {
+      setHomeHref('/friendlies');
+    }
+  }, []);
 
   return (
     <nav className="sticky top-0 z-50 border-b border-[#2a2a2a] bg-[#0a0a0a]/90 backdrop-blur-md">
