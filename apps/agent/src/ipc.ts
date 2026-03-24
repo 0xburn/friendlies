@@ -10,6 +10,18 @@ import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
 
+const SLIPPI_API_NAME_TO_ID: Record<string, number> = {
+  CAPTAIN_FALCON: 0, DONKEY_KONG: 1, FOX: 2, MR_GAME_AND_WATCH: 3,
+  KIRBY: 4, BOWSER: 5, LINK: 6, LUIGI: 7, MARIO: 8, MARTH: 9,
+  MEWTWO: 10, NESS: 11, PEACH: 12, PIKACHU: 13, ICE_CLIMBERS: 14,
+  JIGGLYPUFF: 15, SAMUS: 16, YOSHI: 17, ZELDA: 18, SHEIK: 19,
+  FALCO: 20, YOUNG_LINK: 21, DR_MARIO: 22, ROY: 23, PICHU: 24, GANONDORF: 25,
+};
+
+function slippiNameToId(name: string): number | null {
+  return SLIPPI_API_NAME_TO_ID[name] ?? null;
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 export function sendToRenderer(channel: string, ...args: any[]): void {
@@ -691,7 +703,10 @@ export function registerIpcHandlers(
         rankedLosses: r?.losses ?? 0,
         globalPlacement: r?.dailyGlobalPlacement ?? null,
         continent: r?.continent ?? null,
-        characters: (r?.characters ?? []).filter((c: any) => c?.character != null).map((c: any) => ({ character: c.character, gameCount: c.gameCount })),
+        characters: (r?.characters ?? []).filter((c: any) => c?.character != null).map((c: any) => ({
+          character: typeof c.character === 'string' ? slippiNameToId(c.character) : c.character,
+          gameCount: c.gameCount,
+        })).filter((c: any) => c.character != null),
       };
     } catch (e: any) { console.error('slippi:lookup', e); return null; }
   });
