@@ -4,7 +4,7 @@ import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthF
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity } from './identity';
 import { resolvePresenceRow } from './presence-logic';
-import { getCurrentStatus, getOnlineUsers, getPresenceStats, onLocalStatusChange, onPresenceSync } from './presence';
+import { getCurrentStatus, getOnlineUsers, getPresenceStats, isLookingToPlay, onLocalStatusChange, onPresenceSync, toggleLookingToPlay } from './presence';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
@@ -103,12 +103,11 @@ export function registerIpcHandlers(
     try {
       const identity = getIdentity();
       if (!identity) return null;
-      const { data } = await supabase
-        .from('slippi_cache')
-        .select('*')
-        .eq('connect_code', identity.connectCode)
-        .single();
-      return data;
+      const [{ data: cache }, { data: profile }] = await Promise.all([
+        supabase.from('slippi_cache').select('*').eq('connect_code', identity.connectCode).single(),
+        supabase.from('profiles').select('region').eq('connect_code', identity.connectCode).single(),
+      ]);
+      return { ...cache, region: profile?.region ?? null };
     } catch { return null; }
   });
 
@@ -118,7 +117,7 @@ export function registerIpcHandlers(
       if (!user) return [];
       const { data } = await supabase
         .from('friends')
-        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, avatar_url)')
+        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, avatar_url, region)')
         .eq('user_id', user.id);
       if (!data) return [];
 
@@ -143,6 +142,7 @@ export function registerIpcHandlers(
           displayName: p?.display_name || c.display_name || null,
           discordUsername: p?.discord_username || null,
           avatarUrl: p?.avatar_url || null,
+          region: p?.region || null,
           rating: c.rating_ordinal ?? null,
           characterId: c.characters?.[0]?.character ?? null,
           onApp: !!f.friend_id,
@@ -507,6 +507,8 @@ export function registerIpcHandlers(
   ipcMain.handle('presence:online', () => getOnlineUsers());
   ipcMain.handle('presence:localStatus', () => getCurrentStatus());
   ipcMain.handle('stats:presence', () => getPresenceStats());
+  ipcMain.handle('presence:toggleLookingToPlay', () => toggleLookingToPlay());
+  ipcMain.handle('presence:isLookingToPlay', () => isLookingToPlay());
 
   ipcMain.handle('presence:friendStatuses', async () => {
     try {
@@ -523,7 +525,7 @@ export function registerIpcHandlers(
       if (friendIds.length === 0) return {};
 
       const { data } = await supabase.from('presence_log')
-        .select('user_id, status, current_character, opponent_code, playing_since, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, updated_at')
         .in('user_id', friendIds);
       if (!data) return {};
 
@@ -575,7 +577,7 @@ export function registerIpcHandlers(
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region')
         .in('id', candidateIds);
       if (!profiles) return [];
       const profileMap: Record<string, any> = {};
@@ -586,6 +588,23 @@ export function registerIpcHandlers(
       if (codes.length > 0) {
         const { data: cached } = await supabase.from('slippi_cache').select('*').in('connect_code', codes);
         if (cached) cached.forEach((c: any) => { cacheMap[c.connect_code] = c; });
+      }
+
+      const matchHistoryMap: Record<string, string> = {};
+      if (codes.length > 0) {
+        const { data: matchRows } = await supabase
+          .from('matches')
+          .select('opponent_connect_code, played_at')
+          .eq('user_id', user.id)
+          .in('opponent_connect_code', codes)
+          .order('played_at', { ascending: false });
+        if (matchRows) {
+          for (const m of matchRows as any[]) {
+            if (!matchHistoryMap[m.opponent_connect_code]) {
+              matchHistoryMap[m.opponent_connect_code] = m.played_at;
+            }
+          }
+        }
       }
 
       const results = presenceRows
@@ -606,16 +625,21 @@ export function registerIpcHandlers(
             avatarUrl: p.avatar_url || null,
             rating: c.rating_ordinal ?? null,
             topCharacters: Array.isArray(p.top_characters) ? p.top_characters : [],
+            region: p.region || null,
             status: r.status,
             currentCharacter: r.current_character,
             opponentCode: r.opponent_code,
             playingSince: r.playing_since,
             updatedAt: r.updated_at,
+            lastPlayedAt: matchHistoryMap[p.connect_code] || null,
             distance,
           };
         });
 
       results.sort((a: any, b: any) => {
+        const hasHistoryA = a.lastPlayedAt ? 1 : 0;
+        const hasHistoryB = b.lastPlayedAt ? 1 : 0;
+        if (hasHistoryA !== hasHistoryB) return hasHistoryB - hasHistoryA;
         const statusOrder = (s: string) => s === 'in-game' ? 0 : 1;
         const sd = statusOrder(a.status) - statusOrder(b.status);
         if (sd !== 0) return sd;

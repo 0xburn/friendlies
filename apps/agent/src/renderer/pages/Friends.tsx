@@ -11,6 +11,7 @@ interface Friend {
   displayName?: string;
   discordUsername?: string;
   avatarUrl?: string;
+  region?: string | null;
   rating: number | null;
   characterId: number | null;
   status?: 'online' | 'in-game' | 'offline';
@@ -45,7 +46,7 @@ function SkeletonCard() {
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
-  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }>>({});
+  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean }>>({});
   const [search, setSearch] = useState('');
   const [addCode, setAddCode] = useState('');
   const [addError, setAddError] = useState('');
@@ -58,10 +59,12 @@ export function Friends() {
   const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string }[]>([]);
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
+  const [lfg, setLfg] = useState(false);
+  const [lfgToggling, setLfgToggling] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'in-game' | 'offline'>('all');
   const [myIdentity, setMyIdentity] = useState<{ connectCode: string; displayName: string } | null>(null);
   const [myUser, setMyUser] = useState<{ avatar_url?: string; discord_name?: string } | null>(null);
-  const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number } | null>(null);
+  const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number; region?: string | null } | null>(null);
   const [myOpponentCode, setMyOpponentCode] = useState<string | null>(null);
   const [myCharacterId, setMyCharacterId] = useState<number | null>(null);
   const [myOppCharId, setMyOppCharId] = useState<number | null>(null);
@@ -79,11 +82,12 @@ export function Friends() {
       });
     });
     window.api.getProfile().then((p: any) => {
-      if (p) setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses });
+      if (p) setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses, region: p.region ?? null });
     });
     window.api.getLocalStatus().then((s: any) => {
       if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
+    window.api.isLookingToPlay().then((v: boolean) => setLfg(v));
 
     Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites()]).finally(() =>
       setInitialLoading(false),
@@ -123,13 +127,14 @@ export function Friends() {
     try {
       const statuses = await window.api.getFriendStatuses();
       if (statuses && typeof statuses === 'object') {
-        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string }> = {};
+        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean }> = {};
         for (const [code, val] of Object.entries(statuses as Record<string, any>)) {
           mapped[code] = {
             status: val.status,
             opponentCode: val.opponentCode ?? undefined,
             currentCharacter: val.currentCharacter ?? null,
             playingSince: val.playingSince ?? undefined,
+            lookingToPlay: val.lookingToPlay ?? false,
           };
         }
         setOnlineMap((prev) => ({ ...prev, ...mapped }));
@@ -177,6 +182,7 @@ export function Friends() {
         currentCharacter: presence?.currentCharacter ?? null,
         opponentCode: presence?.opponentCode ?? null,
         playingSince: presence?.playingSince ?? null,
+        lookingToPlay: presence?.lookingToPlay ?? false,
       };
     });
   }, [friends, onlineMap]);
@@ -205,6 +211,7 @@ export function Friends() {
     }
 
     function sortScore(f: typeof list[0]): number {
+      if (f.lookingToPlay) return -1;
       const s = f.status || 'offline';
       if (s === 'in-game' && f.currentCharacter != null) return 0;
       if (s === 'in-game') return 1;
@@ -280,6 +287,15 @@ export function Friends() {
     await window.api.copyToClipboard(code);
   }
 
+  async function handleToggleLfg() {
+    setLfgToggling(true);
+    try {
+      const newState = await window.api.toggleLookingToPlay();
+      setLfg(newState);
+    } catch {}
+    setLfgToggling(false);
+  }
+
   async function copyCode() {
     if (!myIdentity?.connectCode) return;
     await window.api.copyToClipboard(myIdentity.connectCode);
@@ -318,6 +334,9 @@ export function Friends() {
                 {myIdentity.displayName && (
                   <span className="text-xs text-gray-500">{myIdentity.displayName}</span>
                 )}
+                {myProfile?.region && (
+                  <span className="text-[10px] text-gray-600">{myProfile.region}</span>
+                )}
                 {myProfile?.rating_ordinal && (
                   <RankBadge rating={myProfile.rating_ordinal} />
                 )}
@@ -326,6 +345,17 @@ export function Friends() {
                 )}
               </div>
             </div>
+            <button
+              onClick={handleToggleLfg}
+              disabled={lfgToggling}
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                lfg
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                  : 'border border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#222]'
+              }`}
+            >
+              {lfg ? '🎮 Looking to play!' : '🎮 Looking to play?'}
+            </button>
             <button
               onClick={copyCode}
               className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-all"
@@ -473,6 +503,7 @@ export function Friends() {
                     displayName: f.displayName,
                     discordUsername: f.discordUsername,
                     avatarUrl: f.avatarUrl,
+                    region: f.region,
                     rating: f.rating,
                     characterId: f.characterId,
                   }}
@@ -523,7 +554,14 @@ export function Friends() {
         {accepted.map((f) => {
           const invState = inviteSent[f.connectCode];
           return (
-            <div key={f.id} className="group flex items-center gap-2">
+            <div key={f.id} className="space-y-1">
+              {f.lookingToPlay && (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-amber-400 text-xs">🎮</span>
+                  <span className="text-[11px] font-medium text-amber-400/90">Looking to play!</span>
+                </div>
+              )}
+              <div className="group flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <PlayerCard
                   player={{
@@ -531,6 +569,7 @@ export function Friends() {
                     displayName: f.displayName,
                     discordUsername: f.discordUsername,
                     avatarUrl: f.avatarUrl,
+                    region: f.region,
                     rating: f.rating,
                     characterId: f.characterId,
                     status: f.status,
@@ -561,6 +600,7 @@ export function Friends() {
               >
                 {removing === f.id ? '...' : 'Remove'}
               </button>
+              </div>
             </div>
           );
         })}

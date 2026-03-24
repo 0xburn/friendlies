@@ -47,6 +47,8 @@ const api = {
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
   getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),
   getFriendStatuses: () => ipcRenderer.invoke('presence:friendStatuses'),
+  toggleLookingToPlay: () => ipcRenderer.invoke('presence:toggleLookingToPlay') as Promise<boolean>,
+  isLookingToPlay: () => ipcRenderer.invoke('presence:isLookingToPlay') as Promise<boolean>,
   onPresenceUpdate: (cb: (users: any[]) => void): Unsubscribe => onEvent('presence:updated', cb),
   onLocalStatus: (cb: (info: any) => void): Unsubscribe => onEvent('presence:localStatus', cb),
 

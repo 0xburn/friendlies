@@ -21,6 +21,7 @@ interface PlayerCardProps {
     rating?: number | null;
     characterId?: number | null;
     topCharacters?: { characterId: number; gameCount: number }[];
+    region?: string | null;
     status?: 'online' | 'in-game' | 'offline';
     currentCharacter?: number | null;
     opponentCode?: string | null;
@@ -81,6 +82,9 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
                 <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
                 <span className="text-xs font-medium text-[#5865F2]">@{player.discordUsername}</span>
               </span>
+            )}
+            {player.region && (
+              <span className="text-[10px] text-gray-600 shrink-0">{player.region}</span>
             )}
           </div>
         </div>

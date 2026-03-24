@@ -8,10 +8,22 @@ interface DiscoverPlayer {
   avatarUrl?: string;
   rating: number | null;
   topCharacters: { characterId: number; gameCount: number }[];
+  region: string | null;
   status: 'online' | 'in-game';
   currentCharacter: number | null;
   opponentCode: string | null;
   playingSince: string | null;
+  lastPlayedAt: string | null;
+}
+
+function formatLastPlayed(iso: string): string {
+  const played = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - played.getTime();
+  const diffDays = Math.floor(diffMs / 86_400_000);
+  if (diffDays === 0) return 'You played this person today!';
+  if (diffDays === 1) return 'You played this person yesterday!';
+  return `You played this person ${diffDays} days ago!`;
 }
 
 function SkeletonCard() {
@@ -102,34 +114,45 @@ export function Discover() {
         {players.map((p) => {
           const isAdded = added.has(p.connectCode);
           return (
-            <div key={p.userId} className="group flex items-center gap-2">
-              <div className="flex-1 min-w-0">
-                <PlayerCard
-                  player={{
-                    connectCode: p.connectCode,
-                    displayName: p.displayName,
-                    avatarUrl: p.avatarUrl,
-                    rating: p.rating,
-                    topCharacters: p.topCharacters,
-                    status: p.status,
-                    currentCharacter: p.currentCharacter,
-                    opponentCode: p.opponentCode,
-                    playingSince: p.playingSince,
-                  }}
-                  onClick={() => handleCopy(p.connectCode)}
-                />
-              </div>
-              {isAdded ? (
-                <span className="shrink-0 text-[10px] font-medium text-[#21BA45]">Added!</span>
-              ) : (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleAdd(p.connectCode); }}
-                  disabled={adding === p.connectCode}
-                  className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-[#21BA45]/10 px-3 py-1.5 text-xs font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-all"
-                >
-                  {adding === p.connectCode ? '...' : '+ Add'}
-                </button>
+            <div key={p.userId} className="space-y-1">
+              {p.lastPlayedAt && (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-amber-400 text-xs">⚑</span>
+                  <span className="text-[11px] font-medium text-amber-400/90">
+                    {formatLastPlayed(p.lastPlayedAt)}
+                  </span>
+                </div>
               )}
+              <div className="group flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <PlayerCard
+                    player={{
+                      connectCode: p.connectCode,
+                      displayName: p.displayName,
+                      avatarUrl: p.avatarUrl,
+                      rating: p.rating,
+                      topCharacters: p.topCharacters,
+                      region: p.region,
+                      status: p.status,
+                      currentCharacter: p.currentCharacter,
+                      opponentCode: p.opponentCode,
+                      playingSince: p.playingSince,
+                    }}
+                    onClick={() => handleCopy(p.connectCode)}
+                  />
+                </div>
+                {isAdded ? (
+                  <span className="shrink-0 text-[10px] font-medium text-[#21BA45]">Added!</span>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleAdd(p.connectCode); }}
+                    disabled={adding === p.connectCode}
+                    className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-[#21BA45]/10 px-3 py-1.5 text-xs font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-all"
+                  >
+                    {adding === p.connectCode ? '...' : '+ Add'}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

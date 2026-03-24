@@ -297,12 +297,13 @@ async function refreshAgentState(): Promise<void> {
       };
 
       try {
-        const geoRes = await fetch('http://ip-api.com/json/?fields=lat,lon');
+        const geoRes = await fetch('http://ip-api.com/json/?fields=lat,lon,city,regionName');
         if (geoRes.ok) {
           const geo = await geoRes.json();
           if (typeof geo.lat === 'number' && typeof geo.lon === 'number') {
             profileUpdate.latitude = geo.lat;
             profileUpdate.longitude = geo.lon;
+            profileUpdate.region = [geo.city, geo.regionName].filter(Boolean).join(', ') || null;
           }
         }
       } catch (e) { console.warn('[main] geolocation lookup failed:', e); }

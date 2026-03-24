@@ -72,6 +72,10 @@ let lastPushedOpponentCode: string | null = null;
 let lastDbWriteTime = 0;
 const DB_HEARTBEAT_INTERVAL = 150_000;
 
+let lookingToPlay = false;
+let lookingToPlaySince: string | null = null;
+const LFG_EXPIRY_MS = 30 * 60 * 1000;
+
 const presenceStats = {
   upsertOk: 0,
   upsertFail: 0,
@@ -104,6 +108,31 @@ export function getCurrentStatus(): PresenceStatus {
 export function getPresenceStats() {
   presenceStats.realtimeConnected = subscribed;
   return { ...presenceStats };
+}
+
+export function isLookingToPlay(): boolean {
+  if (!lookingToPlay) return false;
+  if (lookingToPlaySince && Date.now() - new Date(lookingToPlaySince).getTime() > LFG_EXPIRY_MS) {
+    lookingToPlay = false;
+    lookingToPlaySince = null;
+    return false;
+  }
+  return true;
+}
+
+export async function toggleLookingToPlay(): Promise<boolean> {
+  if (isLookingToPlay()) {
+    lookingToPlay = false;
+    lookingToPlaySince = null;
+  } else {
+    lookingToPlay = true;
+    lookingToPlaySince = new Date().toISOString();
+  }
+  lastDbWriteTime = 0;
+  if (loopUserId) {
+    await pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
+  }
+  return lookingToPlay;
 }
 
 export function getOnlineUsers(): OnlineUser[] {
@@ -206,12 +235,15 @@ async function pushPresence(
     if (!shouldWriteDb) {
       presenceStats.upsertSkipped++;
     } else {
+      const lfgActive = isLookingToPlay();
       const row: Record<string, any> = {
         user_id: userId,
         status,
         current_character: character,
         opponent_code: opCode,
         playing_since: opponent?.since ?? null,
+        looking_to_play: lfgActive,
+        looking_to_play_since: lfgActive ? lookingToPlaySince : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -422,6 +454,12 @@ export async function startPresenceLoop(
 
     const tick = async () => {
       try {
+        if (lookingToPlay && lookingToPlaySince &&
+            Date.now() - new Date(lookingToPlaySince).getTime() > LFG_EXPIRY_MS) {
+          lookingToPlay = false;
+          lookingToPlaySince = null;
+          lastDbWriteTime = 0;
+        }
         const launcherRunning = await isProcessRunning(SLIPPI_LAUNCHER_PROCESS_NAMES);
         const dolphinRunning = await isProcessRunning(DOLPHIN_PROCESS_NAMES);
         const next = resolvePresenceStatus(launcherRunning, dolphinRunning);
@@ -505,6 +543,9 @@ export async function pushOfflineAndStop(): Promise<void> {
     lastPushedOpponentCode = null;
     lastDbWriteTime = 0;
 
+    lookingToPlay = false;
+    lookingToPlaySince = null;
+
     if (loopUserId) {
       await supabase.from('presence_log').upsert(
         {
@@ -513,6 +554,8 @@ export async function pushOfflineAndStop(): Promise<void> {
           current_character: null,
           opponent_code: null,
           playing_since: null,
+          looking_to_play: false,
+          looking_to_play_since: null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' },
