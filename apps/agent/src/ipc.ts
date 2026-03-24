@@ -526,6 +526,94 @@ export function registerIpcHandlers(
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }
   });
 
+  ipcMain.handle('discover:list', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+
+      const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('latitude, longitude')
+        .eq('id', user.id)
+        .single();
+      const myLat = myProfile?.latitude ?? null;
+      const myLng = myProfile?.longitude ?? null;
+
+      const { data: friendRows } = await supabase
+        .from('friends')
+        .select('friend_id')
+        .eq('user_id', user.id);
+      const friendIds = new Set(
+        (friendRows || []).map((f: any) => f.friend_id).filter(Boolean),
+      );
+
+      const cutoff = new Date(Date.now() - PRESENCE_STALE_THRESHOLD).toISOString();
+      const { data: presenceRows } = await supabase
+        .from('presence_log')
+        .select('user_id, status, current_character, opponent_code, playing_since, updated_at')
+        .in('status', ['online', 'in-game'])
+        .gte('updated_at', cutoff);
+      if (!presenceRows || presenceRows.length === 0) return [];
+
+      const candidateIds = presenceRows
+        .map((r: any) => r.user_id)
+        .filter((id: string) => id !== user.id && !friendIds.has(id));
+      if (candidateIds.length === 0) return [];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude')
+        .in('id', candidateIds);
+      if (!profiles) return [];
+      const profileMap: Record<string, any> = {};
+      profiles.forEach((p: any) => { profileMap[p.id] = p; });
+
+      const codes = profiles.map((p: any) => p.connect_code).filter(Boolean);
+      let cacheMap: Record<string, any> = {};
+      if (codes.length > 0) {
+        const { data: cached } = await supabase.from('slippi_cache').select('*').in('connect_code', codes);
+        if (cached) cached.forEach((c: any) => { cacheMap[c.connect_code] = c; });
+      }
+
+      const results = presenceRows
+        .filter((r: any) => profileMap[r.user_id])
+        .map((r: any) => {
+          const p = profileMap[r.user_id];
+          const c = cacheMap[p.connect_code] || {};
+          const NO_GEO_PENALTY = 9999;
+          let distance = NO_GEO_PENALTY;
+          if (myLat != null && myLng != null && p.latitude != null && p.longitude != null) {
+            const cosLat = Math.cos((myLat * Math.PI) / 180);
+            distance = Math.pow(p.latitude - myLat, 2) + Math.pow((p.longitude - myLng) * cosLat, 2);
+          }
+          return {
+            userId: p.id,
+            connectCode: p.connect_code,
+            displayName: p.display_name || c.display_name || null,
+            avatarUrl: p.avatar_url || null,
+            rating: c.rating_ordinal ?? null,
+            characterId: c.characters?.[0]?.character ?? null,
+            status: r.status,
+            currentCharacter: r.current_character,
+            opponentCode: r.opponent_code,
+            playingSince: r.playing_since,
+            updatedAt: r.updated_at,
+            distance,
+          };
+        });
+
+      results.sort((a: any, b: any) => {
+        const statusOrder = (s: string) => s === 'in-game' ? 0 : 1;
+        const sd = statusOrder(a.status) - statusOrder(b.status);
+        if (sd !== 0) return sd;
+        if (a.distance !== b.distance) return a.distance - b.distance;
+        return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+      });
+
+      return results.slice(0, 10);
+    } catch (e) { console.error('discover:list', e); return []; }
+  });
+
   onPresenceSync((users) => { sendToRenderer('presence:updated', users); });
   onLocalStatusChange((info) => { sendToRenderer('presence:localStatus', info); });
 
@@ -606,6 +694,17 @@ export function registerIpcHandlers(
         characters: (r?.characters ?? []).filter((c: any) => c?.character != null).map((c: any) => ({ character: c.character, gameCount: c.gameCount })),
       };
     } catch (e: any) { console.error('slippi:lookup', e); return null; }
+  });
+
+  ipcMain.handle('config:broadcast', async () => {
+    try {
+      const { data } = await supabase
+        .from('app_config')
+        .select('value')
+        .eq('key', 'broadcast_message')
+        .single();
+      return data?.value || null;
+    } catch { return null; }
   });
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));

@@ -40,6 +40,8 @@ const api = {
   onIdentityMismatch: (cb: (info: any) => void): Unsubscribe => onEvent('identity:mismatch', cb),
   onCodeClaimed: (cb: (info: any) => void): Unsubscribe => onEvent('identity:codeClaimed', cb),
 
+  discoverPlayers: () => ipcRenderer.invoke('discover:list'),
+
   getPlayerCount: () => ipcRenderer.invoke('stats:playerCount'),
   getPresenceStats: () => ipcRenderer.invoke('stats:presence'),
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
@@ -53,6 +55,8 @@ const api = {
   browseDirectory: () => ipcRenderer.invoke('settings:browse'),
   isSetupComplete: () => ipcRenderer.invoke('setup:isComplete'),
   refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),
+
+  getBroadcast: () => ipcRenderer.invoke('config:broadcast') as Promise<string | null>,
 
   lookupSlippiPlayer: (connectCode: string) => ipcRenderer.invoke('slippi:lookup', connectCode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

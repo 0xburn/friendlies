@@ -5,6 +5,7 @@ import { Setup } from './pages/Setup';
 import { Friends } from './pages/Friends';
 import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
+import { Discover } from './pages/Discover';
 import { UpdateBanner } from './components/UpdateBanner';
 
 type BootState =
@@ -435,6 +436,7 @@ export function App() {
       <Routes>
         <Route element={<Navigation />}>
           <Route path="/" element={<Friends />} />
+          <Route path="/discover" element={<Discover />} />
           <Route path="/opponents" element={<Opponents />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

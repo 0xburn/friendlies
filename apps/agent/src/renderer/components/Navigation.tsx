@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 const links = [
   { to: '/', label: 'Friends', icon: '♟' },
+  { to: '/discover', label: 'Discover', icon: '🔍' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
@@ -13,9 +14,12 @@ const SHARE_BLURB =
 export function Navigation() {
   const [copied, setCopied] = useState(false);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
+  const [broadcast, setBroadcast] = useState<string | null>(null);
+  const [broadcastDismissed, setBroadcastDismissed] = useState(false);
 
   useEffect(() => {
     window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
+    window.api.getBroadcast().then((msg: string | null) => setBroadcast(msg));
     const interval = setInterval(() => {
       window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     }, 300_000);
@@ -69,7 +73,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.45</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.46</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">
@@ -81,6 +85,18 @@ export function Navigation() {
           )}
         </div>
         <div className="px-6 pb-6">
+          {broadcast && !broadcastDismissed && (
+            <div className="mb-4 rounded-xl border border-[#21BA45]/20 bg-[#21BA45]/5 px-4 py-3 flex items-center gap-3">
+              <span className="text-sm">📢</span>
+              <p className="flex-1 text-sm text-[#21BA45]/90">{broadcast}</p>
+              <button
+                onClick={() => setBroadcastDismissed(true)}
+                className="shrink-0 text-[#21BA45]/40 hover:text-[#21BA45] text-lg leading-none transition-colors"
+              >
+                ×
+              </button>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

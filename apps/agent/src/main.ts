@@ -286,7 +286,7 @@ async function refreshAgentState(): Promise<void> {
       }
 
       const appVersion = app.getVersion();
-      const { error: syncErr } = await supabase.from('profiles').update({
+      const profileUpdate: Record<string, any> = {
         connect_code: identity.connectCode,
         slippi_uid: identity.uid,
         display_name: identity.displayName || null,
@@ -294,7 +294,20 @@ async function refreshAgentState(): Promise<void> {
         verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         app_version: appVersion,
-      }).eq('id', user.id);
+      };
+
+      try {
+        const geoRes = await fetch('http://ip-api.com/json/?fields=lat,lon');
+        if (geoRes.ok) {
+          const geo = await geoRes.json();
+          if (typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+            profileUpdate.latitude = geo.lat;
+            profileUpdate.longitude = geo.lon;
+          }
+        }
+      } catch (e) { console.warn('[main] geolocation lookup failed:', e); }
+
+      const { error: syncErr } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
       if (syncErr) console.error('[main] profile sync failed:', syncErr.message);
       else console.log('[main] profile synced:', identity.connectCode);
 
