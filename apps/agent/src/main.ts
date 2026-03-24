@@ -23,6 +23,7 @@ let mainWindow: BrowserWindow | null = null;
 let friendPollTimer: ReturnType<typeof setInterval> | null = null;
 let serviceStartedAt: string | null = null;
 let firstPollDone = false;
+let refreshLock = false;
 const previousFriendStatuses = new Map<string, string>();
 const knownIncomingRequestIds = new Set<string>();
 const knownPlayInviteIds = new Set<string>();
@@ -254,6 +255,8 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
 }
 
 async function refreshAgentState(): Promise<void> {
+  if (refreshLock) return;
+  refreshLock = true;
   try {
     const authed = await isAuthenticated();
     const user = await getCurrentUser();
@@ -292,7 +295,7 @@ async function refreshAgentState(): Promise<void> {
       await stopAgentServices();
     }
     updateTrayStatus(getCurrentStatus());
-  } catch (e) { console.error('refreshAgentState', e); }
+  } catch (e) { console.error('refreshAgentState', e); } finally { refreshLock = false; }
 }
 
 async function handleDeepLink(url: string): Promise<void> {

@@ -336,6 +336,11 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           clearTimeout(t);
           reject(new Error(`presence subscribe ${status}${err ? ': ' + err : ''}`));
+        } else if (status === 'CLOSED' && subscribed) {
+          console.warn('[presence] Channel closed after SUBSCRIBED — will retry');
+          subscribed = false;
+          presenceStats.realtimeConnected = false;
+          presenceStats.lastError = 'channel closed unexpectedly';
         }
       });
     });
