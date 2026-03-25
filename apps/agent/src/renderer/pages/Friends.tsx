@@ -375,6 +375,7 @@ export function Friends() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const isDirectConnectUser = myIdentity?.connectCode === 'SMOK#1' || myIdentity?.connectCode === 'BF#0';
   const visibleSentInvites = sentInvites.filter((inv) => !inv.myOpened);
   const visiblePlayInvites = playInvites.filter((inv) => !inv.myOpened);
   const hasActiveInvites = sentInvites.length > 0 || playInvites.length > 0;
@@ -791,14 +792,16 @@ export function Friends() {
                   {inviting === f.connectCode ? '...' : 'Invite'}
                 </button>
               )}
-              <button
-                onClick={(e) => { e.stopPropagation(); handleDirectConnect(f.connectCode); }}
-                disabled={dcStarting}
-                className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-purple-500/10 px-2.5 py-1.5 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 transition-all"
-                title={`Direct connect to ${f.connectCode}`}
-              >
-                DC
-              </button>
+              {isDirectConnectUser && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDirectConnect(f.connectCode); }}
+                  disabled={dcStarting}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-purple-500/10 px-2.5 py-1.5 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 transition-all"
+                  title={`Direct connect to ${f.connectCode}`}
+                >
+                  DC
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
                 disabled={removing === f.id}
