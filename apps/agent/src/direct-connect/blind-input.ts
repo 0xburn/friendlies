@@ -248,9 +248,20 @@ export async function executeFullSequence(
         await sleep(FRAME_MS);
         break;
 
-      case 'wait':
-        await sleep(step.ms);
+      case 'wait': {
+        // During long waits, periodically re-flush neutral state so Dolphin
+        // doesn't revert to default 0,0 stick position (which spams menus).
+        let remaining = step.ms;
+        while (remaining > 0) {
+          const chunk = Math.min(remaining, 100);
+          await sleep(chunk);
+          remaining -= chunk;
+          if (remaining > 0 && controller.isConnected()) {
+            controller.flush();
+          }
+        }
         break;
+      }
     }
   }
 

@@ -2,21 +2,21 @@
  * DirectConnectService — full automated direct connect.
  *
  * One button click does everything:
- *   1. Configure Dolphin INIs + FIFO (if needed)
- *   2. Kill existing Dolphin (to ensure fresh config)
- *   3. Launch Dolphin with Melee
- *   4. Connect virtual controller pipe
- *   5. Navigate menus blindly: mode select → Direct → CSS → code entry
- *   6. Type the connect code and submit
+ *   1. Copy Dolphin User dir to a temp location
+ *   2. Configure pipe controller in the TEMP copy (real config never touched)
+ *   3. Kill existing Dolphin, launch with `-u tempDir`
+ *   4. Connect virtual controller pipe, navigate menus, type code
+ *   5. Cleanup: disconnect pipe, delete temp dir
+ *
+ * The user's real GCPadNew.ini is never modified. When Dolphin is next launched
+ * normally (without our temp dir), it reads the original keyboard config.
  */
 
 import { EventEmitter } from 'events';
 import {
-  backupControllerConfig,
   setupDolphinForDirectConnect,
-  isDolphinConfigured,
-  ensurePipeFifo,
-  stabilizeGcpadRestore,
+  cleanupTempUserDir,
+  getTempUserDir,
 } from './dolphin-config';
 import { isDolphinRunning, killDolphin, launchDolphin } from './dolphin-launcher';
 import { PipeController } from './pipe-controller';
@@ -57,37 +57,31 @@ export class DirectConnectService extends EventEmitter {
     const code = connectCode.toUpperCase().trim();
 
     try {
-      // Always snapshot restore payload first. If we skip this when already on pipe,
-      // savedGCPadContents stays empty and "restore" is a no-op or wrong.
-      backupControllerConfig();
+      // Step 1: Create temp dir with pipe config (real config untouched)
+      this.setStatus('configuring', 'Preparing temp Dolphin config...');
+      const tempDir = setupDolphinForDirectConnect();
 
-      // Step 1: Ensure Dolphin is configured for pipe input
-      const alreadyConfigured = isDolphinConfigured();
-      if (!alreadyConfigured) {
-        this.setStatus('configuring', 'Configuring Dolphin for virtual controller...');
-        setupDolphinForDirectConnect();
-      } else {
-        ensurePipeFifo();
-      }
-
-      // Step 2: Kill existing Dolphin so it picks up fresh config
+      // Step 2: Kill existing Dolphin so it picks up the temp config
       if (await isDolphinRunning()) {
         this.setStatus('launching', 'Restarting Dolphin...');
         await killDolphin();
-        // Brief pause after kill before relaunch
         await sleep(1000);
       }
 
-      // Step 3: Launch Dolphin with Melee
+      // Step 3: Launch Dolphin with the temp user dir
       this.setStatus('launching', 'Launching Dolphin with Melee...');
-      launchDolphin();
+      launchDolphin(tempDir);
 
-      // Step 4: Connect the pipe (blocks until Dolphin opens the FIFO)
+      // Step 4: Connect the pipe
       this.setStatus('connecting_pipe', 'Waiting for Dolphin to start...');
       this.controller = new PipeController();
       await this.controller.connect();
 
-      // Step 5: Execute the full blind navigation + code entry
+      // Immediately set neutral so Dolphin doesn't read default 0,0 as a held direction
+      this.controller.releaseAll();
+      this.controller.flush();
+
+      // Step 5: Blind navigation + code entry
       this.setStatus('navigating_menus', 'Navigating menus...', code);
 
       await executeFullSequence(code, this.controller, (phase) => {
@@ -110,12 +104,11 @@ export class DirectConnectService extends EventEmitter {
         }
       });
 
-      // Step 6: Done — code submitted, restore user's controller config
+      // Step 6: Done — disconnect pipe, clean temp dir
       this.setStatus('waiting_for_match', `Code entered! Searching for ${code}...`, code);
-      console.log('[direct-connect] Full sequence complete, restoring controller config');
-
+      console.log('[direct-connect] Full sequence complete');
       this.cleanupPipe();
-      await stabilizeGcpadRestore();
+      cleanupTempUserDir();
 
       await sleep(2000);
       this.setStatus('connected', `Code submitted for ${code}`, code);
@@ -123,7 +116,7 @@ export class DirectConnectService extends EventEmitter {
     } catch (err: any) {
       this.setStatus('error', `Failed: ${err.message}`);
       this.cleanupPipe();
-      await stabilizeGcpadRestore();
+      cleanupTempUserDir();
       throw err;
     } finally {
       this.active = false;
@@ -132,7 +125,7 @@ export class DirectConnectService extends EventEmitter {
 
   stop(): void {
     this.cleanupPipe();
-    void stabilizeGcpadRestore();
+    cleanupTempUserDir();
     this.active = false;
     if (this.currentStatus !== 'error' && this.currentStatus !== 'connected'
         && this.currentStatus !== 'waiting_for_match') {

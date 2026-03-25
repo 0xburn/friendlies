@@ -130,14 +130,14 @@ export async function killDolphin(): Promise<void> {
   console.log('[dolphin-launcher] Dolphin force-killed');
 }
 
-export function launchDolphin(): void {
+export function launchDolphin(overrideUserDir?: string): void {
   const exePath = getDolphinExePath();
   if (!exePath) throw new Error('Cannot find Slippi Dolphin executable');
 
   const isoPath = getMeleeIsoPath();
   if (!isoPath) throw new Error('Cannot find Melee ISO (check Dolphin.ini LastFilename)');
 
-  const userDir = getDolphinUserDir();
+  const userDir = overrideUserDir ?? getDolphinUserDir();
 
   const args = ['-e', isoPath];
   if (userDir) {
