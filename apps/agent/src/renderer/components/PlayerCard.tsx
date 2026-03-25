@@ -115,7 +115,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </svg>
         )}
       </div>
-      {expanded && <PlayerStatsPanel connectCode={player.connectCode} />}
+      {expanded && <PlayerStatsPanel connectCode={player.connectCode} topCharacters={player.topCharacters} />}
     </div>
   );
 }

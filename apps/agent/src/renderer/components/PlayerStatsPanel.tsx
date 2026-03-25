@@ -13,7 +13,10 @@ interface SlippiStats {
   characters: Array<{ character: number; gameCount: number }>;
 }
 
-export function PlayerStatsPanel({ connectCode }: { connectCode: string }) {
+export function PlayerStatsPanel({ connectCode, topCharacters }: {
+  connectCode: string;
+  topCharacters?: { characterId: number; gameCount: number }[];
+}) {
   const [stats, setStats] = useState<SlippiStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -57,7 +60,9 @@ export function PlayerStatsPanel({ connectCode }: { connectCode: string }) {
     ? ((stats.rankedWins / (stats.rankedWins + stats.rankedLosses)) * 100).toFixed(1)
     : null;
 
-  const topChars = [...stats.characters].sort((a, b) => b.gameCount - a.gameCount).slice(0, 3);
+  const topChars = topCharacters && topCharacters.length > 0
+    ? topCharacters.slice(0, 3).map((tc) => ({ character: tc.characterId, gameCount: tc.gameCount }))
+    : [...stats.characters].sort((a, b) => b.gameCount - a.gameCount).slice(0, 3);
 
   return (
     <div className="border-t border-[#2a2a2a] bg-[#0e0e0e] px-4 py-3 space-y-3 rounded-b-xl">
