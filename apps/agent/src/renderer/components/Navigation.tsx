@@ -11,20 +11,38 @@ const links = [
 const SHARE_BLURB =
   'check out friendlies, a friends list for melee by Lucky 7s! see who\'s online, manage your friend list, and find new practice partners!\nhttps://luckystats.gg/friendlies';
 
+const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
+
 export function Navigation() {
   const [copied, setCopied] = useState(false);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [broadcast, setBroadcast] = useState<string | null>(null);
   const [broadcastDismissed, setBroadcastDismissed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [livePresence, setLivePresence] = useState<{ online: number; inGame: number } | null>(null);
 
   useEffect(() => {
     window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     window.api.getBroadcast().then((msg: string | null) => setBroadcast(msg));
+    window.api.getIdentity().then((id: any) => {
+      if (id?.connectCode && ADMIN_CODES.includes(id.connectCode)) {
+        setIsAdmin(true);
+        window.api.getLivePresence().then(setLivePresence);
+      }
+    });
     const interval = setInterval(() => {
       window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     }, 300_000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const poll = setInterval(() => {
+      window.api.getLivePresence().then(setLivePresence);
+    }, 30_000);
+    return () => clearInterval(poll);
+  }, [isAdmin]);
 
   async function handleShare() {
     try {
@@ -73,16 +91,30 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.67</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.68</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">
-          {playerCount != null && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 no-drag">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] animate-pulse" />
-              <span className="text-[10px] text-gray-500">{playerCount} players on friendlies</span>
-            </div>
-          )}
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 no-drag">
+            {isAdmin && livePresence && (
+              <>
+                <div className="flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                  <span className="text-[10px] text-gray-500">{livePresence.online} online</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                  <span className="text-[10px] text-gray-500">{livePresence.inGame} in-game</span>
+                </div>
+              </>
+            )}
+            {playerCount != null && (
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] animate-pulse" />
+                <span className="text-[10px] text-gray-500">{playerCount} players on friendlies</span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="px-6 pb-6">
           {broadcast && !broadcastDismissed && (

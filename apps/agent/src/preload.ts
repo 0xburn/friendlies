@@ -46,6 +46,7 @@ const api = {
   discoverPlayers: () => ipcRenderer.invoke('discover:list'),
 
   getPlayerCount: () => ipcRenderer.invoke('stats:playerCount'),
+  getLivePresence: () => ipcRenderer.invoke('stats:livePresence') as Promise<{ online: number; inGame: number }>,
   getPresenceStats: () => ipcRenderer.invoke('stats:presence'),
   getOnlineUsers: () => ipcRenderer.invoke('presence:online'),
   getLocalStatus: () => ipcRenderer.invoke('presence:localStatus'),

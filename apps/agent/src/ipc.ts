@@ -429,7 +429,7 @@ export function registerIpcHandlers(
       const cutoff = new Date(Date.now() - INVITE_COOLDOWN_MS).toISOString();
       const { data } = await supabase
         .from('play_invites')
-        .select('id, sender_id, created_at, status')
+        .select('id, sender_id, created_at, status, receiver_opened')
         .eq('receiver_id', user.id)
         .gte('created_at', cutoff)
         .order('created_at', { ascending: false });
@@ -481,8 +481,28 @@ export function registerIpcHandlers(
       const user = await getCurrentUser();
       if (!user) return { error: 'Not authenticated' };
 
-      await supabase.from('play_invites').delete().eq('id', inviteId);
-      await logEvent(user.id, 'invite_opened_melee', { invite_id: inviteId });
+      const { data: invite } = await supabase
+        .from('play_invites')
+        .select('sender_id, receiver_id, sender_opened, receiver_opened')
+        .eq('id', inviteId)
+        .single();
+      if (!invite) return { error: 'Invite not found' };
+
+      const isSender = invite.sender_id === user.id;
+      const flagCol = isSender ? 'sender_opened' : 'receiver_opened';
+      const otherOpened = isSender ? invite.receiver_opened : invite.sender_opened;
+
+      if (otherOpened) {
+        await supabase.from('play_invites').delete().eq('id', inviteId);
+        await logEvent(user.id, 'invite_both_opened', { invite_id: inviteId });
+      } else {
+        await supabase
+          .from('play_invites')
+          .update({ [flagCol]: true })
+          .eq('id', inviteId);
+        await logEvent(user.id, 'invite_opened_melee', { invite_id: inviteId });
+      }
+
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -495,7 +515,7 @@ export function registerIpcHandlers(
       const cutoff = new Date(Date.now() - INVITE_COOLDOWN_MS).toISOString();
       const { data } = await supabase
         .from('play_invites')
-        .select('id, receiver_id, created_at, status')
+        .select('id, receiver_id, created_at, status, sender_opened')
         .eq('sender_id', user.id)
         .gte('created_at', cutoff)
         .order('created_at', { ascending: false });
@@ -584,6 +604,20 @@ export function registerIpcHandlers(
       if (error) return 0;
       return count ?? 0;
     } catch { return 0; }
+  });
+
+  ipcMain.handle('stats:livePresence', async () => {
+    try {
+      const { count: onlineCount } = await supabase
+        .from('presence_log')
+        .select('*, profiles!inner(id)', { count: 'exact', head: true })
+        .eq('status', 'online');
+      const { count: inGameCount } = await supabase
+        .from('presence_log')
+        .select('*, profiles!inner(id)', { count: 'exact', head: true })
+        .eq('status', 'in-game');
+      return { online: onlineCount ?? 0, inGame: inGameCount ?? 0 };
+    } catch { return { online: 0, inGame: 0 }; }
   });
 
   ipcMain.handle('presence:online', () => getOnlineUsers());

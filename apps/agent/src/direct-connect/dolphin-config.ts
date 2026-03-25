@@ -215,46 +215,14 @@ function readUserKeyboardBindings(): Map<string, string> {
 }
 
 /**
- * Build a combined expression: pipe input OR user's original input.
- *
- * Properly handles complex user bindings (e.g. Boxx digital-to-analog mappings)
- * by converting relative control references to absolute device-qualified ones,
- * preserving expression operators (&, |, !, +, *) outside of backtick quotes.
+ * Build a combined expression: pipe input OR keyboard input.
+ * Both sides are backtick-quoted for the expression parser.
+ * Strips any existing backticks from the keyboard binding to avoid nesting.
  */
 function combinedExpr(pipeBinding: string, kbDevice: string, kbBinding: string): string {
-  if (!kbBinding || !kbDevice) return pipeBinding;
-  const absBinding = toAbsoluteBinding(kbDevice, kbBinding);
-  return `${pipeBinding} | (${absBinding})`;
-}
-
-/**
- * Convert relative control references in a Dolphin expression to absolute ones
- * by prefixing each reference with the device name.
- *
- * Handles three cases:
- *   1. Backtick-quoted refs: `Button 4` → `Device:Button 4`
- *   2. Simple bare name (no operators): A → `Device:A`
- *   3. Bare names with operators: Button 4 & !Button 5 → `Device:Button 4` & !`Device:Button 5`
- */
-function toAbsoluteBinding(device: string, binding: string): string {
-  if (binding.includes('`')) {
-    return binding.replace(/`([^`]+)`/g, (_m, ref: string) => {
-      if (ref.includes('/') && ref.includes(':')) return `\`${ref}\``;
-      return `\`${device}:${ref}\``;
-    });
-  }
-
-  if (!/[|&!+*()]/.test(binding)) {
-    return `\`${device}:${binding}\``;
-  }
-
-  // Expression with operators but no backticks — qualify each control token.
-  // Split on operators/parens, qualify non-operator/non-numeric tokens.
-  return binding.replace(/([^|&!+*(),\s]+(?:\s+[^|&!+*(),\s]+)*)/g, (token) => {
-    const t = token.trim();
-    if (!t || /^[\d.]+$/.test(t)) return token;
-    return `\`${device}:${t}\``;
-  });
+  if (!kbBinding) return pipeBinding;
+  const cleanKb = kbBinding.replace(/`/g, '');
+  return `\`${pipeBinding}\` | \`${kbDevice}:${cleanKb}\``;
 }
 
 function configureGCPadInDir(userDir: string): void {
@@ -271,7 +239,7 @@ function configureGCPadInDir(userDir: string): void {
   const kb = (key: string) => userBindings.get(key) ?? '';
 
   const section = `GCPad${BOT_PORT}`;
-  if (!sections.has(section)) sections.set(section, new Map());
+  sections.set(section, new Map());
 
   const s = sections.get(section)!;
   s.set('Device', `Pipe/0/${PIPE_NAME}`);
@@ -284,19 +252,19 @@ function configureGCPadInDir(userDir: string): void {
   s.set('Buttons/L', combinedExpr('Button L', kbDevice, kb('Buttons/L')));
   s.set('Buttons/R', combinedExpr('Button R', kbDevice, kb('Buttons/R')));
   s.set('Buttons/Start', combinedExpr('Button START', kbDevice, kb('Buttons/Start')));
-  if (!s.has('Buttons/Threshold')) s.set('Buttons/Threshold', '50');
+  s.set('Buttons/Threshold', '50');
 
   s.set('Main Stick/Up', combinedExpr('Axis MAIN Y +', kbDevice, kb('Main Stick/Up')));
   s.set('Main Stick/Down', combinedExpr('Axis MAIN Y -', kbDevice, kb('Main Stick/Down')));
   s.set('Main Stick/Left', combinedExpr('Axis MAIN X -', kbDevice, kb('Main Stick/Left')));
   s.set('Main Stick/Right', combinedExpr('Axis MAIN X +', kbDevice, kb('Main Stick/Right')));
-  if (!s.has('Main Stick/Radius')) s.set('Main Stick/Radius', '100');
+  s.set('Main Stick/Radius', '100');
 
   s.set('C-Stick/Up', combinedExpr('Axis C Y +', kbDevice, kb('C-Stick/Up')));
   s.set('C-Stick/Down', combinedExpr('Axis C Y -', kbDevice, kb('C-Stick/Down')));
   s.set('C-Stick/Left', combinedExpr('Axis C X -', kbDevice, kb('C-Stick/Left')));
   s.set('C-Stick/Right', combinedExpr('Axis C X +', kbDevice, kb('C-Stick/Right')));
-  if (!s.has('C-Stick/Radius')) s.set('C-Stick/Radius', '100');
+  s.set('C-Stick/Radius', '100');
 
   s.set('D-Pad/Up', combinedExpr('Button D_UP', kbDevice, kb('D-Pad/Up')));
   s.set('D-Pad/Down', combinedExpr('Button D_DOWN', kbDevice, kb('D-Pad/Down')));
@@ -307,7 +275,7 @@ function configureGCPadInDir(userDir: string): void {
   s.set('Triggers/R', combinedExpr('Button R', kbDevice, kb('Triggers/R')));
   s.set('Triggers/L-Analog', combinedExpr('Axis L +', kbDevice, kb('Triggers/L-Analog')));
   s.set('Triggers/R-Analog', combinedExpr('Axis R +', kbDevice, kb('Triggers/R-Analog')));
-  if (!s.has('Triggers/Threshold')) s.set('Triggers/Threshold', '90');
+  s.set('Triggers/Threshold', '90');
 
   fs.writeFileSync(iniPath, writeIni(sections));
   console.log(`[direct-connect] Configured [${section}] → Pipe + keyboard combined in temp dir`);

@@ -56,8 +56,8 @@ export function Friends() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [inviteSent, setInviteSent] = useState<Record<string, string | true>>({});
   const [inviting, setInviting] = useState<string | null>(null);
-  const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string; status: string }[]>([]);
-  const [sentInvites, setSentInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string; status: string }[]>([]);
+  const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string; status: string; myOpened?: boolean }[]>([]);
+  const [sentInvites, setSentInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string; status: string; myOpened?: boolean }[]>([]);
   const [acceptingInvite, setAcceptingInvite] = useState<string | null>(null);
   const [dcStatus, setDcStatus] = useState<{ status: string; message: string; connectCode?: string } | null>(null);
   const [dcStarting, setDcStarting] = useState(false);
@@ -180,6 +180,7 @@ export function Friends() {
         discordUsername: d.discordUsername,
         created_at: d.created_at,
         status: d.status || 'pending',
+        myOpened: !!d.receiver_opened,
       }));
       setPlayInvites(invites);
     } catch {}
@@ -195,6 +196,7 @@ export function Friends() {
         discordUsername: d.discordUsername,
         created_at: d.created_at,
         status: d.status || 'pending',
+        myOpened: !!d.sender_opened,
       }));
       setSentInvites(invites);
     } catch {}
@@ -374,6 +376,8 @@ export function Friends() {
   }
 
   const isDirectConnectUser = myIdentity?.connectCode === 'SMOK#1' || myIdentity?.connectCode === 'BF#0';
+  const visibleSentInvites = sentInvites.filter((inv) => !inv.myOpened);
+  const visiblePlayInvites = playInvites.filter((inv) => !inv.myOpened);
   const hasActiveInvites = isDirectConnectUser && (sentInvites.length > 0 || playInvites.length > 0);
 
   useEffect(() => {
@@ -449,9 +453,9 @@ export function Friends() {
       )}
 
       {/* Active Invites — feature-gated direct connect flow */}
-      {isDirectConnectUser && (sentInvites.length > 0 || playInvites.length > 0) && (
+      {isDirectConnectUser && (visibleSentInvites.length > 0 || visiblePlayInvites.length > 0) && (
         <div className="space-y-2">
-          {sentInvites.map((inv) => (
+          {visibleSentInvites.map((inv) => (
             <div key={`sent-${inv.id}`} className={`rounded-2xl border p-4 ${
               inv.status === 'accepted'
                 ? 'border-[#21BA45]/30 bg-[#21BA45]/5'
@@ -490,7 +494,7 @@ export function Friends() {
               </div>
             </div>
           ))}
-          {playInvites.map((inv) => (
+          {visiblePlayInvites.map((inv) => (
             <div key={`recv-${inv.id}`} className={`rounded-2xl border p-4 ${
               inv.status === 'accepted'
                 ? 'border-[#21BA45]/30 bg-[#21BA45]/5'
