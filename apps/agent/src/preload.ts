@@ -80,6 +80,7 @@ const api = {
   stopDirectConnect: () => ipcRenderer.invoke('directConnect:stop'),
   getDirectConnectStatus: () => ipcRenderer.invoke('directConnect:status') as Promise<{ status: string; active: boolean }>,
   onDirectConnectStatus: (cb: (evt: any) => void): Unsubscribe => onEvent('directConnect:status', cb),
+  onInvitesRefresh: (cb: () => void): Unsubscribe => onEvent('invites:refresh', cb),
 };
 
 export type ElectronAPI = typeof api;

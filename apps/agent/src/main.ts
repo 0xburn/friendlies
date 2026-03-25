@@ -219,6 +219,7 @@ async function pollPlayInvites(userId: string): Promise<void> {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
           mainWindow.focus();
+          sendToRenderer('invites:refresh', {});
         }
       });
     }

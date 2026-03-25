@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { getSlippiUserJsonPaths } from '../config';
 
 // ---------------------------------------------------------------------------
 // Dolphin User directory resolution
@@ -45,32 +46,19 @@ export function getDolphinUserDir(): string | null {
 
 // ---------------------------------------------------------------------------
 // Slippi config directory (where direct-codes.json + user.json live)
+// Uses the same path discovery as identity — finds where user.json actually
+// exists and puts direct-codes.json next to it.
 // ---------------------------------------------------------------------------
 
-function slippiConfigDirCandidates(): string[] {
-  const home = os.homedir();
-  return process.platform === 'win32'
-    ? [
-        path.join(home, 'AppData', 'Roaming', 'com.project-slippi.dolphin', 'Slippi'),
-        path.join(home, 'AppData', 'Roaming', 'Slippi Launcher', 'Slippi'),
-      ]
-    : process.platform === 'darwin'
-      ? [
-          path.join(home, 'Library', 'Application Support', 'com.project-slippi.dolphin', 'Slippi'),
-          path.join(home, 'Library', 'Application Support', 'Slippi Launcher', 'Slippi'),
-        ]
-      : [
-          path.join(home, '.config', 'com.project-slippi.dolphin', 'Slippi'),
-          path.join(home, '.config', 'Slippi Launcher', 'Slippi'),
-          path.join(home, '.config', 'SlippiOnline'),
-        ];
-}
-
 function getSlippiConfigDir(): string | null {
-  for (const dir of slippiConfigDirCandidates()) {
-    if (fs.existsSync(dir)) return dir;
+  for (const jsonPath of getSlippiUserJsonPaths()) {
+    if (fs.existsSync(jsonPath)) {
+      const dir = path.dirname(jsonPath);
+      console.log(`[direct-connect] Slippi config dir resolved via user.json: ${dir}`);
+      return dir;
+    }
   }
-  return slippiConfigDirCandidates()[0] ?? null;
+  return null;
 }
 
 // ---------------------------------------------------------------------------

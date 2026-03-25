@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { PlayerCard } from '../components/PlayerCard';
 import { RankBadge } from '../components/RankBadge';
@@ -62,8 +62,6 @@ export function Friends() {
   const [dcStatus, setDcStatus] = useState<{ status: string; message: string; connectCode?: string } | null>(null);
   const [dcStarting, setDcStarting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<{ id: string; code: string } | null>(null);
-
-  const topRef = useRef<HTMLDivElement>(null);
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [lfg, setLfg] = useState(false);
@@ -134,6 +132,11 @@ export function Friends() {
       }
     });
 
+    const unsubInvRefresh = window.api.onInvitesRefresh(() => {
+      loadPlayInvites();
+      loadSentInvites();
+    });
+
     const dbPoll = setInterval(() => {
       pollFriendStatuses();
       loadFriends();
@@ -141,7 +144,7 @@ export function Friends() {
       loadPlayInvites();
       loadSentInvites();
     }, 30_000);
-    return () => { unsub(); unsubStatus(); unsubDc(); clearInterval(dbPoll); };
+    return () => { unsub(); unsubStatus(); unsubDc(); unsubInvRefresh(); clearInterval(dbPoll); };
   }, []);
 
   async function pollFriendStatuses() {
@@ -309,7 +312,7 @@ export function Friends() {
     } else {
       setInviteSent((prev) => ({ ...prev, [connectCode]: true }));
       await loadSentInvites();
-      topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setInviting(null);
     setTimeout(() => setInviteSent((prev) => {
@@ -391,7 +394,6 @@ export function Friends() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div ref={topRef} />
       {/* Player status card */}
       {myIdentity && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
