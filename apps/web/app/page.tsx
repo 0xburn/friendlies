@@ -75,6 +75,7 @@ export default async function HomePage() {
             playsInline
             aria-label="Friendlies app demo"
           >
+            <source src={`${IMG_PREFIX}/demo.mp4`} type="video/mp4" />
             <source src={`${IMG_PREFIX}/demo.mov`} type="video/quicktime" />
           </video>
         </div>
