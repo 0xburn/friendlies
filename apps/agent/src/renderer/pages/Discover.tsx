@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PlayerCard } from '../components/PlayerCard';
 import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 
@@ -152,9 +152,11 @@ export function Discover() {
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
+  const charFilterRef = useRef(charFilter);
+  charFilterRef.current = charFilter;
 
   async function load(chars?: Set<number>) {
-    const filter = chars ?? charFilter;
+    const filter = chars ?? charFilterRef.current;
     try {
       const ids = filter.size > 0 ? Array.from(filter) : undefined;
       const data = await window.api.discoverPlayers(ids);
