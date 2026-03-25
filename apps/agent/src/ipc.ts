@@ -657,7 +657,10 @@ export function registerIpcHandlers(
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }
   });
 
-  ipcMain.handle('discover:list', async () => {
+  ipcMain.handle('discover:list', async (_e, characterIds?: number[]) => {
+    const filterChars = Array.isArray(characterIds) && characterIds.length > 0
+      ? new Set(characterIds)
+      : null;
     try {
       const user = await getCurrentUser();
       if (!user) return [];
@@ -696,10 +699,19 @@ export function registerIpcHandlers(
         .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region, hide_region, hide_discord_unless_friends, discord_username, discord_id')
         .in('id', candidateIds);
       if (!profiles) return [];
-      const profileMap: Record<string, any> = {};
-      profiles.forEach((p: any) => { profileMap[p.id] = p; });
 
-      const codes = profiles.map((p: any) => p.connect_code).filter(Boolean);
+      const filtered = filterChars
+        ? profiles.filter((p: any) => {
+            const chars: any[] = Array.isArray(p.top_characters) ? p.top_characters : [];
+            return chars.some((tc: any) => filterChars.has(tc.characterId));
+          })
+        : profiles;
+      if (filterChars && filtered.length === 0) return [];
+
+      const profileMap: Record<string, any> = {};
+      filtered.forEach((p: any) => { profileMap[p.id] = p; });
+
+      const codes = filtered.map((p: any) => p.connect_code).filter(Boolean);
       let cacheMap: Record<string, any> = {};
       if (codes.length > 0) {
         const { data: cached } = await supabase.from('slippi_cache').select('*').in('connect_code', codes);

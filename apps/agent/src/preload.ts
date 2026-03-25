@@ -43,7 +43,7 @@ const api = {
   onIdentityMismatch: (cb: (info: any) => void): Unsubscribe => onEvent('identity:mismatch', cb),
   onCodeClaimed: (cb: (info: any) => void): Unsubscribe => onEvent('identity:codeClaimed', cb),
 
-  discoverPlayers: () => ipcRenderer.invoke('discover:list'),
+  discoverPlayers: (characterIds?: number[]) => ipcRenderer.invoke('discover:list', characterIds),
 
   getPlayerCount: () => ipcRenderer.invoke('stats:playerCount'),
   getLivePresence: () => ipcRenderer.invoke('stats:livePresence') as Promise<{ online: number; inGame: number }>,

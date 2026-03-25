@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PlayerCard } from '../components/PlayerCard';
+import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 
 interface DiscoverPlayer {
   userId: string;
@@ -41,16 +42,122 @@ function SkeletonCard() {
   );
 }
 
+const HIDDEN_CHARACTERS = new Set([23]);
+const ALL_CHARACTER_IDS = Object.keys(CHARACTER_MAP).map(Number)
+  .filter((id) => !HIDDEN_CHARACTERS.has(id))
+  .sort((a, b) => CHARACTER_MAP[a].localeCompare(CHARACTER_MAP[b]));
+
+const TOP_CHARACTERS = [2, 20, 9, 19, 15, 12, 0];
+const TOP_SET = new Set(TOP_CHARACTERS);
+const REST_CHARACTERS = ALL_CHARACTER_IDS.filter((id) => !TOP_SET.has(id));
+
+function CharacterFilter({ selected, onToggle, onClear }: {
+  selected: Set<number>;
+  onToggle: (id: number) => void;
+  onClear: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const hasRestSelected = REST_CHARACTERS.some((id) => selected.has(id));
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-gray-400">Filter by character</span>
+        {selected.size > 0 && (
+          <button
+            onClick={onClear}
+            className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Clear ({selected.size})
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {TOP_CHARACTERS.map((id) => {
+          const active = selected.has(id);
+          const imgPath = getCharacterImagePath(id);
+          const name = getCharacterShortName(id);
+          return (
+            <button
+              key={id}
+              onClick={() => onToggle(id)}
+              title={CHARACTER_MAP[id]}
+              className={`
+                relative h-14 w-14 rounded-xl border transition-all flex items-center justify-center
+                ${active
+                  ? 'border-[#21BA45]/60 bg-[#21BA45]/15 ring-1 ring-[#21BA45]/30'
+                  : 'border-[#2a2a2a] bg-[#141414] opacity-60 hover:opacity-90 hover:border-[#3a3a3a]'
+                }
+              `}
+            >
+              {imgPath ? (
+                <img src={imgPath} alt={name} className="h-11 object-contain" loading="lazy" />
+              ) : (
+                <span className="text-xs font-bold text-gray-400">{name.slice(0, 2)}</span>
+              )}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className={`
+            relative h-14 px-3 rounded-xl border transition-all flex items-center justify-center
+            ${expanded || hasRestSelected
+              ? 'border-[#3a3a3a] bg-[#1a1a1a] text-gray-300'
+              : 'border-[#2a2a2a] bg-[#141414] text-gray-500 opacity-60 hover:opacity-90 hover:border-[#3a3a3a]'
+            }
+          `}
+        >
+          <span className="text-xs font-medium">{expanded ? 'Less' : 'More'}</span>
+        </button>
+      </div>
+      {expanded && (
+        <div className="flex flex-wrap gap-1.5">
+          {REST_CHARACTERS.map((id) => {
+            const active = selected.has(id);
+            const imgPath = getCharacterImagePath(id);
+            const name = getCharacterShortName(id);
+            return (
+              <button
+                key={id}
+                onClick={() => onToggle(id)}
+                title={CHARACTER_MAP[id]}
+                className={`
+                  relative h-14 w-14 rounded-xl border transition-all flex items-center justify-center
+                  ${active
+                    ? 'border-[#21BA45]/60 bg-[#21BA45]/15 ring-1 ring-[#21BA45]/30'
+                    : 'border-[#2a2a2a] bg-[#141414] opacity-60 hover:opacity-90 hover:border-[#3a3a3a]'
+                  }
+                `}
+              >
+                {imgPath ? (
+                  <img src={imgPath} alt={name} className="h-11 object-contain" loading="lazy" />
+                ) : (
+                  <span className="text-xs font-bold text-gray-400">{name.slice(0, 2)}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Discover() {
   const [players, setPlayers] = useState<DiscoverPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
 
-  async function load() {
+  async function load(chars?: Set<number>) {
+    const filter = chars ?? charFilter;
     try {
-      const data = await window.api.discoverPlayers();
+      const ids = filter.size > 0 ? Array.from(filter) : undefined;
+      const data = await window.api.discoverPlayers(ids);
       setPlayers(data || []);
     } catch {}
     setLoading(false);
@@ -59,7 +166,7 @@ export function Discover() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30_000);
+    const interval = setInterval(() => load(), 30_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -74,6 +181,23 @@ export function Discover() {
 
   async function handleCopy(code: string) {
     await window.api.copyToClipboard(code);
+  }
+
+  function toggleChar(id: number) {
+    setCharFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setLoading(true);
+      load(next);
+      return next;
+    });
+  }
+
+  function clearFilter() {
+    setCharFilter(new Set());
+    setLoading(true);
+    load(new Set());
   }
 
   const ago = Math.round((Date.now() - lastRefresh) / 1000);
@@ -96,6 +220,12 @@ export function Discover() {
         </button>
       </div>
 
+      <CharacterFilter
+        selected={charFilter}
+        onToggle={toggleChar}
+        onClear={clearFilter}
+      />
+
       <div className="space-y-2">
         {loading && players.length === 0 && (
           <>
@@ -105,10 +235,18 @@ export function Discover() {
           </>
         )}
 
-        {!loading && players.length === 0 && (
+        {!loading && players.length === 0 && charFilter.size === 0 && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
             <p className="text-gray-500 text-sm">
               No players online right now. Check back later!
+            </p>
+          </div>
+        )}
+
+        {!loading && players.length === 0 && charFilter.size > 0 && (
+          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
+            <p className="text-gray-500 text-sm">
+              No players match the selected characters.
             </p>
           </div>
         )}
