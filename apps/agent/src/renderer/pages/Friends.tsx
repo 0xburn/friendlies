@@ -60,6 +60,7 @@ export function Friends() {
   const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string }[]>([]);
   const [dcStatus, setDcStatus] = useState<{ status: string; message: string; connectCode?: string } | null>(null);
   const [dcStarting, setDcStarting] = useState(false);
+  const [dcTestCode, setDcTestCode] = useState('');
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [lfg, setLfg] = useState(false);
@@ -343,14 +344,27 @@ export function Friends() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* TEST: Direct connect to BURN#7 */}
-      <button
-        onClick={() => handleDirectConnect('BURN#7')}
-        disabled={dcStarting}
-        className="w-full rounded-2xl border border-blue-500/30 bg-blue-500/10 px-6 py-4 text-lg font-bold text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-40"
+      {/* Direct connect test */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); if (dcTestCode.trim()) handleDirectConnect(dcTestCode.trim()); }}
+        className="flex gap-2"
       >
-        {dcStarting ? 'Connecting...' : 'Play BURN#7 (test)'}
-      </button>
+        <input
+          type="text"
+          value={dcTestCode}
+          onChange={(e) => setDcTestCode(e.target.value.toUpperCase())}
+          placeholder="MANG#0"
+          disabled={dcStarting}
+          className="flex-1 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-3 text-lg font-mono font-bold tracking-wider text-white placeholder-gray-600 focus:border-blue-500/50 focus:outline-none disabled:opacity-40"
+        />
+        <button
+          type="submit"
+          disabled={dcStarting || !dcTestCode.trim()}
+          className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-6 py-3 text-lg font-bold text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-40 whitespace-nowrap"
+        >
+          {dcStarting ? 'Connecting...' : 'Play'}
+        </button>
+      </form>
 
       {/* Player status card */}
       {myIdentity && (

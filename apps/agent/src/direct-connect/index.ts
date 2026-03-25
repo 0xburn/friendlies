@@ -13,6 +13,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { globalShortcut } from 'electron';
 import {
   setupDolphinForDirectConnect,
   cleanupTempUserDir,
@@ -20,7 +21,7 @@ import {
 } from './dolphin-config';
 import { isDolphinRunning, killDolphin, launchDolphin } from './dolphin-launcher';
 import { PipeController } from './pipe-controller';
-import { executeFullSequence } from './blind-input';
+import { executeCodeEntry } from './blind-input';
 
 export type DirectConnectStatus =
   | 'idle'
@@ -40,10 +41,13 @@ export interface DirectConnectStatusEvent {
   connectCode?: string;
 }
 
+const TRIGGER_KEY = 'F2';
+
 export class DirectConnectService extends EventEmitter {
   private controller: PipeController | null = null;
   private active = false;
   private currentStatus: DirectConnectStatus = 'idle';
+  private cancelTriggerWait: (() => void) | null = null;
 
   isActive(): boolean { return this.active; }
   getStatus(): DirectConnectStatus { return this.currentStatus; }
@@ -81,20 +85,16 @@ export class DirectConnectService extends EventEmitter {
       this.controller.releaseAll();
       this.controller.flush();
 
-      // Step 5: Blind navigation + code entry
-      this.setStatus('navigating_menus', 'Navigating menus...', code);
+      // Step 5: Wait for user to navigate to the code entry screen
+      this.setStatus('navigating_menus', `Navigate to the code entry screen, then press ${TRIGGER_KEY}`, code);
+      await this.waitForTriggerKey();
 
-      await executeFullSequence(code, this.controller, (phase) => {
+      this.controller.releaseAll();
+      this.controller.flush();
+
+      // Step 6: Type the connect code (fast — keyboard grid only)
+      await executeCodeEntry(code, this.controller, (phase) => {
         switch (phase) {
-          case 'boot_wait':
-            this.setStatus('navigating_menus', 'Waiting for Melee to boot...', code);
-            break;
-          case 'mode_select':
-            this.setStatus('navigating_menus', 'Selecting Direct mode...', code);
-            break;
-          case 'css':
-            this.setStatus('navigating_menus', 'Picking character...', code);
-            break;
           case 'code_entry':
             this.setStatus('entering_code', `Typing code ${code}...`, code);
             break;
@@ -104,7 +104,7 @@ export class DirectConnectService extends EventEmitter {
         }
       });
 
-      // Step 6: Done — disconnect pipe, clean temp dir
+      // Step 7: Done — disconnect pipe, clean temp dir
       this.setStatus('waiting_for_match', `Code entered! Searching for ${code}...`, code);
       console.log('[direct-connect] Full sequence complete');
       this.cleanupPipe();
@@ -124,6 +124,10 @@ export class DirectConnectService extends EventEmitter {
   }
 
   stop(): void {
+    if (this.cancelTriggerWait) {
+      this.cancelTriggerWait();
+      this.cancelTriggerWait = null;
+    }
     this.cleanupPipe();
     cleanupTempUserDir();
     this.active = false;
@@ -131,6 +135,28 @@ export class DirectConnectService extends EventEmitter {
         && this.currentStatus !== 'waiting_for_match') {
       this.setStatus('cancelled', 'Direct connect cancelled');
     }
+  }
+
+  private waitForTriggerKey(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.cancelTriggerWait = () => {
+        try { globalShortcut.unregister(TRIGGER_KEY); } catch {}
+        reject(new Error('Direct connect cancelled'));
+      };
+
+      const ok = globalShortcut.register(TRIGGER_KEY, () => {
+        globalShortcut.unregister(TRIGGER_KEY);
+        this.cancelTriggerWait = null;
+        console.log(`[direct-connect] ${TRIGGER_KEY} pressed — starting inputs`);
+        resolve();
+      });
+
+      if (!ok) {
+        console.warn(`[direct-connect] Failed to register ${TRIGGER_KEY}, falling back to 10s delay`);
+        this.cancelTriggerWait = null;
+        setTimeout(resolve, 10_000);
+      }
+    });
   }
 
   private cleanupPipe(): void {

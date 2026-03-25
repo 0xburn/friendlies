@@ -235,7 +235,7 @@ function configureGCPadInDir(userDir: string): void {
     : new Map<string, Map<string, string>>();
 
   const userBindings = readUserKeyboardBindings();
-  const kbDevice = userBindings.get('Device') ?? 'Quartz/0/Keyboard & Mouse';
+  const kbDevice = userBindings.get('Device') ?? '';
   const kb = (key: string) => userBindings.get(key) ?? '';
 
   const section = `GCPad${BOT_PORT}`;
