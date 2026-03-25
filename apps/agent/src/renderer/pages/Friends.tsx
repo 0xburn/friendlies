@@ -62,6 +62,8 @@ export function Friends() {
   const [dcStatus, setDcStatus] = useState<{ status: string; message: string; connectCode?: string } | null>(null);
   const [dcStarting, setDcStarting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<{ id: string; code: string } | null>(null);
+  const [confirmBlock, setConfirmBlock] = useState<{ code: string } | null>(null);
+  const [blocking, setBlocking] = useState<string | null>(null);
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [lfg, setLfg] = useState(false);
@@ -302,6 +304,14 @@ export function Friends() {
     await window.api.declineFriend(requestId);
     await loadIncoming();
     setResponding(null);
+  }
+
+  async function handleBlock(connectCode: string) {
+    setConfirmBlock(null);
+    setBlocking(connectCode);
+    await window.api.blockUser(connectCode);
+    await Promise.all([loadFriends(), loadIncoming()]);
+    setBlocking(null);
   }
 
   async function handleInvite(connectCode: string) {
@@ -682,6 +692,7 @@ export function Friends() {
                   }}
                   showStatus={false}
                   onClick={() => handleCopy(f.connectCode)}
+                  onBlock={() => setConfirmBlock({ code: f.connectCode })}
                 />
               </div>
               <span className="shrink-0 text-[10px] text-yellow-500/60">sent</span>
@@ -724,7 +735,7 @@ export function Friends() {
             </p>
           </div>
         )}
-        {/* Confirmation modal */}
+        {/* Confirmation modal — remove */}
         {confirmRemove && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConfirmRemove(null)}>
             <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-6 w-[320px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -743,6 +754,33 @@ export function Friends() {
                   className="flex-1 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 transition-colors"
                 >
                   Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Confirmation modal — block */}
+        {confirmBlock && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConfirmBlock(null)}>
+            <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-6 w-[320px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <p className="text-sm text-gray-300 text-center">
+                Block <span className="font-mono font-bold text-white">{confirmBlock.code}</span>?
+              </p>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                They won't appear on your Discover page and can't send you requests or invites. You can unblock from Settings.
+              </p>
+              <div className="flex gap-3 mt-5">
+                <button
+                  onClick={() => setConfirmBlock(null)}
+                  className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleBlock(confirmBlock.code)}
+                  className="flex-1 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 transition-colors"
+                >
+                  Block
                 </button>
               </div>
             </div>
@@ -777,6 +815,7 @@ export function Friends() {
                     playingSince: f.playingSince,
                   }}
                   onClick={() => handleCopy(f.connectCode)}
+                  onBlock={() => setConfirmBlock({ code: f.connectCode })}
                 />
               </div>
               {invState === true ? (

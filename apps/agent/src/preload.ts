@@ -28,6 +28,10 @@ const api = {
   declineFriend: (requestId: string) => ipcRenderer.invoke('friends:decline', requestId),
   removeFriend: (friendshipId: string) => ipcRenderer.invoke('friends:remove', friendshipId),
 
+  blockUser: (connectCode: string) => ipcRenderer.invoke('block:add', connectCode),
+  unblockUser: (connectCode: string) => ipcRenderer.invoke('block:remove', connectCode),
+  getBlockedUsers: () => ipcRenderer.invoke('block:list') as Promise<{ connectCode: string; displayName: string | null; avatarUrl: string | null; blockedAt: string }[]>,
+
   sendPlayInvite: (connectCode: string) => ipcRenderer.invoke('invite:send', connectCode),
   getPendingInvites: () => ipcRenderer.invoke('invite:pending'),
   dismissInvite: (inviteId: string) => ipcRenderer.invoke('invite:dismiss', inviteId),

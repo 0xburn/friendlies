@@ -151,6 +151,7 @@ export function Discover() {
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  const [confirmBlock, setConfirmBlock] = useState<string | null>(null);
   const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
   const charFilterRef = useRef(charFilter);
   charFilterRef.current = charFilter;
@@ -183,6 +184,12 @@ export function Discover() {
 
   async function handleCopy(code: string) {
     await window.api.copyToClipboard(code);
+  }
+
+  async function handleBlock(connectCode: string) {
+    setConfirmBlock(null);
+    await window.api.blockUser(connectCode);
+    setPlayers((prev) => prev.filter((p) => p.connectCode !== connectCode));
   }
 
   function toggleChar(id: number) {
@@ -283,6 +290,7 @@ export function Discover() {
                       playingSince: p.playingSince,
                     }}
                     onClick={() => handleCopy(p.connectCode)}
+                    onBlock={() => setConfirmBlock(p.connectCode)}
                   />
                 </div>
                 {isAdded ? (
@@ -301,6 +309,33 @@ export function Discover() {
           );
         })}
       </div>
+
+      {confirmBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConfirmBlock(null)}>
+          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-6 w-[320px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-gray-300 text-center">
+              Block <span className="font-mono font-bold text-white">{confirmBlock}</span>?
+            </p>
+            <p className="text-xs text-gray-500 text-center mt-2">
+              They won't appear on your Discover page and can't send you requests or invites.
+            </p>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setConfirmBlock(null)}
+                className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleBlock(confirmBlock)}
+                className="flex-1 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 transition-colors"
+              >
+                Block
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -160,19 +160,26 @@ export function registerIpcHandlers(
     try {
       const user = await getCurrentUser();
       if (!user) return [];
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('connect_code')
-        .eq('id', user.id)
-        .single();
+      const [{ data: profile }, { data: blockedRows }] = await Promise.all([
+        supabase.from('profiles').select('connect_code').eq('id', user.id).single(),
+        supabase.from('blocked_users').select('blocked_user_id, blocked_connect_code').eq('user_id', user.id),
+      ]);
       if (!profile?.connect_code) return [];
 
-      const { data } = await supabase
+      const blockedIds = new Set((blockedRows || []).map((b: any) => b.blocked_user_id).filter(Boolean));
+      const blockedCodes = new Set((blockedRows || []).map((b: any) => b.blocked_connect_code).filter(Boolean));
+
+      const { data: rawData } = await supabase
         .from('friends')
         .select('id, user_id, friend_connect_code, status, created_at, profiles!friends_user_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, hide_discord_unless_friends)')
         .eq('friend_connect_code', profile.connect_code)
         .eq('status', 'pending');
-      if (!data) return [];
+      if (!rawData) return [];
+
+      const data = rawData.filter((f: any) => {
+        const senderCode = (f.profiles as any)?.connect_code;
+        return !blockedIds.has(f.user_id) && (!senderCode || !blockedCodes.has(senderCode));
+      });
 
       const codes = data.map((f: any) => (f.profiles as any)?.connect_code).filter(Boolean);
       let cacheMap: Record<string, any> = {};
@@ -263,6 +270,14 @@ export function registerIpcHandlers(
       if (self?.connect_code === connectCode) {
         return { error: "You can't add yourself" };
       }
+
+      const { data: blocked } = await supabase
+        .from('blocked_users')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('blocked_connect_code', connectCode)
+        .maybeSingle();
+      if (blocked) return { error: 'This user is blocked' };
 
       const { data: target } = await supabase
         .from('profiles')
@@ -665,20 +680,22 @@ export function registerIpcHandlers(
       const user = await getCurrentUser();
       if (!user) return [];
 
-      const { data: myProfile } = await supabase
-        .from('profiles')
-        .select('latitude, longitude')
-        .eq('id', user.id)
-        .single();
+      const [{ data: myProfile }, { data: friendRows }, { data: blockedRows }] = await Promise.all([
+        supabase.from('profiles').select('latitude, longitude').eq('id', user.id).single(),
+        supabase.from('friends').select('friend_id').eq('user_id', user.id),
+        supabase.from('blocked_users').select('blocked_user_id, blocked_connect_code').eq('user_id', user.id),
+      ]);
       const myLat = myProfile?.latitude ?? null;
       const myLng = myProfile?.longitude ?? null;
 
-      const { data: friendRows } = await supabase
-        .from('friends')
-        .select('friend_id')
-        .eq('user_id', user.id);
       const friendIds = new Set(
         (friendRows || []).map((f: any) => f.friend_id).filter(Boolean),
+      );
+      const blockedIds = new Set(
+        (blockedRows || []).map((b: any) => b.blocked_user_id).filter(Boolean),
+      );
+      const blockedCodes = new Set(
+        (blockedRows || []).map((b: any) => b.blocked_connect_code).filter(Boolean),
       );
 
       const cutoff = new Date(Date.now() - PRESENCE_STALE_THRESHOLD).toISOString();
@@ -691,7 +708,7 @@ export function registerIpcHandlers(
 
       const candidateIds = presenceRows
         .map((r: any) => r.user_id)
-        .filter((id: string) => id !== user.id && !friendIds.has(id));
+        .filter((id: string) => id !== user.id && !friendIds.has(id) && !blockedIds.has(id));
       if (candidateIds.length === 0) return [];
 
       const { data: profiles } = await supabase
@@ -700,12 +717,13 @@ export function registerIpcHandlers(
         .in('id', candidateIds);
       if (!profiles) return [];
 
+      const notBlocked = profiles.filter((p: any) => !blockedCodes.has(p.connect_code));
       const filtered = filterChars
-        ? profiles.filter((p: any) => {
+        ? notBlocked.filter((p: any) => {
             const chars: any[] = Array.isArray(p.top_characters) ? p.top_characters : [];
             return chars.some((tc: any) => filterChars.has(tc.characterId));
           })
-        : profiles;
+        : notBlocked;
       if (filterChars && filtered.length === 0) return [];
 
       const profileMap: Record<string, any> = {};
@@ -822,6 +840,91 @@ export function registerIpcHandlers(
       if (error) return { error: error.message };
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
+  });
+
+  // --- Block / unblock ---
+
+  ipcMain.handle('block:add', async (_e, connectCode: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+
+      const { data: self } = await supabase
+        .from('profiles')
+        .select('connect_code')
+        .eq('id', user.id)
+        .single();
+      if (self?.connect_code === connectCode) return { error: "You can't block yourself" };
+
+      const { data: target } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('connect_code', connectCode)
+        .maybeSingle();
+
+      const { error } = await supabase.from('blocked_users').upsert({
+        user_id: user.id,
+        blocked_user_id: target?.id ?? null,
+        blocked_connect_code: connectCode,
+      }, { onConflict: 'user_id,blocked_connect_code' });
+      if (error) return { error: error.message };
+
+      // Remove any existing friendship in both directions
+      const myCode = self?.connect_code || '';
+      await supabase.from('friends').delete().eq('user_id', user.id).eq('friend_connect_code', connectCode);
+      if (target?.id) {
+        await supabase.from('friends').delete().eq('user_id', target.id).eq('friend_connect_code', myCode);
+      }
+
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('block:remove', async (_e, connectCode: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+      const { error } = await supabase
+        .from('blocked_users')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('blocked_connect_code', connectCode);
+      if (error) return { error: error.message };
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('block:list', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      const { data } = await supabase
+        .from('blocked_users')
+        .select('blocked_connect_code, blocked_user_id, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (!data) return [];
+
+      const userIds = data.map((b: any) => b.blocked_user_id).filter(Boolean);
+      let profileMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, connect_code, display_name, avatar_url')
+          .in('id', userIds);
+        if (profiles) profiles.forEach((p: any) => { profileMap[p.id] = p; });
+      }
+
+      return data.map((b: any) => {
+        const p = profileMap[b.blocked_user_id] || {};
+        return {
+          connectCode: b.blocked_connect_code,
+          displayName: p.display_name || null,
+          avatarUrl: p.avatar_url || null,
+          blockedAt: b.created_at,
+        };
+      });
+    } catch (e) { console.error('block:list', e); return []; }
   });
 
   ipcMain.handle('auth:checkBlacklist', async () => {

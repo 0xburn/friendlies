@@ -156,16 +156,18 @@ async function pollIncomingFriendRequests(userId: string, suppressNotifs = false
   try {
     if (!getSettings().showNotifications) return;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('connect_code')
-      .eq('id', userId)
-      .single();
+    const [{ data: profile }, { data: blockedRows }] = await Promise.all([
+      supabase.from('profiles').select('connect_code').eq('id', userId).single(),
+      supabase.from('blocked_users').select('blocked_user_id, blocked_connect_code').eq('user_id', userId),
+    ]);
     if (!profile?.connect_code) return;
+
+    const blockedIds = new Set((blockedRows || []).map((b: any) => b.blocked_user_id).filter(Boolean));
+    const blockedCodes = new Set((blockedRows || []).map((b: any) => b.blocked_connect_code).filter(Boolean));
 
     const { data: incoming } = await supabase
       .from('friends')
-      .select('id, profiles!friends_user_id_fkey(connect_code)')
+      .select('id, user_id, profiles!friends_user_id_fkey(connect_code)')
       .eq('friend_connect_code', profile.connect_code)
       .eq('status', 'pending');
     if (!incoming) return;
@@ -176,6 +178,7 @@ async function pollIncomingFriendRequests(userId: string, suppressNotifs = false
       if (suppressNotifs) continue;
       const fromCode = (req as any).profiles?.connect_code;
       if (!fromCode) continue;
+      if (blockedIds.has((req as any).user_id) || blockedCodes.has(fromCode)) continue;
       showFriendRequestNotification(fromCode, () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
@@ -192,12 +195,14 @@ async function pollPlayInvites(userId: string): Promise<void> {
     if (!st.showNotifications || !st.notifyPlayInvite) return;
 
     const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: invites } = await supabase
-      .from('play_invites')
-      .select('id, sender_id, created_at')
-      .eq('receiver_id', userId)
-      .gte('created_at', cutoff);
+    const [{ data: invites }, { data: blockedRows }] = await Promise.all([
+      supabase.from('play_invites').select('id, sender_id, created_at').eq('receiver_id', userId).gte('created_at', cutoff),
+      supabase.from('blocked_users').select('blocked_user_id, blocked_connect_code').eq('user_id', userId),
+    ]);
     if (!invites || invites.length === 0) return;
+
+    const blockedIds = new Set((blockedRows || []).map((b: any) => b.blocked_user_id).filter(Boolean));
+    const blockedCodes = new Set((blockedRows || []).map((b: any) => b.blocked_connect_code).filter(Boolean));
 
     const newInvites = invites.filter((inv) => !knownPlayInviteIds.has(inv.id));
     if (newInvites.length === 0) return;
@@ -214,6 +219,7 @@ async function pollPlayInvites(userId: string): Promise<void> {
       knownPlayInviteIds.add(inv.id);
       const fromCode = profileMap[inv.sender_id];
       if (!fromCode) continue;
+      if (blockedIds.has(inv.sender_id) || blockedCodes.has(fromCode)) continue;
       if (serviceStartedAt && inv.created_at < serviceStartedAt) continue;
       showPlayInviteNotification(fromCode, () => {
         if (mainWindow && !mainWindow.isDestroyed()) {

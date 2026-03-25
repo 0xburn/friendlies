@@ -33,6 +33,8 @@ export function Settings() {
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<{ connectCode: string; displayName: string | null; avatarUrl: string | null; blockedAt: string }[]>([]);
+  const [unblocking, setUnblocking] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.getSettings().then((s) => {
@@ -45,6 +47,7 @@ export function Settings() {
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
+    loadBlockedUsers();
     window.api.getIdentity().then((id) => {
       if (id?.connectCode) setMyCode(id.connectCode);
     });
@@ -90,6 +93,20 @@ export function Settings() {
   function flash() {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  }
+
+  async function loadBlockedUsers() {
+    try {
+      const data = await window.api.getBlockedUsers();
+      setBlockedUsers(data || []);
+    } catch {}
+  }
+
+  async function handleUnblock(connectCode: string) {
+    setUnblocking(connectCode);
+    await window.api.unblockUser(connectCode);
+    await loadBlockedUsers();
+    setUnblocking(null);
   }
 
   const notifsEnabled = settings.showNotifications;
@@ -178,6 +195,43 @@ export function Settings() {
         />
       </div>
 
+      {blockedUsers.length > 0 && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          <div className="p-5">
+            <p className="text-sm font-medium text-gray-300">Blocked Users</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Blocked users can't send you requests, invites, or appear on Discover
+            </p>
+          </div>
+          {blockedUsers.map((b) => (
+            <div key={b.connectCode} className="flex items-center justify-between px-5 py-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {b.avatarUrl ? (
+                  <img src={b.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 border border-[#2a2a2a]" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-gray-600 text-[10px] font-bold shrink-0">
+                    {b.connectCode.slice(0, 2)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <span className="font-mono font-bold text-white text-sm">{b.connectCode}</span>
+                  {b.displayName && (
+                    <p className="text-xs text-gray-500 truncate">{b.displayName}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => handleUnblock(b.connectCode)}
+                disabled={unblocking === b.connectCode}
+                className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-colors disabled:opacity-40"
+              >
+                {unblocking === b.connectCode ? '...' : 'Unblock'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
         <div className="flex gap-3">
@@ -231,7 +285,7 @@ export function Settings() {
       )}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.75
+      friendlies v0.1.76
       </p>
     </div>
   );

@@ -31,9 +31,10 @@ interface PlayerCardProps {
   showStatus?: boolean;
   expandable?: boolean;
   onClick?: () => void;
+  onBlock?: () => void;
 }
 
-export function PlayerCard({ player, showStatus = true, expandable = true, onClick }: PlayerCardProps) {
+export function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock }: PlayerCardProps) {
   const [expanded, setExpanded] = useState(false);
   const hasAvatar = !!player.avatarUrl;
 
@@ -115,7 +116,22 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </svg>
         )}
       </div>
-      {expanded && <PlayerStatsPanel connectCode={player.connectCode} topCharacters={player.topCharacters} />}
+      {expanded && (
+        <div className="relative">
+          <PlayerStatsPanel connectCode={player.connectCode} topCharacters={player.topCharacters} />
+          {onBlock && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onBlock(); }}
+              className="absolute bottom-3 right-3 rounded-md bg-red-500/10 p-1.5 text-red-400/60 hover:text-red-400 hover:bg-red-500/20 transition-all"
+              title={`Block ${player.connectCode}`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
