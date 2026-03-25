@@ -345,7 +345,11 @@ export function Friends() {
     setLfgToggling(false);
   }
 
-  async function handleDirectConnect(connectCode: string) {
+  async function handleDirectConnect(connectCode: string, inviteId?: string) {
+    if (inviteId) {
+      await window.api.completeInvite(inviteId);
+      await Promise.all([loadPlayInvites(), loadSentInvites()]);
+    }
     setDcStarting(true);
     setDcStatus({ status: 'configuring', message: `Starting direct connect to ${connectCode}...`, connectCode });
     const result = await window.api.startDirectConnect(connectCode);
@@ -464,7 +468,7 @@ export function Friends() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[#21BA45]">Both Players are Ready!</span>
                     <button
-                      onClick={() => handleDirectConnect(inv.connectCode)}
+                      onClick={() => handleDirectConnect(inv.connectCode, inv.id)}
                       disabled={dcStarting}
                       className="shrink-0 rounded-lg bg-blue-500 px-4 py-2 text-sm font-bold text-white hover:bg-blue-600 transition-colors disabled:opacity-40"
                     >
@@ -503,7 +507,7 @@ export function Friends() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[#21BA45]">Both Players are Ready!</span>
                     <button
-                      onClick={() => handleDirectConnect(inv.connectCode)}
+                      onClick={() => handleDirectConnect(inv.connectCode, inv.id)}
                       disabled={dcStarting}
                       className="shrink-0 rounded-lg bg-blue-500 px-4 py-2 text-sm font-bold text-white hover:bg-blue-600 transition-colors disabled:opacity-40"
                     >
@@ -782,10 +786,10 @@ export function Friends() {
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleInvite(f.connectCode); }}
-                  disabled={inviting === f.connectCode}
+                  disabled={inviting === f.connectCode || (isDirectConnectUser && hasActiveInvites)}
                   className={`shrink-0 opacity-0 group-hover:opacity-100 rounded-lg px-2.5 py-1.5 text-xs transition-all ${
                     isDirectConnectUser
-                      ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
+                      ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30'
                       : 'bg-[#21BA45]/10 text-[#21BA45] hover:bg-[#21BA45]/20'
                   }`}
                 >

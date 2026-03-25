@@ -100,7 +100,14 @@ export function generateCodeEntrySequence(connectCode: string): InputStep[] {
 
   steps.push({ type: 'phase', name: 'code_entry' });
 
-  let currentPos = 45; // cursor starts at 'A'
+  // Home cursor to top-left ('A' = position 45) in case user accidentally moved it.
+  // Grid is 10 cols × 4 rows — 9 LEFTs + 3 UPs guarantees we're at 'A'.
+  steps.push({ type: 'release' }, { type: 'wait', ms: 50 });
+  for (let i = 0; i < 9; i++) steps.push(...kbMove(0, 0.5, FAST_HOLD, FAST_GAP));
+  for (let i = 0; i < 3; i++) steps.push(...kbMove(0.5, 1, FAST_HOLD, FAST_GAP));
+  steps.push({ type: 'release' }, { type: 'wait', ms: 34 });
+
+  let currentPos = 45; // cursor is now guaranteed at 'A'
 
   for (const char of code) {
     const targetCode = charToCode(char);

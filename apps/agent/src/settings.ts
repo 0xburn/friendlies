@@ -11,6 +11,7 @@ export type AgentSettings = {
   notifyFriendOnline: boolean;
   notifyPlayInvite: boolean;
   setupComplete: boolean;
+  directConnectKey: string;
 };
 
 const store = new Store({ name: 'slippi-friends-settings' });
@@ -28,9 +29,10 @@ export function getSettings(): AgentSettings {
       notifyFriendOnline: store.get('notifyFriendOnline') !== false,
       notifyPlayInvite: store.get('notifyPlayInvite') !== false,
       setupComplete: isSetupComplete(),
+      directConnectKey: (store.get('directConnectKey') as string | undefined) ?? 'M',
     };
   } catch {
-    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, setupComplete: false };
+    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, setupComplete: false, directConnectKey: 'M' };
   }
 }
 
@@ -47,6 +49,7 @@ export function updateSettings(partial: Partial<AgentSettings>): AgentSettings {
     if (partial.notifyFriendOnline !== undefined) store.set('notifyFriendOnline', next.notifyFriendOnline);
     if (partial.notifyPlayInvite !== undefined) store.set('notifyPlayInvite', next.notifyPlayInvite);
     if (partial.setupComplete !== undefined) store.set('setupComplete', next.setupComplete);
+    if (partial.directConnectKey !== undefined) store.set('directConnectKey', next.directConnectKey);
     return next;
   } catch {
     return getSettings();

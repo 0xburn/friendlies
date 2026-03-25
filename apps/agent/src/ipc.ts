@@ -363,6 +363,14 @@ export function registerIpcHandlers(
 
   const INVITE_COOLDOWN_MS = 5 * 60 * 1000;
 
+  async function logEvent(userId: string, eventType: string, metadata: Record<string, any> = {}) {
+    try {
+      await supabase.from('event_log').insert({ user_id: userId, event_type: eventType, metadata });
+    } catch (e: any) {
+      console.warn('[event_log] Failed to log event:', eventType, e.message);
+    }
+  }
+
   ipcMain.handle('invite:send', async (_e, friendConnectCode: string) => {
     try {
       const user = await getCurrentUser();
@@ -370,24 +378,32 @@ export function registerIpcHandlers(
 
       const { data: target } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, connect_code')
         .eq('connect_code', friendConnectCode)
         .single();
       if (!target) return { error: 'Friend not found on app' };
 
-      const { data: existing } = await supabase
-        .from('play_invites')
-        .select('created_at')
-        .eq('sender_id', user.id)
-        .eq('receiver_id', target.id)
-        .single();
+      const cutoff = new Date(Date.now() - INVITE_COOLDOWN_MS).toISOString();
 
-      if (existing) {
-        const elapsed = Date.now() - new Date(existing.created_at).getTime();
-        if (elapsed < INVITE_COOLDOWN_MS) {
-          const remaining = Math.ceil((INVITE_COOLDOWN_MS - elapsed) / 60_000);
-          return { error: `Wait ${remaining}m before inviting again` };
-        }
+      // Only allow one active invite at a time (sent or received)
+      const { data: activeSent } = await supabase
+        .from('play_invites')
+        .select('id')
+        .eq('sender_id', user.id)
+        .gte('created_at', cutoff)
+        .limit(1);
+      if (activeSent && activeSent.length > 0) {
+        return { error: 'You already have an active invite' };
+      }
+
+      const { data: activeReceived } = await supabase
+        .from('play_invites')
+        .select('id')
+        .eq('receiver_id', user.id)
+        .gte('created_at', cutoff)
+        .limit(1);
+      if (activeReceived && activeReceived.length > 0) {
+        return { error: 'You already have an active invite' };
       }
 
       const { error } = await supabase
@@ -396,9 +412,11 @@ export function registerIpcHandlers(
           sender_id: user.id,
           receiver_id: target.id,
           created_at: new Date().toISOString(),
+          status: 'pending',
         }, { onConflict: 'sender_id,receiver_id' });
 
       if (error) return { error: error.message };
+      await logEvent(user.id, 'invite_sent', { receiver_code: friendConnectCode });
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -453,6 +471,18 @@ export function registerIpcHandlers(
         .eq('receiver_id', user.id);
 
       if (error) return { error: error.message };
+      await logEvent(user.id, 'invite_accepted', { invite_id: inviteId });
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('invite:complete', async (_e, inviteId: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+
+      await supabase.from('play_invites').delete().eq('id', inviteId);
+      await logEvent(user.id, 'invite_opened_melee', { invite_id: inviteId });
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });

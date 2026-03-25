@@ -22,6 +22,7 @@ import {
 import { isDolphinRunning, killDolphin, launchDolphin } from './dolphin-launcher';
 import { PipeController } from './pipe-controller';
 import { executeCodeEntry } from './blind-input';
+import { getSettings } from '../settings';
 
 export type DirectConnectStatus =
   | 'idle'
@@ -41,13 +42,15 @@ export interface DirectConnectStatusEvent {
   connectCode?: string;
 }
 
-const TRIGGER_KEY = 'F2';
-
 export class DirectConnectService extends EventEmitter {
   private controller: PipeController | null = null;
   private active = false;
   private currentStatus: DirectConnectStatus = 'idle';
   private cancelTriggerWait: (() => void) | null = null;
+
+  private getTriggerKey(): string {
+    return getSettings().directConnectKey || 'M';
+  }
 
   isActive(): boolean { return this.active; }
   getStatus(): DirectConnectStatus { return this.currentStatus; }
@@ -86,8 +89,9 @@ export class DirectConnectService extends EventEmitter {
       this.controller.flush();
 
       // Step 5: Wait for user to navigate to the code entry screen
-      this.setStatus('navigating_menus', `Navigate to the code entry screen, then press ${TRIGGER_KEY}`, code);
-      await this.waitForTriggerKey();
+      const triggerKey = this.getTriggerKey();
+      this.setStatus('navigating_menus', `Navigate to the code entry screen, then press ${triggerKey}`, code);
+      await this.waitForTriggerKey(triggerKey);
 
       this.controller.releaseAll();
       this.controller.flush();
@@ -137,22 +141,22 @@ export class DirectConnectService extends EventEmitter {
     }
   }
 
-  private waitForTriggerKey(): Promise<void> {
+  private waitForTriggerKey(key: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.cancelTriggerWait = () => {
-        try { globalShortcut.unregister(TRIGGER_KEY); } catch {}
+        try { globalShortcut.unregister(key); } catch {}
         reject(new Error('Direct connect cancelled'));
       };
 
-      const ok = globalShortcut.register(TRIGGER_KEY, () => {
-        globalShortcut.unregister(TRIGGER_KEY);
+      const ok = globalShortcut.register(key, () => {
+        globalShortcut.unregister(key);
         this.cancelTriggerWait = null;
-        console.log(`[direct-connect] ${TRIGGER_KEY} pressed — starting inputs`);
+        console.log(`[direct-connect] ${key} pressed — starting inputs`);
         resolve();
       });
 
       if (!ok) {
-        console.warn(`[direct-connect] Failed to register ${TRIGGER_KEY}, falling back to 10s delay`);
+        console.warn(`[direct-connect] Failed to register ${key}, falling back to 10s delay`);
         this.cancelTriggerWait = null;
         setTimeout(resolve, 10_000);
       }

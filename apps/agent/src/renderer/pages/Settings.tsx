@@ -6,6 +6,7 @@ interface SettingsState {
   showNotifications: boolean;
   notifyFriendOnline: boolean;
   notifyPlayInvite: boolean;
+  directConnectKey: string;
 }
 
 interface PresenceStats {
@@ -20,6 +21,7 @@ interface PresenceStats {
 }
 
 const DEBUG_CONNECT_CODES = ['SMOK#1'];
+const DC_CONNECT_CODES = ['SMOK#1', 'BF#0'];
 
 export function Settings() {
   const [pStats, setPStats] = useState<PresenceStats | null>(null);
@@ -30,6 +32,7 @@ export function Settings() {
     showNotifications: true,
     notifyFriendOnline: true,
     notifyPlayInvite: true,
+    directConnectKey: 'M',
   });
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false });
   const [saved, setSaved] = useState(false);
@@ -43,6 +46,7 @@ export function Settings() {
         showNotifications: s.showNotifications !== false,
         notifyFriendOnline: s.notifyFriendOnline !== false,
         notifyPlayInvite: s.notifyPlayInvite !== false,
+        directConnectKey: s.directConnectKey || 'M',
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
@@ -179,6 +183,41 @@ export function Settings() {
         />
       </div>
 
+      {myCode && DC_CONNECT_CODES.includes(myCode) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          <div className="p-5">
+            <p className="text-sm font-medium text-gray-300">Direct Connect</p>
+            <p className="text-xs text-gray-500 mt-0.5">Configure the keyboard shortcut that triggers code entry</p>
+          </div>
+          <div className="p-5">
+            <label className="text-sm font-medium text-gray-300">Trigger Key</label>
+            <div className="flex gap-2 mt-2">
+              <input
+                type="text"
+                value={settings.directConnectKey}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase().slice(-1) || 'M';
+                  setSettings((s) => ({ ...s, directConnectKey: val }));
+                }}
+                onBlur={async () => {
+                  await window.api.updateSettings({ directConnectKey: settings.directConnectKey });
+                  flash();
+                }}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter') {
+                    await window.api.updateSettings({ directConnectKey: settings.directConnectKey });
+                    flash();
+                  }
+                }}
+                maxLength={2}
+                className="w-16 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white text-center uppercase focus:outline-none focus:border-[#21BA45]/50"
+              />
+              <span className="self-center text-xs text-gray-500">Press this key after navigating to the code entry screen in Dolphin</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
         <div className="flex gap-3">
@@ -232,7 +271,7 @@ export function Settings() {
       )}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.66
+      friendlies v0.1.67
       </p>
     </div>
   );
