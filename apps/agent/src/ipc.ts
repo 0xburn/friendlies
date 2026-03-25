@@ -2,6 +2,7 @@ import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
+import { getDirectConnectService } from './direct-connect';
 import { getIdentity, verifyIdentity } from './identity';
 import { resolvePresenceRow } from './presence-logic';
 import { getCurrentStatus, getOnlineUsers, getPresenceStats, isLookingToPlay, onLocalStatusChange, onPresenceSync, toggleLookingToPlay } from './presence';
@@ -807,4 +808,34 @@ export function registerIpcHandlers(
   ipcMain.handle('updater:check', () => checkForUpdates());
   ipcMain.handle('updater:download', () => downloadUpdate());
   ipcMain.handle('updater:install', () => quitAndInstall());
+
+  ipcMain.handle('directConnect:start', async (_e, connectCode: string) => {
+    try {
+      const service = getDirectConnectService();
+      if (service.isActive()) return { error: 'Direct connect already in progress' };
+
+      service.removeAllListeners('status');
+      service.on('status', (evt) => sendToRenderer('directConnect:status', evt));
+
+      await service.start(connectCode);
+      return { ok: true };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('directConnect:stop', () => {
+    try {
+      const service = getDirectConnectService();
+      service.stop();
+      return { ok: true };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('directConnect:status', () => {
+    const service = getDirectConnectService();
+    return { status: service.getStatus(), active: service.isActive() };
+  });
 }

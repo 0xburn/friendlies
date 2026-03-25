@@ -16,7 +16,7 @@
     "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
-    "@slippi/slippi-js": "^7.0.0",
+    "@slippi/slippi-js": "^9.0.0",
     "@supabase/supabase-js": "^2.49.0",
     "chokidar": "^4.0.0",
     "electron-store": "^8.2.0",

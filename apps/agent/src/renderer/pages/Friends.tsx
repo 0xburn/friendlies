@@ -58,6 +58,8 @@ export function Friends() {
   const [inviteSent, setInviteSent] = useState<Record<string, string | true>>({});
   const [inviting, setInviting] = useState<string | null>(null);
   const [playInvites, setPlayInvites] = useState<{ id: string; connectCode: string; displayName?: string; discordUsername?: string; created_at: string }[]>([]);
+  const [dcStatus, setDcStatus] = useState<{ status: string; message: string; connectCode?: string } | null>(null);
+  const [dcStarting, setDcStarting] = useState(false);
 
   const [myStatus, setMyStatus] = useState<'online' | 'in-game' | 'offline'>('offline');
   const [lfg, setLfg] = useState(false);
@@ -120,13 +122,21 @@ export function Friends() {
       setMyCharacterId(info.characterId ?? null);
     });
 
+    const unsubDc = window.api.onDirectConnectStatus((evt: any) => {
+      setDcStatus(evt);
+      if (evt.status === 'connected' || evt.status === 'error' || evt.status === 'cancelled') {
+        setDcStarting(false);
+        setTimeout(() => setDcStatus(null), 5000);
+      }
+    });
+
     const dbPoll = setInterval(() => {
       pollFriendStatuses();
       loadFriends();
       loadIncoming();
       loadPlayInvites();
     }, 30_000);
-    return () => { unsub(); unsubStatus(); clearInterval(dbPoll); };
+    return () => { unsub(); unsubStatus(); unsubDc(); clearInterval(dbPoll); };
   }, []);
 
   async function pollFriendStatuses() {
@@ -303,6 +313,23 @@ export function Friends() {
     setLfgToggling(false);
   }
 
+  async function handleDirectConnect(connectCode: string) {
+    setDcStarting(true);
+    setDcStatus({ status: 'configuring', message: `Starting direct connect to ${connectCode}...`, connectCode });
+    const result = await window.api.startDirectConnect(connectCode);
+    if (result.error) {
+      setDcStatus({ status: 'error', message: result.error, connectCode });
+      setDcStarting(false);
+      setTimeout(() => setDcStatus(null), 5000);
+    }
+  }
+
+  async function handleStopDirectConnect() {
+    await window.api.stopDirectConnect();
+    setDcStarting(false);
+    setDcStatus(null);
+  }
+
   async function copyCode() {
     if (!myIdentity?.connectCode) return;
     await window.api.copyToClipboard(myIdentity.connectCode);
@@ -316,6 +343,15 @@ export function Friends() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      {/* TEST: Direct connect to BURN#7 */}
+      <button
+        onClick={() => handleDirectConnect('BURN#7')}
+        disabled={dcStarting}
+        className="w-full rounded-2xl border border-blue-500/30 bg-blue-500/10 px-6 py-4 text-lg font-bold text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-40"
+      >
+        {dcStarting ? 'Connecting...' : 'Play BURN#7 (test)'}
+      </button>
+
       {/* Player status card */}
       {myIdentity && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
@@ -404,10 +440,51 @@ export function Friends() {
                     </span>
                   )}
                 </div>
+                <button
+                  onClick={() => handleDirectConnect(inv.connectCode)}
+                  disabled={dcStarting || !inv.connectCode}
+                  className="shrink-0 rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-xs text-blue-400 hover:bg-blue-500/20 transition-colors disabled:opacity-30"
+                >
+                  Direct
+                </button>
                 <span className="text-[10px] text-amber-500/50 shrink-0">{ago < 1 ? 'just now' : `${ago}m ago`}</span>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {dcStatus && (
+        <div className={`rounded-2xl border p-4 flex items-center justify-between ${
+          dcStatus.status === 'error' ? 'border-red-500/20 bg-red-500/5' :
+          dcStatus.status === 'connected' ? 'border-[#21BA45]/20 bg-[#21BA45]/5' :
+          'border-blue-500/20 bg-blue-500/5'
+        }`}>
+          <div className="flex items-center gap-3 min-w-0">
+            {dcStatus.status !== 'error' && dcStatus.status !== 'connected' && dcStatus.status !== 'cancelled' && (
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className={`text-sm font-medium ${
+                dcStatus.status === 'error' ? 'text-red-400' :
+                dcStatus.status === 'connected' ? 'text-[#21BA45]' :
+                'text-blue-400'
+              }`}>
+                {dcStatus.message}
+              </p>
+              {dcStatus.connectCode && (
+                <p className="text-[10px] text-gray-500 font-mono">{dcStatus.connectCode}</p>
+              )}
+            </div>
+          </div>
+          {dcStatus.status !== 'error' && dcStatus.status !== 'connected' && dcStatus.status !== 'cancelled' && (
+            <button
+              onClick={handleStopDirectConnect}
+              className="shrink-0 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       )}
 
@@ -589,6 +666,14 @@ export function Friends() {
                   onClick={() => handleCopy(f.connectCode)}
                 />
               </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDirectConnect(f.connectCode); }}
+                disabled={dcStarting}
+                className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-xs text-blue-400 hover:bg-blue-500/20 transition-all disabled:opacity-30"
+                title="Direct connect via Dolphin"
+              >
+                Direct
+              </button>
               {invState === true ? (
                 <span className="shrink-0 text-[10px] font-medium text-[#21BA45]">Sent!</span>
               ) : typeof invState === 'string' ? (

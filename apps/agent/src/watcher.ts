@@ -7,9 +7,9 @@ import { getIdentity } from './identity';
 import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
 
-const { SlippiGame, GameMode } = require('@slippi/slippi-js') as {
-  SlippiGame: typeof import('@slippi/slippi-js').SlippiGame;
-  GameMode: typeof import('@slippi/slippi-js').GameMode;
+const { SlippiGame, GameMode } = require('@slippi/slippi-js/node') as {
+  SlippiGame: typeof import('@slippi/slippi-js/node').SlippiGame;
+  GameMode: typeof import('@slippi/slippi-js/node').GameMode;
 };
 
 export type OpponentInfo = {
