@@ -710,7 +710,7 @@ export function Friends() {
             Pending ({pendingOut.length})
           </h2>
           {pendingOut.map((f) => (
-            <div key={f.id} className="group flex items-center gap-2">
+            <div key={f.id} className="group flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <PlayerCard
                   player={{
@@ -728,14 +728,16 @@ export function Friends() {
                   onBlock={() => setConfirmBlock({ code: f.connectCode })}
                 />
               </div>
-              <span className="shrink-0 text-[10px] text-yellow-500/60">sent</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
-                disabled={removing === f.id}
-                className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-all"
-              >
-                {removing === f.id ? '...' : 'Unsend'}
-              </button>
+              <div className="shrink-0 flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-all pt-2">
+                <span className="text-[10px] text-yellow-500/60">sent</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
+                  disabled={removing === f.id}
+                  className="rounded-lg bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-all"
+                >
+                  {removing === f.id ? '...' : 'Unsend'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -830,7 +832,7 @@ export function Friends() {
                   <span className="text-[11px] font-medium text-amber-400/90">Looking to play!</span>
                 </div>
               )}
-              <div className="group flex items-center gap-2">
+              <div className="group flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <PlayerCard
                   player={{
@@ -851,15 +853,16 @@ export function Friends() {
                   onBlock={() => setConfirmBlock({ code: f.connectCode })}
                 />
               </div>
+              <div className="shrink-0 flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-all pt-2">
               {invState === true ? (
-                <span className="shrink-0 text-[10px] font-medium text-[#21BA45]">Sent!</span>
+                <span className="text-[10px] font-medium text-[#21BA45]">Sent!</span>
               ) : typeof invState === 'string' ? (
-                <span className="shrink-0 text-[10px] font-medium text-yellow-500 max-w-[100px] text-right">{invState}</span>
+                <span className="text-[10px] font-medium text-yellow-500 max-w-[100px] text-right">{invState}</span>
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleInvite(f.connectCode); }}
                   disabled={inviting === f.connectCode || hasActiveInvites}
-                  className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg px-2.5 py-1.5 text-xs transition-all bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30"
+                  className="rounded-lg px-2.5 py-1 text-xs transition-all bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30"
                 >
                   {inviting === f.connectCode ? '...' : 'Invite'}
                 </button>
@@ -868,7 +871,7 @@ export function Friends() {
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDirectConnect(f.connectCode); }}
                   disabled={dcStarting}
-                  className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-purple-500/10 px-2.5 py-1.5 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 transition-all"
+                  className="rounded-lg bg-purple-500/10 px-2.5 py-1 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 transition-all"
                   title={`Direct connect to ${f.connectCode}`}
                 >
                   DC
@@ -877,10 +880,11 @@ export function Friends() {
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
                 disabled={removing === f.id}
-                className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-all"
+                className="rounded-lg bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-all"
               >
                 {removing === f.id ? '...' : 'Remove'}
               </button>
+              </div>
               </div>
             </div>
           );

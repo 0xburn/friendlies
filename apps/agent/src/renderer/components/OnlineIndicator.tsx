@@ -53,10 +53,10 @@ export function OnlineIndicator({
         />
       )}
       {showOpponent && (
-        <span className="text-xs text-[#21BA45]/80 font-mono whitespace-nowrap">
-          {myChar && <span>{myChar} </span>}
+        <span className="text-xs text-[#21BA45]/80 font-mono truncate">
+          {myChar && <>{myChar} </>}
           vs {opponentCode}
-          {oppChar && <span> ({oppChar})</span>}
+          {oppChar && <> ({oppChar})</>}
           {playingSince && (
             <span className="text-[#21BA45]/50 ml-1">
               {formatDuration(playingSince)}

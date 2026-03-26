@@ -274,7 +274,7 @@ export function Discover() {
                   </span>
                 </div>
               )}
-              <div className="group flex items-center gap-2">
+              <div className="group flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <PlayerCard
                     player={{
@@ -295,17 +295,19 @@ export function Discover() {
                     onBlock={() => setConfirmBlock(p.connectCode)}
                   />
                 </div>
+                <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-all pt-2">
                 {isAdded ? (
-                  <span className="shrink-0 text-[10px] font-medium text-[#21BA45]">Added!</span>
+                  <span className="text-[10px] font-medium text-[#21BA45]">Added!</span>
                 ) : (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleAdd(p.connectCode); }}
                     disabled={adding === p.connectCode}
-                    className="shrink-0 opacity-0 group-hover:opacity-100 rounded-lg bg-[#21BA45]/10 px-3 py-1.5 text-xs font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-all"
+                    className="rounded-lg bg-[#21BA45]/10 px-3 py-1 text-xs font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-all"
                   >
                     {adding === p.connectCode ? '...' : '+ Add'}
                   </button>
                 )}
+                </div>
               </div>
             </div>
           );

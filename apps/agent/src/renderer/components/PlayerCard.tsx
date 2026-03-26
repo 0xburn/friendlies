@@ -63,16 +63,18 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-white tracking-wide">{player.connectCode}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono font-bold text-white tracking-wide shrink-0">{player.connectCode}</span>
             {showStatus && player.status && (
-              <OnlineIndicator
-                status={player.status}
-                size="sm"
-                characterId={player.currentCharacter}
-                opponentCode={player.opponentCode}
-                playingSince={player.playingSince}
-              />
+              <span className="min-w-0 overflow-hidden">
+                <OnlineIndicator
+                  status={player.status}
+                  size="sm"
+                  characterId={player.currentCharacter}
+                  opponentCode={player.opponentCode}
+                  playingSince={player.playingSince}
+                />
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2 min-w-0">
@@ -87,23 +89,23 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
                     window.api.openDiscordProfile(player.discordId);
                   }
                 }}
-                className={`inline-flex items-center gap-1 shrink-0 rounded-md bg-[#5865F2]/10 px-1.5 py-0.5 transition-colors ${
+                className={`inline-flex items-center gap-1 min-w-0 rounded-md bg-[#5865F2]/10 px-1.5 py-0.5 transition-colors ${
                   player.discordId ? 'hover:bg-[#5865F2]/25 cursor-pointer' : 'cursor-default'
                 }`}
                 title={player.discordId ? 'Open in Discord' : undefined}
               >
-                <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
-                <span className="text-xs font-medium text-[#5865F2]">@{player.discordUsername}</span>
+                <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2] shrink-0" />
+                <span className="text-xs font-medium text-[#5865F2] truncate">@{player.discordUsername}</span>
               </button>
             )}
             {player.region && (
-              <span className="text-[10px] text-gray-600 shrink-0">{player.region}</span>
+              <span className="text-[10px] text-gray-600 truncate">{player.region}</span>
             )}
           </div>
         </div>
         {player.topCharacters && player.topCharacters.length > 0 && (
           <div className="flex items-center gap-0.5 shrink-0">
-            {player.topCharacters.slice(0, 3).map((tc) => (
+            {player.topCharacters.slice(0, 2).map((tc) => (
               <CharacterIcon key={tc.characterId} characterId={tc.characterId} size="sm" />
             ))}
           </div>
