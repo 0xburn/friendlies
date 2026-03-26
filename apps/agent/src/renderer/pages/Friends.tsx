@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { PlayerCard } from '../components/PlayerCard';
 import { RankBadge } from '../components/RankBadge';
+import { getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 
 interface Friend {
   id: string;
@@ -71,12 +72,14 @@ export function Friends() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'in-game' | 'offline'>('all');
   const [myIdentity, setMyIdentity] = useState<{ connectCode: string; displayName: string } | null>(null);
   const [myUser, setMyUser] = useState<{ avatar_url?: string; discord_name?: string } | null>(null);
-  const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number; region?: string | null } | null>(null);
+  const [myProfile, setMyProfile] = useState<{ rating_ordinal?: number; wins?: number; losses?: number; region?: string | null; topCharacters?: { characterId: number; gameCount: number }[] } | null>(null);
   const [myOpponentCode, setMyOpponentCode] = useState<string | null>(null);
   const [myCharacterId, setMyCharacterId] = useState<number | null>(null);
   const [myOppCharId, setMyOppCharId] = useState<number | null>(null);
   const [myPlayingSince, setMyPlayingSince] = useState<string | null>(null);
   const [hideRegion, setHideRegion] = useState(false);
+  const [hideAvatar, setHideAvatar] = useState<boolean | null>(null);
+  const [myMainCharId, setMyMainCharId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -90,13 +93,21 @@ export function Friends() {
       });
     });
     window.api.getProfile().then((p: any) => {
-      if (p) setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses, region: p.region ?? null });
+      if (p) {
+        const topChars = Array.isArray(p.top_characters) ? p.top_characters : [];
+        setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses, region: p.region ?? null, topCharacters: topChars });
+        const mainChar = topChars[0]?.characterId;
+        if (mainChar != null) setMyMainCharId(mainChar);
+      }
     });
     window.api.getLocalStatus().then((s: any) => {
       if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
     window.api.isLookingToPlay().then((v: boolean) => setLfg(v));
-    window.api.getPrivacy().then((p) => setHideRegion(p.hideRegion)).catch(() => {});
+    window.api.getPrivacy().then((p) => {
+      setHideRegion(p.hideRegion);
+      setHideAvatar(p.hideAvatar);
+    }).catch(() => {});
 
     Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites(), loadSentInvites()]).finally(() =>
       setInitialLoading(false),
@@ -409,9 +420,19 @@ export function Friends() {
       {myIdentity && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
           <div className="flex items-center gap-4">
-            {myUser?.avatar_url && (
+            {hideAvatar === null ? null : hideAvatar ? (
+              myMainCharId != null ? (
+                <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center overflow-hidden shrink-0">
+                  {getCharacterImagePath(myMainCharId) ? (
+                    <img src={getCharacterImagePath(myMainCharId)} alt={getCharacterShortName(myMainCharId)} className="w-10 h-10 object-contain scale-[2]" />
+                  ) : (
+                    <span className="text-xs font-bold text-gray-400">{getCharacterShortName(myMainCharId).slice(0, 2)}</span>
+                  )}
+                </div>
+              ) : null
+            ) : myUser?.avatar_url ? (
               <img src={myUser.avatar_url} alt="" className="w-10 h-10 rounded-full border border-[#2a2a2a] shrink-0" />
-            )}
+            ) : null}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5">
                 <span className="text-lg font-mono font-bold tracking-wider text-white">

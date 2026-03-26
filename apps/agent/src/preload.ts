@@ -62,8 +62,8 @@ const api = {
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (partial: Record<string, any>) => ipcRenderer.invoke('settings:update', partial),
-  getPrivacy: () => ipcRenderer.invoke('privacy:get') as Promise<{ hideRegion: boolean; hideDiscordUnlessFriends: boolean }>,
-  updatePrivacy: (partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean }) => ipcRenderer.invoke('privacy:update', partial),
+  getPrivacy: () => ipcRenderer.invoke('privacy:get') as Promise<{ hideRegion: boolean; hideDiscordUnlessFriends: boolean; hideAvatar: boolean }>,
+  updatePrivacy: (partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean; hideAvatar?: boolean }) => ipcRenderer.invoke('privacy:update', partial),
   browseDirectory: () => ipcRenderer.invoke('settings:browse'),
   isSetupComplete: () => ipcRenderer.invoke('setup:isComplete'),
   refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),
@@ -85,6 +85,8 @@ const api = {
   getDirectConnectStatus: () => ipcRenderer.invoke('directConnect:status') as Promise<{ status: string; active: boolean }>,
   onDirectConnectStatus: (cb: (evt: any) => void): Unsubscribe => onEvent('directConnect:status', cb),
   onInvitesRefresh: (cb: () => void): Unsubscribe => onEvent('invites:refresh', cb),
+  onNotificationSound: (cb: () => void): Unsubscribe => onEvent('notification:sound', cb),
+  testNotification: () => ipcRenderer.invoke('notifications:test'),
 };
 
 export type ElectronAPI = typeof api;

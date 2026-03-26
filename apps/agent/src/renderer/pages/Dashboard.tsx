@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { RankBadge } from '../components/RankBadge';
 import { CharacterIcon } from '../components/CharacterIcon';
-import { getCharacterShortName } from '../lib/characters';
+import { getCharacterShortName, getCharacterImagePath } from '../lib/characters';
 
 interface ProfileData {
   connect_code: string;
@@ -42,11 +42,13 @@ export function Dashboard() {
   const [opponentCharacterId, setOpponentCharacterId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [hideAvatar, setHideAvatar] = useState<boolean | null>(null);
 
   useEffect(() => {
     window.api.getIdentity().then(setIdentity);
     window.api.getProfile().then(setProfile);
     window.api.getUser().then(setUser);
+    window.api.getPrivacy().then((p) => setHideAvatar(p.hideAvatar)).catch(() => {});
 
     window.api.getLocalStatus().then((s: any) => {
       if (s) setStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
@@ -80,7 +82,9 @@ export function Dashboard() {
   const connectCode = identity?.connectCode || profile?.connect_code;
   const displayName = identity?.displayName || profile?.display_name;
   const discordName = user?.user_metadata?.full_name || user?.user_metadata?.name;
-  const avatarUrl = user?.user_metadata?.avatar_url;
+  const avatarUrl = hideAvatar ? null : user?.user_metadata?.avatar_url;
+  const topChars = Array.isArray(profile?.top_characters) ? profile.top_characters : [];
+  const mainCharId = topChars[0]?.characterId ?? null;
   const wins = profile?.wins ?? 0;
   const losses = profile?.losses ?? 0;
   const total = wins + losses;
@@ -91,13 +95,23 @@ export function Dashboard() {
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            {avatarUrl && (
+            {hideAvatar === null ? null : hideAvatar ? (
+              mainCharId != null ? (
+                <div className="w-12 h-12 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center overflow-hidden shrink-0">
+                  {getCharacterImagePath(mainCharId) ? (
+                    <img src={getCharacterImagePath(mainCharId)} alt={getCharacterShortName(mainCharId)} className="w-12 h-12 object-contain scale-[2]" />
+                  ) : (
+                    <span className="text-xs font-bold text-gray-400">{getCharacterShortName(mainCharId).slice(0, 2)}</span>
+                  )}
+                </div>
+              ) : null
+            ) : avatarUrl ? (
               <img
                 src={avatarUrl}
                 alt=""
                 className="w-12 h-12 rounded-full border border-[#2a2a2a]"
               />
-            )}
+            ) : null}
             <div>
               {connectCode ? (
                 <div className="flex items-center gap-3 mb-1">

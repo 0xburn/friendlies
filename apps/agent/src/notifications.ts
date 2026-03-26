@@ -1,8 +1,19 @@
-import { Notification } from 'electron';
+import { BrowserWindow, Notification } from 'electron';
+import { getSettings } from './settings';
 
 const { characters } = require('@slippi/slippi-js') as {
   characters: typeof import('@slippi/slippi-js').characters;
 };
+
+function playNotificationSound(): void {
+  try {
+    if (!getSettings().notificationSound) return;
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('notification:sound');
+    }
+  } catch {}
+}
 
 function characterLabel(characterId: number): string {
   try {
@@ -25,8 +36,10 @@ export function showOpponentNotification(
     const n = new Notification({
       title: 'friendlies',
       body: `${opponentName || opponentCode} (${opponentCode}) — ${charName}`,
+      silent: true,
     });
     n.show();
+    playNotificationSound();
   } catch (e) {
     console.error('showOpponentNotification failed', e);
   }
@@ -42,8 +55,10 @@ export function showFriendOnlineNotification(
     const n = new Notification({
       title: 'friendlies',
       body: `${connectCode} ${label}`,
+      silent: true,
     });
     n.show();
+    playNotificationSound();
   } catch (e) {
     console.error('showFriendOnlineNotification failed', e);
   }
@@ -58,9 +73,11 @@ export function showFriendRequestNotification(
     const n = new Notification({
       title: 'friendlies',
       body: `${fromCode} sent you a friend request`,
+      silent: true,
     });
     if (onClick) n.on('click', onClick);
     n.show();
+    playNotificationSound();
   } catch (e) {
     console.error('showFriendRequestNotification failed', e);
   }
@@ -75,10 +92,23 @@ export function showPlayInviteNotification(
     const n = new Notification({
       title: 'friendlies',
       body: `${fromCode} wants to play!`,
+      silent: true,
     });
     if (onClick) n.on('click', onClick);
     n.show();
+    playNotificationSound();
   } catch (e) {
     console.error('showPlayInviteNotification failed', e);
+  }
+}
+
+export function showTestNotification(): void {
+  try {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('notification:sound');
+    }
+  } catch (e) {
+    console.error('showTestNotification failed', e);
   }
 }

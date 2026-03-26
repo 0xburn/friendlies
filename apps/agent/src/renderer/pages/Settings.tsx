@@ -6,6 +6,7 @@ interface SettingsState {
   showNotifications: boolean;
   notifyFriendOnline: boolean;
   notifyPlayInvite: boolean;
+  notificationSound: boolean;
 }
 
 interface PresenceStats {
@@ -29,8 +30,9 @@ export function Settings() {
     showNotifications: true,
     notifyFriendOnline: true,
     notifyPlayInvite: true,
+    notificationSound: true,
   });
-  const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false });
+  const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<{ connectCode: string; displayName: string | null; avatarUrl: string | null; blockedAt: string }[]>([]);
@@ -44,6 +46,7 @@ export function Settings() {
         showNotifications: s.showNotifications !== false,
         notifyFriendOnline: s.notifyFriendOnline !== false,
         notifyPlayInvite: s.notifyPlayInvite !== false,
+        notificationSound: s.notificationSound !== false,
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
@@ -172,6 +175,29 @@ export function Settings() {
           disabled={!notifsEnabled}
           indent
         />
+
+        <ToggleRow
+          label="Notification Sound"
+          description="Play a sound effect with notifications"
+          checked={notifsEnabled && settings.notificationSound}
+          onChange={() => toggle('notificationSound')}
+          disabled={!notifsEnabled}
+          indent
+        />
+
+        <div className={`flex items-center justify-between p-5 pl-10 ${!notifsEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
+          <div>
+            <p className="text-sm font-medium text-gray-300">Test Notification</p>
+            <p className="text-xs text-gray-500 mt-0.5">Send a test notification to preview your settings</p>
+          </div>
+          <button
+            onClick={() => window.api.testNotification()}
+            disabled={!notifsEnabled}
+            className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white disabled:opacity-40"
+          >
+            Test
+          </button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
@@ -191,6 +217,13 @@ export function Settings() {
           description="Only show your Discord username to accepted friends"
           checked={privacy.hideDiscordUnlessFriends}
           onChange={() => togglePrivacy('hideDiscordUnlessFriends')}
+          indent
+        />
+        <ToggleRow
+          label="Hide Discord Photo"
+          description="Show your main character icon instead of your Discord avatar"
+          checked={privacy.hideAvatar}
+          onChange={() => togglePrivacy('hideAvatar')}
           indent
         />
       </div>
@@ -285,7 +318,7 @@ export function Settings() {
       )}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.76
+      friendlies v0.1.77
       </p>
     </div>
   );

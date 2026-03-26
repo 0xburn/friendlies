@@ -10,6 +10,7 @@ export type AgentSettings = {
   showNotifications: boolean;
   notifyFriendOnline: boolean;
   notifyPlayInvite: boolean;
+  notificationSound: boolean;
   setupComplete: boolean;
 };
 
@@ -27,10 +28,11 @@ export function getSettings(): AgentSettings {
       showNotifications: store.get('showNotifications') !== false,
       notifyFriendOnline: store.get('notifyFriendOnline') !== false,
       notifyPlayInvite: store.get('notifyPlayInvite') !== false,
+      notificationSound: store.get('notificationSound') !== false,
       setupComplete: isSetupComplete(),
     };
   } catch {
-    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, setupComplete: false };
+    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, notificationSound: true, setupComplete: false };
   }
 }
 
@@ -46,6 +48,7 @@ export function updateSettings(partial: Partial<AgentSettings>): AgentSettings {
     if (partial.showNotifications !== undefined) store.set('showNotifications', next.showNotifications);
     if (partial.notifyFriendOnline !== undefined) store.set('notifyFriendOnline', next.notifyFriendOnline);
     if (partial.notifyPlayInvite !== undefined) store.set('notifyPlayInvite', next.notifyPlayInvite);
+    if (partial.notificationSound !== undefined) store.set('notificationSound', next.notificationSound);
     if (partial.setupComplete !== undefined) store.set('setupComplete', next.setupComplete);
     return next;
   } catch {
