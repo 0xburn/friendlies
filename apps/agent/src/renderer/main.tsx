@@ -5,7 +5,7 @@ import './globals.css';
 
 window.api.onNotificationSound(() => {
   const audio = new Audio('./sounds/notification.wav');
-  audio.volume = 0.5;
+  audio.volume = 0.35;
   audio.play().catch(() => {});
 });
 
