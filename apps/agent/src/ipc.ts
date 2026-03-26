@@ -805,7 +805,7 @@ export function registerIpcHandlers(
     } catch (e) { console.error('discover:list', e); return []; }
   });
 
-  const VALID_NUDGE_MESSAGES = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord'];
+  const VALID_NUDGE_MESSAGES = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi'];
 
   ipcMain.handle('nudge:send', async (_e, receiverConnectCode: string, message: string) => {
     try {
