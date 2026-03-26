@@ -102,6 +102,26 @@ export function showPlayInviteNotification(
   }
 }
 
+export function showNudgeNotification(
+  fromCode: string,
+  message: string,
+  onClick?: () => void,
+): void {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: 'friendlies',
+      body: `${fromCode}: ${message}`,
+      silent: true,
+    });
+    if (onClick) n.on('click', onClick);
+    n.show();
+    playNotificationSound();
+  } catch (e) {
+    console.error('showNudgeNotification failed', e);
+  }
+}
+
 export function showTestNotification(): void {
   try {
     const win = BrowserWindow.getAllWindows()[0];

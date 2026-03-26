@@ -17,6 +17,8 @@ interface DiscoverPlayer {
   opponentCode: string | null;
   playingSince: string | null;
   lastPlayedAt: string | null;
+  lookingToPlay?: boolean;
+  statusPreset?: string | null;
 }
 
 function formatLastPlayed(iso: string): string {
@@ -149,7 +151,7 @@ export function Discover() {
   const [players, setPlayers] = useState<DiscoverPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<string | null>(null);
-  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [addedMap, setAddedMap] = useState<Map<string, 'pending' | 'friends'>>(new Map());
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   const [confirmBlock, setConfirmBlock] = useState<string | null>(null);
   const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
@@ -179,7 +181,7 @@ export function Discover() {
     setAdding(connectCode);
     const result = await window.api.addFriend(connectCode);
     if (result.ok || result.mutual) {
-      setAdded((prev) => new Set(prev).add(connectCode));
+      setAddedMap((prev) => new Map(prev).set(connectCode, result.mutual ? 'friends' : 'pending'));
     }
     setAdding(null);
   }
@@ -263,7 +265,7 @@ export function Discover() {
         )}
 
         {players.map((p) => {
-          const isAdded = added.has(p.connectCode);
+          const state = adding === p.connectCode ? 'adding' : (addedMap.get(p.connectCode) ?? null);
           return (
             <div key={p.userId} className="space-y-1">
               {p.lastPlayedAt && (
@@ -274,41 +276,28 @@ export function Discover() {
                   </span>
                 </div>
               )}
-              <div className="group flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <PlayerCard
-                    player={{
-                      connectCode: p.connectCode,
-                      displayName: p.displayName,
-                      discordUsername: p.discordUsername ?? undefined,
-                      discordId: p.discordId,
-                      avatarUrl: p.avatarUrl,
-                      rating: p.rating,
-                      topCharacters: p.topCharacters,
-                      region: p.region,
-                      status: p.status,
-                      currentCharacter: p.currentCharacter,
-                      opponentCode: p.opponentCode,
-                      playingSince: p.playingSince,
-                    }}
-                    onClick={() => handleCopy(p.connectCode)}
-                    onBlock={() => setConfirmBlock(p.connectCode)}
-                  />
-                </div>
-                <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-all pt-2">
-                {isAdded ? (
-                  <span className="text-[10px] font-medium text-[#21BA45]">Added!</span>
-                ) : (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleAdd(p.connectCode); }}
-                    disabled={adding === p.connectCode}
-                    className="rounded-lg bg-[#21BA45]/10 px-3 py-1 text-xs font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-all"
-                  >
-                    {adding === p.connectCode ? '...' : '+ Add'}
-                  </button>
-                )}
-                </div>
-              </div>
+              <PlayerCard
+                player={{
+                  connectCode: p.connectCode,
+                  displayName: p.displayName,
+                  discordUsername: p.discordUsername ?? undefined,
+                  discordId: p.discordId,
+                  avatarUrl: p.avatarUrl,
+                  rating: p.rating,
+                  topCharacters: p.topCharacters,
+                  region: p.region,
+                  status: p.status,
+                  currentCharacter: p.currentCharacter,
+                  opponentCode: p.opponentCode,
+                  playingSince: p.playingSince,
+                  lookingToPlay: p.lookingToPlay,
+                  statusPreset: p.statusPreset,
+                }}
+                onClick={() => handleCopy(p.connectCode)}
+                onBlock={() => setConfirmBlock(p.connectCode)}
+                onAdd={!state ? () => handleAdd(p.connectCode) : undefined}
+                addState={state}
+              />
             </div>
           );
         })}

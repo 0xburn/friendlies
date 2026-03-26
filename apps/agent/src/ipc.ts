@@ -5,7 +5,7 @@ import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getDirectConnectService } from './direct-connect';
 import { getIdentity, verifyIdentity } from './identity';
 import { resolvePresenceRow } from './presence-logic';
-import { getCurrentStatus, getOnlineUsers, getPresenceStats, isLookingToPlay, onLocalStatusChange, onPresenceSync, toggleLookingToPlay } from './presence';
+import { getCurrentStatus, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setStatusPreset, toggleLookingToPlay } from './presence';
 import { showTestNotification } from './notifications';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { supabase } from './supabase';
@@ -641,6 +641,8 @@ export function registerIpcHandlers(
   ipcMain.handle('stats:presence', () => getPresenceStats());
   ipcMain.handle('presence:toggleLookingToPlay', () => toggleLookingToPlay());
   ipcMain.handle('presence:isLookingToPlay', () => isLookingToPlay());
+  ipcMain.handle('presence:setStatusPreset', (_e, preset: string | null) => setStatusPreset(preset));
+  ipcMain.handle('presence:getStatusPreset', () => getStatusPreset());
 
   ipcMain.handle('presence:friendStatuses', async () => {
     try {
@@ -657,7 +659,7 @@ export function registerIpcHandlers(
       if (friendIds.length === 0) return {};
 
       const { data } = await supabase.from('presence_log')
-        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, status_preset, updated_at')
         .in('user_id', friendIds);
       if (!data) return {};
 
@@ -702,7 +704,7 @@ export function registerIpcHandlers(
       const cutoff = new Date(Date.now() - PRESENCE_STALE_THRESHOLD).toISOString();
       const { data: presenceRows } = await supabase
         .from('presence_log')
-        .select('user_id, status, current_character, opponent_code, playing_since, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, status_preset, updated_at')
         .in('status', ['online', 'in-game'])
         .gte('updated_at', cutoff);
       if (!presenceRows || presenceRows.length === 0) return [];
@@ -765,6 +767,7 @@ export function registerIpcHandlers(
             const cosLat = Math.cos((myLat * Math.PI) / 180);
             distance = Math.pow(p.latitude - myLat, 2) + Math.pow((p.longitude - myLng) * cosLat, 2);
           }
+          const resolved = resolvePresenceRow(r as any, PRESENCE_STALE_THRESHOLD, Date.now());
           return {
             userId: p.id,
             connectCode: p.connect_code,
@@ -781,6 +784,8 @@ export function registerIpcHandlers(
             playingSince: r.playing_since,
             updatedAt: r.updated_at,
             lastPlayedAt: matchHistoryMap[p.connect_code] || null,
+            lookingToPlay: resolved.lookingToPlay,
+            statusPreset: resolved.statusPreset,
             distance,
           };
         });
@@ -798,6 +803,149 @@ export function registerIpcHandlers(
 
       return results.slice(0, 10);
     } catch (e) { console.error('discover:list', e); return []; }
+  });
+
+  const VALID_NUDGE_MESSAGES = ['GGs', 'one more', 'gtg', 'you play so hot and cool'];
+
+  ipcMain.handle('nudge:send', async (_e, receiverConnectCode: string, message: string) => {
+    try {
+      if (!VALID_NUDGE_MESSAGES.includes(message)) return { error: 'Invalid nudge message' };
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+
+      const { data: target } = await supabase
+        .from('profiles')
+        .select('id, connect_code')
+        .eq('connect_code', receiverConnectCode)
+        .single();
+      if (!target) return { error: 'Player not found' };
+      if (target.id === user.id) return { error: "You can't nudge yourself" };
+
+      const { data: blockedByMe } = await supabase
+        .from('blocked_users')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('blocked_connect_code', receiverConnectCode)
+        .maybeSingle();
+      if (blockedByMe) return { error: 'This user is blocked' };
+
+      const { data: self } = await supabase
+        .from('profiles')
+        .select('connect_code')
+        .eq('id', user.id)
+        .single();
+      if (self?.connect_code) {
+        const { data: blockedByThem } = await supabase
+          .from('blocked_users')
+          .select('id')
+          .eq('user_id', target.id)
+          .eq('blocked_connect_code', self.connect_code)
+          .maybeSingle();
+        if (blockedByThem) return { error: 'Cannot send nudge to this player' };
+      }
+
+      // Cooldown: check if sender already sent a nudge without receiving one back
+      const { data: lastSent } = await supabase
+        .from('nudges')
+        .select('created_at')
+        .eq('sender_id', user.id)
+        .eq('receiver_id', target.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastSent) {
+        const { data: lastReceived } = await supabase
+          .from('nudges')
+          .select('created_at')
+          .eq('sender_id', target.id)
+          .eq('receiver_id', user.id)
+          .gt('created_at', lastSent.created_at)
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastReceived) {
+          return { error: 'Wait for them to reply before sending another nudge' };
+        }
+      }
+
+      const { error } = await supabase.from('nudges').insert({
+        sender_id: user.id,
+        receiver_id: target.id,
+        message,
+      });
+      if (error) return { error: error.message };
+      await logEvent(user.id, 'nudge_sent', { receiver_code: receiverConnectCode, message });
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('nudge:list', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+
+      const { data } = await supabase
+        .from('nudges')
+        .select('id, sender_id, message, created_at')
+        .eq('receiver_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (!data || data.length === 0) return [];
+
+      const senderIds = [...new Set(data.map((d: any) => d.sender_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, connect_code, display_name, discord_username, avatar_url, hide_avatar')
+        .in('id', senderIds);
+      const profileMap: Record<string, any> = {};
+      (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+
+      return data.map((d: any) => {
+        const p = profileMap[d.sender_id] || {};
+        return {
+          id: d.id,
+          senderId: d.sender_id,
+          connectCode: p.connect_code || '',
+          displayName: p.display_name || null,
+          discordUsername: p.discord_username || null,
+          avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
+          message: d.message,
+          createdAt: d.created_at,
+        };
+      });
+    } catch { return []; }
+  });
+
+  ipcMain.handle('nudge:listSent', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+
+      const { data } = await supabase
+        .from('nudges')
+        .select('id, receiver_id, message, created_at')
+        .eq('sender_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (!data || data.length === 0) return [];
+
+      const receiverIds = [...new Set(data.map((d: any) => d.receiver_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, connect_code')
+        .in('id', receiverIds);
+      const profileMap: Record<string, any> = {};
+      (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+
+      return data.map((d: any) => ({
+        id: d.id,
+        receiverId: d.receiver_id,
+        connectCode: profileMap[d.receiver_id]?.connect_code || '',
+        message: d.message,
+        createdAt: d.created_at,
+      }));
+    } catch { return []; }
   });
 
   onPresenceSync((users) => { sendToRenderer('presence:updated', users); });

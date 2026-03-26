@@ -74,7 +74,9 @@ const STALE_CLEANUP_INTERVAL = 5 * 60 * 1000;
 
 let lookingToPlay = false;
 let lookingToPlaySince: string | null = null;
-const LFG_EXPIRY_MS = 30 * 60 * 1000;
+let statusPreset: string | null = null;
+let statusPresetSince: string | null = null;
+const LFG_EXPIRY_MS = 60 * 60 * 1000;
 
 let throttleInGame = true;
 type GameActiveCallback = (inGame: boolean) => void;
@@ -134,6 +136,8 @@ export function isLookingToPlay(): boolean {
   if (lookingToPlaySince && Date.now() - new Date(lookingToPlaySince).getTime() > LFG_EXPIRY_MS) {
     lookingToPlay = false;
     lookingToPlaySince = null;
+    statusPreset = null;
+    statusPresetSince = null;
     return false;
   }
   return true;
@@ -143,6 +147,8 @@ export async function toggleLookingToPlay(): Promise<boolean> {
   if (isLookingToPlay()) {
     lookingToPlay = false;
     lookingToPlaySince = null;
+    statusPreset = null;
+    statusPresetSince = null;
   } else {
     lookingToPlay = true;
     lookingToPlaySince = new Date().toISOString();
@@ -152,6 +158,30 @@ export async function toggleLookingToPlay(): Promise<boolean> {
     await pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
   }
   return lookingToPlay;
+}
+
+export function getStatusPreset(): string | null {
+  if (!isLookingToPlay()) return null;
+  return statusPreset;
+}
+
+export async function setStatusPreset(preset: string | null): Promise<string | null> {
+  if (preset) {
+    statusPreset = preset;
+    statusPresetSince = new Date().toISOString();
+    lookingToPlay = true;
+    lookingToPlaySince = statusPresetSince;
+  } else {
+    statusPreset = null;
+    statusPresetSince = null;
+    lookingToPlay = false;
+    lookingToPlaySince = null;
+  }
+  lastDbWriteTime = 0;
+  if (loopUserId) {
+    await pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
+  }
+  return statusPreset;
 }
 
 export function getOnlineUsers(): OnlineUser[] {
@@ -268,6 +298,7 @@ async function pushPresence(
         playing_since: opponent?.since ?? null,
         looking_to_play: lfgActive,
         looking_to_play_since: lfgActive ? lookingToPlaySince : null,
+        status_preset: lfgActive ? statusPreset : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -482,6 +513,8 @@ export async function startPresenceLoop(
             Date.now() - new Date(lookingToPlaySince).getTime() > LFG_EXPIRY_MS) {
           lookingToPlay = false;
           lookingToPlaySince = null;
+          statusPreset = null;
+          statusPresetSince = null;
           lastDbWriteTime = 0;
         }
 
@@ -604,6 +637,8 @@ export async function pushOfflineAndStop(): Promise<void> {
 
     lookingToPlay = false;
     lookingToPlaySince = null;
+    statusPreset = null;
+    statusPresetSince = null;
 
     if (loopUserId) {
       await supabase.from('presence_log').upsert(
@@ -615,6 +650,7 @@ export async function pushOfflineAndStop(): Promise<void> {
           playing_since: null,
           looking_to_play: false,
           looking_to_play_since: null,
+          status_preset: null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' },

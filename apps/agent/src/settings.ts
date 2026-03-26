@@ -13,6 +13,8 @@ export type AgentSettings = {
   notificationSound: boolean;
   setupComplete: boolean;
   reduceBackgroundActivity: boolean;
+  disableNudges: boolean;
+  disableStatuses: boolean;
 };
 
 const store = new Store({ name: 'slippi-friends-settings' });
@@ -32,9 +34,11 @@ export function getSettings(): AgentSettings {
       notificationSound: store.get('notificationSound') !== false,
       setupComplete: isSetupComplete(),
       reduceBackgroundActivity: store.get('reduceBackgroundActivity') !== false,
+      disableNudges: Boolean(store.get('disableNudges')),
+      disableStatuses: Boolean(store.get('disableStatuses')),
     };
   } catch {
-    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, notificationSound: true, setupComplete: false, reduceBackgroundActivity: true };
+    return { replayDir: getDefaultReplayDir(), autoLaunch: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, notificationSound: true, setupComplete: false, reduceBackgroundActivity: true, disableNudges: false, disableStatuses: false };
   }
 }
 
@@ -53,6 +57,8 @@ export function updateSettings(partial: Partial<AgentSettings>): AgentSettings {
     if (partial.notificationSound !== undefined) store.set('notificationSound', next.notificationSound);
     if (partial.setupComplete !== undefined) store.set('setupComplete', next.setupComplete);
     if (partial.reduceBackgroundActivity !== undefined) store.set('reduceBackgroundActivity', next.reduceBackgroundActivity);
+    if (partial.disableNudges !== undefined) store.set('disableNudges', next.disableNudges);
+    if (partial.disableStatuses !== undefined) store.set('disableStatuses', next.disableStatuses);
     return next;
   } catch {
     return getSettings();

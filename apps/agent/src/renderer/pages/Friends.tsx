@@ -47,7 +47,7 @@ function SkeletonCard() {
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
-  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean }>>({});
+  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean; statusPreset?: string | null }>>({});
   const [search, setSearch] = useState('');
   const [addCode, setAddCode] = useState('');
   const [addError, setAddError] = useState('');
@@ -81,6 +81,15 @@ export function Friends() {
   const [hideAvatar, setHideAvatar] = useState<boolean | null>(null);
   const [myMainCharId, setMyMainCharId] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [myStatusPreset, setMyStatusPreset] = useState<string | null>(null);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [disableStatuses, setDisableStatuses] = useState(false);
+  const [disableNudges, setDisableNudges] = useState(false);
+  
+  const [nudgeSent, setNudgeSent] = useState<Record<string, string>>({});
+
+  const STATUS_PRESETS = ['Down for friendlies', 'Ranked grind', 'Warming up', 'Quick session', 'Running sets'];
+  const NUDGE_OPTIONS = ['GGs', 'one more', 'gtg', 'you play so hot and cool'];
 
   useEffect(() => {
     window.api.getIdentity().then((id) => {
@@ -104,6 +113,11 @@ export function Friends() {
       if (s) setMyStatus(s === 'in-game' ? 'in-game' : s === 'online' ? 'online' : 'offline');
     });
     window.api.isLookingToPlay().then((v: boolean) => setLfg(v));
+    window.api.getStatusPreset().then((v: string | null) => setMyStatusPreset(v));
+    window.api.getSettings().then((s: any) => {
+      setDisableStatuses(!!s.disableStatuses);
+      setDisableNudges(!!s.disableNudges);
+    });
     window.api.getPrivacy().then((p) => {
       setHideRegion(p.hideRegion);
       setHideAvatar(p.hideAvatar);
@@ -123,6 +137,7 @@ export function Friends() {
             currentCharacter: u.currentCharacter ?? null,
             playingSince: u.playingSince ?? undefined,
             lookingToPlay: prev[u.connectCode]?.lookingToPlay,
+            statusPreset: prev[u.connectCode]?.statusPreset,
           };
         });
         return next;
@@ -175,7 +190,7 @@ export function Friends() {
     try {
       const statuses = await window.api.getFriendStatuses();
       if (statuses && typeof statuses === 'object') {
-        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean }> = {};
+        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean; statusPreset?: string | null }> = {};
         for (const [code, val] of Object.entries(statuses as Record<string, any>)) {
           mapped[code] = {
             status: val.status,
@@ -183,6 +198,7 @@ export function Friends() {
             currentCharacter: val.currentCharacter ?? null,
             playingSince: val.playingSince ?? undefined,
             lookingToPlay: val.lookingToPlay ?? false,
+            statusPreset: val.statusPreset ?? null,
           };
         }
         setOnlineMap((prev) => ({ ...prev, ...mapped }));
@@ -242,6 +258,7 @@ export function Friends() {
         opponentCode: presence?.opponentCode ?? null,
         playingSince: presence?.playingSince ?? null,
         lookingToPlay: presence?.lookingToPlay ?? false,
+        statusPreset: presence?.statusPreset ?? null,
       };
     });
   }, [friends, onlineMap]);
@@ -375,8 +392,40 @@ export function Friends() {
     try {
       const newState = await window.api.toggleLookingToPlay();
       setLfg(newState);
+      if (!newState) setMyStatusPreset(null);
     } catch {}
     setLfgToggling(false);
+  }
+
+  async function handleSetStatusPreset(preset: string | null) {
+    setStatusPickerOpen(false);
+    setLfgToggling(true);
+    try {
+      if (preset === myStatusPreset) {
+        await window.api.setStatusPreset(null);
+        setMyStatusPreset(null);
+        setLfg(false);
+      } else {
+        await window.api.setStatusPreset(preset);
+        setMyStatusPreset(preset);
+        setLfg(true);
+      }
+    } catch {}
+    setLfgToggling(false);
+  }
+
+  async function handleNudge(connectCode: string, message: string) {
+    const result = await window.api.sendNudge(connectCode, message);
+    if (result.error) {
+      setNudgeSent((prev) => ({ ...prev, [connectCode]: result.error! }));
+    } else {
+      setNudgeSent((prev) => ({ ...prev, [connectCode]: 'Sent!' }));
+    }
+    setTimeout(() => setNudgeSent((prev) => {
+      const next = { ...prev };
+      delete next[connectCode];
+      return next;
+    }), 3000);
   }
 
   async function handleDirectConnect(connectCode: string, inviteId?: string) {
@@ -407,7 +456,8 @@ export function Friends() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const isDirectConnectUser = myIdentity?.connectCode === 'SMOK#1' || myIdentity?.connectCode === 'BF#0';
+  // DC admin gate removed — feature well tested
+  // const isDirectConnectUser = myIdentity?.connectCode === 'SMOK#1' || myIdentity?.connectCode === 'BF#0';
   const visibleSentInvites = sentInvites.filter((inv) => !inv.myOpened);
   const visiblePlayInvites = playInvites.filter((inv) => !inv.myOpened);
   const hasActiveInvites = sentInvites.length > 0 || playInvites.length > 0;
@@ -474,23 +524,68 @@ export function Friends() {
                 )}
               </div>
             </div>
-            <button
-              onClick={handleToggleLfg}
-              disabled={lfgToggling}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                lfg
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
-                  : 'border border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#222]'
-              }`}
-            >
-              {lfg ? '🎮 Looking to play!' : '🎮 Looking to play?'}
-            </button>
-            {/* <button
-              onClick={copyCode}
-              className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-all"
-            >
-              {copied ? '✓' : 'Copy'}
-            </button> */}
+            <div className="shrink-0 flex items-center gap-2 relative">
+              {!disableStatuses && (
+                <div className="relative">
+                  <button
+                    onClick={() => setStatusPickerOpen(!statusPickerOpen)}
+                    disabled={lfgToggling}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                      myStatusPreset
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                        : lfg
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                          : 'border border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#222]'
+                    }`}
+                  >
+                    {myStatusPreset || (lfg ? 'Looking to play!' : 'Set status')}
+                  </button>
+                  {statusPickerOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setStatusPickerOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 min-w-[180px]">
+                        {STATUS_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            onClick={() => handleSetStatusPreset(preset)}
+                            className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                              myStatusPreset === preset
+                                ? 'text-amber-400 bg-amber-500/10'
+                                : 'text-gray-300 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            {preset}
+                            {myStatusPreset === preset && <span className="ml-2 text-[10px] text-amber-500/60">(active)</span>}
+                          </button>
+                        ))}
+                        {(lfg || myStatusPreset) && (
+                          <>
+                            <div className="border-t border-[#2a2a2a] my-1" />
+                            <button
+                              onClick={() => handleSetStatusPreset(null)}
+                              className="w-full text-left px-3 py-2 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                            >
+                              Clear status
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={handleToggleLfg}
+                disabled={lfgToggling}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                  lfg
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'
+                    : 'border border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#222]'
+                }`}
+              >
+                {lfg ? '🎮' : '🎮 Looking to play?'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -710,35 +805,23 @@ export function Friends() {
             Pending ({pendingOut.length})
           </h2>
           {pendingOut.map((f) => (
-            <div key={f.id} className="group flex items-start gap-2">
-              <div className="flex-1 min-w-0">
-                <PlayerCard
-                  player={{
-                    connectCode: f.connectCode,
-                    displayName: f.displayName,
-                    discordUsername: f.discordUsername,
-                    discordId: f.discordId,
-                    avatarUrl: f.avatarUrl,
-                    region: f.region,
-                    rating: f.rating,
-                    characterId: f.characterId,
-                  }}
-                  showStatus={false}
-                  onClick={() => handleCopy(f.connectCode)}
-                  onBlock={() => setConfirmBlock({ code: f.connectCode })}
-                />
-              </div>
-              <div className="shrink-0 flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-all pt-2">
-                <span className="text-[10px] text-yellow-500/60">sent</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
-                  disabled={removing === f.id}
-                  className="rounded-lg bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-all"
-                >
-                  {removing === f.id ? '...' : 'Unsend'}
-                </button>
-              </div>
-            </div>
+            <PlayerCard
+              key={f.id}
+              player={{
+                connectCode: f.connectCode,
+                displayName: f.displayName,
+                discordUsername: f.discordUsername,
+                discordId: f.discordId,
+                avatarUrl: f.avatarUrl,
+                region: f.region,
+                rating: f.rating,
+                characterId: f.characterId,
+              }}
+              showStatus={false}
+              onClick={() => handleCopy(f.connectCode)}
+              onBlock={() => setConfirmBlock({ code: f.connectCode })}
+              onUnsend={() => setConfirmRemove({ id: f.id, code: f.connectCode })}
+            />
           ))}
         </div>
       )}
@@ -824,69 +907,36 @@ export function Friends() {
 
         {accepted.map((f) => {
           const invState = inviteSent[f.connectCode];
+          const nudgeMsg = nudgeSent[f.connectCode];
           return (
-            <div key={f.id} className="space-y-1">
-              {f.lookingToPlay && (
-                <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-amber-400 text-xs">🎮</span>
-                  <span className="text-[11px] font-medium text-amber-400/90">Looking to play!</span>
-                </div>
-              )}
-              <div className="group flex items-start gap-2">
-              <div className="flex-1 min-w-0">
-                <PlayerCard
-                  player={{
-                    connectCode: f.connectCode,
-                    displayName: f.displayName,
-                    discordUsername: f.discordUsername,
-                    discordId: f.discordId,
-                    avatarUrl: f.avatarUrl,
-                    region: f.region,
-                    rating: f.rating,
-                    characterId: f.characterId,
-                    status: f.status,
-                    currentCharacter: f.currentCharacter,
-                    opponentCode: f.opponentCode,
-                    playingSince: f.playingSince,
-                  }}
-                  onClick={() => handleCopy(f.connectCode)}
-                  onBlock={() => setConfirmBlock({ code: f.connectCode })}
-                />
-              </div>
-              <div className="shrink-0 flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-all pt-2">
-              {invState === true ? (
-                <span className="text-[10px] font-medium text-[#21BA45]">Sent!</span>
-              ) : typeof invState === 'string' ? (
-                <span className="text-[10px] font-medium text-yellow-500 max-w-[100px] text-right">{invState}</span>
-              ) : (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleInvite(f.connectCode); }}
-                  disabled={inviting === f.connectCode || hasActiveInvites}
-                  className="rounded-lg px-2.5 py-1 text-xs transition-all bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30"
-                >
-                  {inviting === f.connectCode ? '...' : 'Invite'}
-                </button>
-              )}
-              {isDirectConnectUser && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDirectConnect(f.connectCode); }}
-                  disabled={dcStarting}
-                  className="rounded-lg bg-purple-500/10 px-2.5 py-1 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 transition-all"
-                  title={`Direct connect to ${f.connectCode}`}
-                >
-                  DC
-                </button>
-              )}
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmRemove({ id: f.id, code: f.connectCode }); }}
-                disabled={removing === f.id}
-                className="rounded-lg bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-all"
-              >
-                {removing === f.id ? '...' : 'Remove'}
-              </button>
-              </div>
-              </div>
-            </div>
+            <PlayerCard
+              key={f.id}
+              player={{
+                connectCode: f.connectCode,
+                displayName: f.displayName,
+                discordUsername: f.discordUsername,
+                discordId: f.discordId,
+                avatarUrl: f.avatarUrl,
+                region: f.region,
+                rating: f.rating,
+                characterId: f.characterId,
+                status: f.status,
+                currentCharacter: f.currentCharacter,
+                opponentCode: f.opponentCode,
+                playingSince: f.playingSince,
+                lookingToPlay: f.lookingToPlay,
+                statusPreset: disableStatuses ? undefined : (f.statusPreset ?? undefined),
+              }}
+              onClick={() => handleCopy(f.connectCode)}
+              onBlock={() => setConfirmBlock({ code: f.connectCode })}
+              onRemove={() => setConfirmRemove({ id: f.id, code: f.connectCode })}
+              onInvite={() => handleInvite(f.connectCode)}
+              inviteDisabled={inviting === f.connectCode || hasActiveInvites}
+              inviteState={invState ?? null}
+              nudgeOptions={disableNudges ? undefined : NUDGE_OPTIONS}
+              onNudge={disableNudges ? undefined : (msg) => handleNudge(f.connectCode, msg)}
+              nudgeState={nudgeMsg ?? null}
+            />
           );
         })}
       </div>

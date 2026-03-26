@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Navigation } from './components/Navigation';
 import { Setup } from './pages/Setup';
 import { Friends } from './pages/Friends';
+import { GGs } from './pages/GGs';
 import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
 import { Discover } from './pages/Discover';
@@ -437,6 +438,7 @@ export function App() {
         <Route element={<Navigation />}>
           <Route path="/" element={<Friends />} />
           <Route path="/discover" element={<Discover />} />
+          <Route path="/ggs" element={<GGs />} />
           <Route path="/opponents" element={<Opponents />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

@@ -52,13 +52,13 @@ export function isPresenceStale(
   return age > threshold;
 }
 
-const LFG_EXPIRY_MS = 30 * 60 * 1000;
+const LFG_EXPIRY_MS = 60 * 60 * 1000;
 
 export function resolvePresenceRow(
-  row: { status: string; current_character?: number | null; opponent_code?: string | null; playing_since?: string | null; looking_to_play?: boolean; looking_to_play_since?: string | null; updated_at: string },
+  row: { status: string; current_character?: number | null; opponent_code?: string | null; playing_since?: string | null; looking_to_play?: boolean; looking_to_play_since?: string | null; status_preset?: string | null; updated_at: string },
   staleThreshold: number,
   now: number = Date.now(),
-): { status: string; currentCharacter: number | null; opponentCode: string | null; playingSince: string | null; lookingToPlay: boolean } {
+): { status: string; currentCharacter: number | null; opponentCode: string | null; playingSince: string | null; lookingToPlay: boolean; statusPreset: string | null } {
   const stale = isPresenceStale(row.updated_at, staleThreshold, now);
   const lfgActive = !stale && !!row.looking_to_play && !!row.looking_to_play_since &&
     (now - new Date(row.looking_to_play_since).getTime() <= LFG_EXPIRY_MS);
@@ -68,6 +68,7 @@ export function resolvePresenceRow(
     opponentCode: stale ? null : (row.opponent_code ?? null),
     playingSince: stale ? null : (row.playing_since ?? null),
     lookingToPlay: lfgActive,
+    statusPreset: lfgActive ? (row.status_preset ?? null) : null,
   };
 }
 

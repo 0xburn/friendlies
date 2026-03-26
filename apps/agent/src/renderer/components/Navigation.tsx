@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
-const links = [
+const baseLinks = [
   { to: '/', label: 'Friends', icon: '♟' },
   { to: '/discover', label: 'Discover', icon: '◎' },
+  { to: '/ggs', label: 'GGs', icon: '✦' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
@@ -20,11 +21,13 @@ export function Navigation() {
   const [broadcastDismissed, setBroadcastDismissed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [livePresence, setLivePresence] = useState<{ online: number; inGame: number } | null>(null);
+  const [nudgesDisabled, setNudgesDisabled] = useState(false);
 
   useEffect(() => {
     window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     window.api.getBroadcast().then((msg: string | null) => setBroadcast(msg));
     window.api.getLivePresence().then(setLivePresence);
+    window.api.getSettings().then((s: any) => { setNudgesDisabled(!!s.disableNudges); });
     window.api.getIdentity().then((id: any) => {
       if (id?.connectCode && ADMIN_CODES.includes(id.connectCode)) {
         setIsAdmin(true);
@@ -58,7 +61,7 @@ export function Navigation() {
           </span>
         </div>
         <nav className="flex-1 px-3 py-2 space-y-1">
-          {links.map((link) => (
+          {baseLinks.filter((link) => !(link.to === '/ggs' && nudgesDisabled)).map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -85,7 +88,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.80</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.1.81</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

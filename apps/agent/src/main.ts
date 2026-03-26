@@ -7,7 +7,7 @@ import {
 import { APP_PROTOCOL, PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
-import { showFriendOnlineNotification, showFriendRequestNotification, showPlayInviteNotification } from './notifications';
+import { showFriendOnlineNotification, showFriendRequestNotification, showNudgeNotification, showPlayInviteNotification } from './notifications';
 import { supabase } from './supabase';
 import {
   getCurrentStatus, onGameActiveChange, pushOfflineAndStop, setGameThrottling, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
@@ -29,6 +29,7 @@ let unsubGameActive: (() => void) | null = null;
 const previousFriendStatuses = new Map<string, string>();
 const knownIncomingRequestIds = new Set<string>();
 const knownPlayInviteIds = new Set<string>();
+const knownNudgeIds = new Set<string>();
 
 function parseDotEnvContent(content: string): void {
   for (const line of content.split(/\r?\n/)) {
@@ -105,6 +106,7 @@ async function stopAgentServices(): Promise<void> {
   previousFriendStatuses.clear();
   knownIncomingRequestIds.clear();
   knownPlayInviteIds.clear();
+  knownNudgeIds.clear();
   try { await stopPresenceLoop(); } catch (e) { console.error('stopPresenceLoop', e); }
   stopWatcher();
 }
@@ -116,6 +118,7 @@ async function pollAllNotifications(userId: string): Promise<void> {
     pollFriendOnlineStatuses(userId, suppressNotifs),
     pollIncomingFriendRequests(userId, suppressNotifs),
     pollPlayInvites(userId),
+    pollNudges(userId, suppressNotifs),
   ]);
   firstPollDone = true;
   const ms = performance.now() - t0;
@@ -235,6 +238,46 @@ async function pollPlayInvites(userId: string): Promise<void> {
       });
     }
   } catch (e) { console.error('[main] play invite poll failed', e); }
+}
+
+async function pollNudges(userId: string, suppressNotifs = false): Promise<void> {
+  try {
+    const st = getSettings();
+    if (st.disableNudges || !st.showNotifications) return;
+
+    const { data: nudges } = await supabase
+      .from('nudges')
+      .select('id, sender_id, message, created_at')
+      .eq('receiver_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (!nudges || nudges.length === 0) return;
+
+    const newNudges = nudges.filter((n) => !knownNudgeIds.has(n.id));
+    if (newNudges.length === 0) return;
+
+    const senderIds = [...new Set(newNudges.map((n) => n.sender_id))];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, connect_code')
+      .in('id', senderIds);
+    const profileMap: Record<string, string> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.id] = p.connect_code; });
+
+    for (const nudge of newNudges) {
+      knownNudgeIds.add(nudge.id);
+      if (suppressNotifs) continue;
+      if (serviceStartedAt && nudge.created_at < serviceStartedAt) continue;
+      const fromCode = profileMap[nudge.sender_id];
+      if (!fromCode) continue;
+      showNudgeNotification(fromCode, nudge.message, () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    }
+  } catch (e) { console.error('[main] nudge poll failed', e); }
 }
 
 async function startAgentServices(identity: SlippiIdentity, userId: string): Promise<void> {

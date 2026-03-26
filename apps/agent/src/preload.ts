@@ -57,6 +57,8 @@ const api = {
   getFriendStatuses: () => ipcRenderer.invoke('presence:friendStatuses'),
   toggleLookingToPlay: () => ipcRenderer.invoke('presence:toggleLookingToPlay') as Promise<boolean>,
   isLookingToPlay: () => ipcRenderer.invoke('presence:isLookingToPlay') as Promise<boolean>,
+  setStatusPreset: (preset: string | null) => ipcRenderer.invoke('presence:setStatusPreset', preset) as Promise<string | null>,
+  getStatusPreset: () => ipcRenderer.invoke('presence:getStatusPreset') as Promise<string | null>,
   onPresenceUpdate: (cb: (users: any[]) => void): Unsubscribe => onEvent('presence:updated', cb),
   onLocalStatus: (cb: (info: any) => void): Unsubscribe => onEvent('presence:localStatus', cb),
 
@@ -88,6 +90,10 @@ const api = {
   onDirectConnectStatus: (cb: (evt: any) => void): Unsubscribe => onEvent('directConnect:status', cb),
   onInvitesRefresh: (cb: () => void): Unsubscribe => onEvent('invites:refresh', cb),
   onNotificationSound: (cb: () => void): Unsubscribe => onEvent('notification:sound', cb),
+  sendNudge: (connectCode: string, message: string) => ipcRenderer.invoke('nudge:send', connectCode, message) as Promise<{ ok?: boolean; error?: string }>,
+  getNudges: () => ipcRenderer.invoke('nudge:list') as Promise<any[]>,
+  getSentNudges: () => ipcRenderer.invoke('nudge:listSent') as Promise<any[]>,
+
   testNotification: () => ipcRenderer.invoke('notifications:test'),
 };
 

@@ -27,15 +27,30 @@ interface PlayerCardProps {
     currentCharacter?: number | null;
     opponentCode?: string | null;
     playingSince?: string | null;
+    lookingToPlay?: boolean;
+    statusPreset?: string | null;
   };
   showStatus?: boolean;
   expandable?: boolean;
   onClick?: () => void;
   onBlock?: () => void;
+  onRemove?: () => void;
+  onInvite?: () => void;
+  inviteDisabled?: boolean;
+  inviteState?: true | string | null;
+  nudgeOptions?: string[];
+  onNudge?: (message: string) => void;
+  nudgeState?: string | null;
+  onAdd?: () => void;
+  addDisabled?: boolean;
+  addState?: 'pending' | 'adding' | 'friends' | null;
+  removeLabel?: string;
+  onUnsend?: () => void;
 }
 
-export function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock }: PlayerCardProps) {
+export function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock, onRemove, onInvite, inviteDisabled, inviteState, nudgeOptions, onNudge, nudgeState, onAdd, addDisabled, addState, removeLabel, onUnsend }: PlayerCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [nudgePickerOpen, setNudgePickerOpen] = useState(false);
   const hasAvatar = !!player.avatarUrl;
 
   function handleClick() {
@@ -45,8 +60,14 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
     onClick?.();
   }
 
+  const isLfg = !!player.lookingToPlay;
+
   return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] transition-all hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]">
+    <div className={`rounded-xl border overflow-hidden transition-all ${
+      isLfg
+        ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
+        : 'border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
+    }`}>
       <div onClick={handleClick}
         className="group flex items-center gap-4 p-4 cursor-pointer">
         {hasAvatar ? (
@@ -101,6 +122,12 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
             {player.region && (
               <span className="text-[10px] text-gray-600 truncate">{player.region}</span>
             )}
+            {player.statusPreset && (
+              <span className="text-[10px] font-medium text-amber-400/80 truncate">{player.statusPreset}</span>
+            )}
+            {isLfg && !player.statusPreset && (
+              <span className="text-[10px] font-medium text-amber-400/80 truncate">Looking to play</span>
+            )}
           </div>
         </div>
         {player.topCharacters && player.topCharacters.length > 0 && (
@@ -111,6 +138,50 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </div>
         )}
         <RankBadge rating={player.rating ?? null} />
+        {onInvite && (
+          inviteState === true ? (
+            <span className="text-[10px] font-medium text-[#21BA45] shrink-0 px-1">Sent!</span>
+          ) : typeof inviteState === 'string' ? (
+            <span className="text-[10px] font-medium text-yellow-500 shrink-0 px-1 max-w-[80px] truncate">{inviteState}</span>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onInvite(); }}
+              disabled={inviteDisabled}
+              className="shrink-0 rounded-lg bg-blue-500 px-3 py-1 text-[11px] font-semibold text-white hover:bg-blue-600 transition-colors disabled:opacity-30"
+            >
+              Invite
+            </button>
+          )
+        )}
+        {addState === 'friends' ? (
+          <span className="shrink-0 rounded-lg border border-[#21BA45]/20 bg-[#21BA45]/5 px-3 py-1 text-[11px] font-medium text-[#21BA45]/60">
+            Friends
+          </span>
+        ) : addState === 'pending' ? (
+          <span className="shrink-0 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-1 text-[11px] font-medium text-yellow-500/70">
+            Pending
+          </span>
+        ) : addState === 'adding' ? (
+          <span className="shrink-0 rounded-lg border border-[#2a2a2a] px-3 py-1 text-[11px] text-gray-500 animate-pulse">
+            Adding...
+          </span>
+        ) : onAdd ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onAdd(); }}
+            disabled={addDisabled}
+            className="shrink-0 rounded-lg border border-[#21BA45]/30 bg-[#21BA45]/10 px-3 py-1 text-[11px] font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-colors disabled:opacity-30"
+          >
+            Add Friend
+          </button>
+        ) : null}
+        {onUnsend && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onUnsend(); }}
+            className="shrink-0 rounded-lg bg-red-500/20 px-3 py-1 text-[11px] font-semibold text-red-400 hover:bg-red-500/30 transition-colors"
+          >
+            Unsend
+          </button>
+        )}
         {expandable && (
           <svg className={`w-4 h-4 text-gray-600 transition-transform ${expanded ? 'rotate-180' : ''}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -121,16 +192,58 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
       {expanded && (
         <div className="relative">
           <PlayerStatsPanel connectCode={player.connectCode} topCharacters={player.topCharacters} />
-          {onBlock && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onBlock(); }}
-              className="absolute bottom-3 right-3 rounded-md bg-red-500/10 p-1.5 text-red-400/60 hover:text-red-400 hover:bg-red-500/20 transition-all"
-              title={`Block ${player.connectCode}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          {(onBlock || onRemove || onNudge) && (
+            <div className="flex items-center gap-2 px-4 pb-4 pt-3">
+              {onNudge && nudgeOptions && (
+                <div className="relative">
+                  {nudgeState ? (
+                    <span className={`text-[10px] font-medium ${nudgeState === 'Sent!' ? 'text-[#21BA45]' : 'text-yellow-500'}`}>{nudgeState}</span>
+                  ) : nudgePickerOpen ? (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {nudgeOptions.map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={(e) => { e.stopPropagation(); onNudge(opt); setNudgePickerOpen(false); }}
+                          className="rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setNudgePickerOpen(false); }}
+                        className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors px-1"
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setNudgePickerOpen(true); }}
+                      className="rounded-md bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors"
+                    >
+                      Nudge
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="flex-1" />
+              {onRemove && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                  className="rounded-md px-2.5 py-1 text-[10px] font-medium text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                >
+                  {removeLabel || 'Remove'}
+                </button>
+              )}
+              {onBlock && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onBlock(); }}
+                  className="rounded-md px-2.5 py-1 text-[10px] font-medium text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                >
+                  Block
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

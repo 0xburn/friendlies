@@ -8,6 +8,8 @@ interface SettingsState {
   notifyPlayInvite: boolean;
   notificationSound: boolean;
   reduceBackgroundActivity: boolean;
+  disableNudges: boolean;
+  disableStatuses: boolean;
 }
 
 interface AppMetric {
@@ -40,6 +42,8 @@ export function Settings() {
     notifyPlayInvite: true,
     notificationSound: true,
     reduceBackgroundActivity: true,
+    disableNudges: false,
+    disableStatuses: false,
   });
   const [metrics, setMetrics] = useState<AppMetric[] | null>(null);
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false });
@@ -58,6 +62,8 @@ export function Settings() {
         notifyPlayInvite: s.notifyPlayInvite !== false,
         notificationSound: s.notificationSound !== false,
         reduceBackgroundActivity: s.reduceBackgroundActivity !== false,
+        disableNudges: !!s.disableNudges,
+        disableStatuses: !!s.disableStatuses,
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
@@ -251,6 +257,27 @@ export function Settings() {
         />
       </div>
 
+      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+        <div className="p-5">
+          <p className="text-sm font-medium text-gray-300">Social Features</p>
+          <p className="text-xs text-gray-500 mt-0.5">Control which social features are enabled</p>
+        </div>
+        <ToggleRow
+          label="Status Presets"
+          description="Show status presets like 'Down for friendlies' on your card and see others' statuses"
+          checked={!settings.disableStatuses}
+          onChange={() => toggle('disableStatuses')}
+          indent
+        />
+        <ToggleRow
+          label="Nudges"
+          description="Receive and send quick messages like 'GGs' to other players"
+          checked={!settings.disableNudges}
+          onChange={() => toggle('disableNudges')}
+          indent
+        />
+      </div>
+
       {blockedUsers.length > 0 && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
           <div className="p-5">
@@ -382,7 +409,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.80
+      friendlies v0.1.81
       </p>
     </div>
   );
