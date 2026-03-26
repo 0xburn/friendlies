@@ -151,6 +151,7 @@ export function Friends() {
     });
 
     const dbPoll = setInterval(() => {
+      if (document.hidden) return;
       pollFriendStatuses();
       loadFriends();
       loadIncoming();
@@ -404,6 +405,7 @@ export function Friends() {
   useEffect(() => {
     if (!hasActiveInvites) return;
     const fastPoll = setInterval(() => {
+      if (document.hidden) return;
       loadPlayInvites();
       loadSentInvites();
     }, 3_000);

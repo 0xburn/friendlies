@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron';
 
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
@@ -1034,6 +1034,8 @@ export function registerIpcHandlers(
     }
   });
   ipcMain.handle('clipboard:write', (_e, text: string) => { clipboard.writeText(text); });
+
+  ipcMain.handle('perf:metrics', () => app.getAppMetrics());
 
   ipcMain.handle('updater:check', () => checkForUpdates());
   ipcMain.handle('updater:download', () => downloadUpdate());

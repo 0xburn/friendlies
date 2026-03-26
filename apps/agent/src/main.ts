@@ -10,7 +10,7 @@ import { registerIpcHandlers, sendToRenderer } from './ipc';
 import { showFriendOnlineNotification, showFriendRequestNotification, showOpponentNotification, showPlayInviteNotification } from './notifications';
 import { supabase } from './supabase';
 import {
-  getCurrentStatus, pushOfflineAndStop, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
+  getCurrentStatus, onGameActiveChange, pushOfflineAndStop, setGameThrottling, setLastOpponent, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
 } from './presence';
 import { getSettings, isSetupComplete, updateSettings } from './settings';
 import {
@@ -25,6 +25,7 @@ let serviceStartedAt: string | null = null;
 let firstPollDone = false;
 let refreshLock = false;
 let activeServiceKey: string | null = null;
+let unsubGameActive: (() => void) | null = null;
 const previousFriendStatuses = new Map<string, string>();
 const knownIncomingRequestIds = new Set<string>();
 const knownPlayInviteIds = new Set<string>();
@@ -96,6 +97,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 async function stopAgentServices(): Promise<void> {
+  if (unsubGameActive) { unsubGameActive(); unsubGameActive = null; }
   if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
   serviceStartedAt = null;
   firstPollDone = false;
@@ -108,6 +110,7 @@ async function stopAgentServices(): Promise<void> {
 }
 
 async function pollAllNotifications(userId: string): Promise<void> {
+  const t0 = performance.now();
   const suppressNotifs = !firstPollDone;
   await Promise.all([
     pollFriendOnlineStatuses(userId, suppressNotifs),
@@ -115,6 +118,8 @@ async function pollAllNotifications(userId: string): Promise<void> {
     pollPlayInvites(userId),
   ]);
   firstPollDone = true;
+  const ms = performance.now() - t0;
+  if (ms > 200) console.log(`[perf] pollAllNotifications took ${ms.toFixed(0)}ms`);
 }
 
 async function pollFriendOnlineStatuses(userId: string, suppressNotifs = false): Promise<void> {
@@ -260,11 +265,27 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
       updateTrayStatus(getCurrentStatus());
     } catch (e) { console.error('opponent callback', e); }
   });
+  setGameThrottling(st.reduceBackgroundActivity);
   await startPresenceLoop(identity.connectCode, identity.displayName || identity.connectCode, userId, st.replayDir);
 
   if (friendPollTimer) clearInterval(friendPollTimer);
   friendPollTimer = setInterval(() => void pollAllNotifications(userId), 30_000);
   void pollAllNotifications(userId);
+
+  if (unsubGameActive) unsubGameActive();
+  unsubGameActive = onGameActiveChange((inGame) => {
+    if (!getSettings().reduceBackgroundActivity) return;
+    if (inGame) {
+      if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
+      console.log('[main] Game active — paused notification polling');
+    } else {
+      if (!friendPollTimer) {
+        friendPollTimer = setInterval(() => void pollAllNotifications(userId), 30_000);
+        void pollAllNotifications(userId);
+      }
+      console.log('[main] Game idle — resumed notification polling');
+    }
+  });
 }
 
 async function refreshAgentState(): Promise<void> {
@@ -432,8 +453,15 @@ app.whenReady().then(async () => {
       await refreshAgentState();
     }
 
+    let lastTrayUpdate = 0;
     setInterval(() => {
-      try { updateTrayStatus(getCurrentStatus()); } catch {}
+      try {
+        const now = Date.now();
+        const inGame = getCurrentStatus() === 'in-game';
+        if (inGame && getSettings().reduceBackgroundActivity && now - lastTrayUpdate < 30_000) return;
+        lastTrayUpdate = now;
+        updateTrayStatus(getCurrentStatus());
+      } catch {}
     }, 5000);
   } catch (e) { console.error('app.whenReady', e); }
 });

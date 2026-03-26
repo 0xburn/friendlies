@@ -7,6 +7,14 @@ interface SettingsState {
   notifyFriendOnline: boolean;
   notifyPlayInvite: boolean;
   notificationSound: boolean;
+  reduceBackgroundActivity: boolean;
+}
+
+interface AppMetric {
+  pid: number;
+  type: string;
+  cpu: { percentCPUUsage: number; idleWakeupsPerSecond: number };
+  memory: { workingSetSize: number; peakWorkingSetSize: number };
 }
 
 interface PresenceStats {
@@ -20,7 +28,7 @@ interface PresenceStats {
   realtimeConnected: boolean;
 }
 
-const DEBUG_CONNECT_CODES = ['SMOK#1'];
+const DEBUG_CONNECT_CODES = ['SMOK#1', 'BF#0'];
 export function Settings() {
   const [pStats, setPStats] = useState<PresenceStats | null>(null);
   const [myCode, setMyCode] = useState<string | null>(null);
@@ -31,7 +39,9 @@ export function Settings() {
     notifyFriendOnline: true,
     notifyPlayInvite: true,
     notificationSound: true,
+    reduceBackgroundActivity: true,
   });
+  const [metrics, setMetrics] = useState<AppMetric[] | null>(null);
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
@@ -47,6 +57,7 @@ export function Settings() {
         notifyFriendOnline: s.notifyFriendOnline !== false,
         notifyPlayInvite: s.notifyPlayInvite !== false,
         notificationSound: s.notificationSound !== false,
+        reduceBackgroundActivity: s.reduceBackgroundActivity !== false,
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
@@ -56,13 +67,16 @@ export function Settings() {
     });
     const fetchStats = () => (window.api as any).getPresenceStats?.().then((s: PresenceStats) => setPStats(s)).catch(() => {});
     fetchStats();
-    const statsInterval = setInterval(fetchStats, 10_000);
+    const statsInterval = setInterval(() => { if (!document.hidden) fetchStats(); }, 10_000);
+    const fetchMetrics = () => window.api.getAppMetrics().then(setMetrics).catch(() => {});
+    fetchMetrics();
+    const metricsInterval = setInterval(() => { if (!document.hidden) fetchMetrics(); }, 5_000);
     const unsub = window.api.onUpdateStatus((s: any) => {
       if (s.state === 'not-available') setUpdateMsg('Up to date');
       else if (s.state === 'available') setUpdateMsg(null);
       else if (s.state === 'error') setUpdateMsg(null);
     });
-    return () => { unsub(); clearInterval(statsInterval); };
+    return () => { unsub(); clearInterval(statsInterval); clearInterval(metricsInterval); };
   }, []);
 
   async function handleBrowse() {
@@ -201,6 +215,15 @@ export function Settings() {
       </div>
 
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+        <ToggleRow
+          label="Reduce Background Activity"
+          description="Pause notifications and slow polling while in a game to minimize performance impact"
+          checked={settings.reduceBackgroundActivity}
+          onChange={() => toggle('reduceBackgroundActivity')}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
         <div className="p-5">
           <p className="text-sm font-medium text-gray-300">Privacy</p>
           <p className="text-xs text-gray-500 mt-0.5">Control what other players can see about you</p>
@@ -316,6 +339,47 @@ export function Settings() {
           )}
         </div>
       )}
+
+      {metrics && myCode && DEBUG_CONNECT_CODES.includes(myCode) && (() => {
+        const labelMap: Record<string, string> = {
+          Browser: 'Main process',
+          Tab: 'Renderer (UI)',
+          GPU: 'GPU compositing',
+          Utility: 'Network / utility',
+        };
+        const totalCpu = metrics.reduce((s, m) => s + m.cpu.percentCPUUsage, 0);
+        const totalMem = metrics.reduce((s, m) => s + m.memory.workingSetSize, 0);
+        const fmtCpu = (v: number) => v.toFixed(2).padStart(6);
+        const fmtMem = (v: number) => `${(v / 1024).toFixed(0)}`.padStart(4);
+        return (
+          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Performance</h3>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10px] text-gray-600">
+                  <td className="pb-2">Process</td>
+                  <td className="pb-2 text-right">CPU</td>
+                  <td className="pb-2 text-right">RAM</td>
+                </tr>
+              </thead>
+              <tbody className="font-mono tabular-nums">
+                {metrics.map((m) => (
+                  <tr key={m.pid}>
+                    <td className="text-gray-500 py-0.5 pr-4 font-sans">{labelMap[m.type] || m.type}</td>
+                    <td className="text-gray-300 py-0.5 text-right whitespace-pre">{fmtCpu(m.cpu.percentCPUUsage)}%</td>
+                    <td className="text-gray-300 py-0.5 text-right whitespace-pre">{fmtMem(m.memory.workingSetSize)} MB</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-[#2a2a2a]">
+                  <td className="text-gray-400 font-medium pt-2 font-sans">Total</td>
+                  <td className="text-white font-medium pt-2 text-right whitespace-pre">{fmtCpu(totalCpu)}%</td>
+                  <td className="text-white font-medium pt-2 text-right whitespace-pre">{fmtMem(totalMem)} MB</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       <p className="text-center text-xs text-gray-600">
       friendlies v0.1.77

@@ -75,6 +75,8 @@ const api = {
   openDiscordProfile: (discordId: string) => ipcRenderer.invoke('discord:openProfile', discordId),
   copyToClipboard: (text: string) => ipcRenderer.invoke('clipboard:write', text),
 
+  getAppMetrics: () => ipcRenderer.invoke('perf:metrics') as Promise<any[]>,
+
   onUpdateStatus: (cb: (status: any) => void): Unsubscribe => onEvent('updater:status', cb),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

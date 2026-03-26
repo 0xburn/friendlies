@@ -300,6 +300,7 @@ export function Opponents() {
     });
 
     pollRef.current = setInterval(() => {
+      if (document.hidden) return;
       loadFriendCodes();
     }, POLL_INTERVAL);
 

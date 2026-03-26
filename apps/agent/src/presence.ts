@@ -1,7 +1,10 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+import { execFile } from 'child_process';
+
 import {
   DOLPHIN_PROCESS_NAMES,
+  IN_GAME_POLL_INTERVAL,
   OPPONENT_RECENT_THRESHOLD,
   PRESENCE_POLL_INTERVAL,
   PRESENCE_STALE_THRESHOLD,
@@ -15,12 +18,6 @@ import {
   type PresenceStatus,
 } from './presence-logic';
 import { supabase } from './supabase';
-
-const find = require('find-process') as (
-  type: 'name',
-  name: string,
-  strict?: boolean,
-) => Promise<Array<{ name: string; pid: number }>>;
 
 export type { PresenceStatus };
 
@@ -45,7 +42,7 @@ export interface LocalStatus {
 type PresenceSyncCallback = (users: OnlineUser[]) => void;
 type LocalStatusCallback = (info: LocalStatus) => void;
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let presenceChannel: RealtimeChannel | null = null;
 let subscribed = false;
 let currentStatus: PresenceStatus = 'offline';
@@ -79,6 +76,10 @@ let lookingToPlay = false;
 let lookingToPlaySince: string | null = null;
 const LFG_EXPIRY_MS = 30 * 60 * 1000;
 
+let throttleInGame = true;
+type GameActiveCallback = (inGame: boolean) => void;
+let gameActiveCallbacks: GameActiveCallback[] = [];
+
 const presenceStats = {
   upsertOk: 0,
   upsertFail: 0,
@@ -96,6 +97,21 @@ export function setLastPlayedCharacterId(id: number | null): void {
 
 export function getLastPlayedCharacterId(): number | null {
   return lastCharacterId;
+}
+
+export function setGameThrottling(enabled: boolean): void {
+  throttleInGame = enabled;
+}
+
+export function onGameActiveChange(cb: GameActiveCallback): () => void {
+  gameActiveCallbacks.push(cb);
+  return () => { gameActiveCallbacks = gameActiveCallbacks.filter((c) => c !== cb); };
+}
+
+function emitGameActive(inGame: boolean): void {
+  for (const cb of gameActiveCallbacks) {
+    try { cb(inGame); } catch (e) { console.error('gameActiveCallback', e); }
+  }
 }
 
 export function setLastOpponent(connectCode: string, characterId?: number): void {
@@ -196,18 +212,23 @@ function extractOnlineUsers(): OnlineUser[] {
   } catch (e) { console.error('extractOnlineUsers', e); return []; }
 }
 
-async function isProcessRunning(names: readonly string[]): Promise<boolean> {
-  try {
-    const results = await Promise.all(
-      names.map((name) => find('name', name, false).catch(() => [] as any[])),
-    );
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].length > 0) return true;
+function getProcessSnapshot(): Promise<string> {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      execFile('tasklist', ['/fo', 'csv', '/nh'], { timeout: 5000 }, (err, stdout) => {
+        resolve(err ? '' : stdout);
+      });
+    } else {
+      execFile('ps', ['ax', '-o', 'command='], { timeout: 5000 }, (err, stdout) => {
+        resolve(err ? '' : stdout);
+      });
     }
-  } catch (e) {
-    console.error('isProcessRunning failed', e);
-  }
-  return false;
+  });
+}
+
+function snapshotContains(snapshot: string, names: readonly string[]): boolean {
+  const lower = snapshot.toLowerCase();
+  return names.some((name) => lower.includes(name.toLowerCase()));
 }
 
 function getRecentOpponent(): { code: string; since: string } | null {
@@ -478,14 +499,20 @@ export async function startPresenceLoop(
             });
         }
 
-        const launcherRunning = await isProcessRunning(SLIPPI_LAUNCHER_PROCESS_NAMES);
-        const dolphinRunning = await isProcessRunning(DOLPHIN_PROCESS_NAMES);
+        const t0 = performance.now();
+        const snapshot = await getProcessSnapshot();
+        const launcherRunning = snapshotContains(snapshot, SLIPPI_LAUNCHER_PROCESS_NAMES);
+        const dolphinRunning = snapshotContains(snapshot, DOLPHIN_PROCESS_NAMES);
+        const procMs = performance.now() - t0;
+        if (procMs > 100) console.log(`[perf] process scan took ${procMs.toFixed(0)}ms`);
+
         const next = resolvePresenceStatus(launcherRunning, dolphinRunning);
         if (next === 'in-game' && currentStatus !== 'in-game') {
           lastOpponentCode = null;
           lastOpponentCharacterId = null;
           lastOpponentTimestamp = 0;
         }
+        const prevStatus = currentStatus;
         const opponent = next === 'in-game' ? getRecentOpponent() : null;
         if (next !== currentStatus) {
           console.log(
@@ -496,20 +523,34 @@ export async function startPresenceLoop(
         }
         currentStatus = next;
         emitLocalStatus();
+
+        if (next !== prevStatus) {
+          if (next === 'in-game') emitGameActive(true);
+          else if (prevStatus === 'in-game') emitGameActive(false);
+        }
+
+        const t1 = performance.now();
         await pushPresence(
           next,
           loopConnectCode,
           loopDisplayName,
           loopUserId,
         );
+        const pushMs = performance.now() - t1;
+        if (pushMs > 200) console.log(`[perf] pushPresence took ${pushMs.toFixed(0)}ms`);
+
         if (!subscribed) scheduleChannelRetry();
       } catch (e) {
         console.error('presence tick failed', e);
       }
+
+      const delay = (currentStatus === 'in-game' && throttleInGame)
+        ? IN_GAME_POLL_INTERVAL
+        : PRESENCE_POLL_INTERVAL;
+      pollTimer = setTimeout(() => void tick(), delay);
     };
 
     void tick();
-    pollTimer = setInterval(() => void tick(), PRESENCE_POLL_INTERVAL);
   } catch (e) {
     console.error('startPresenceLoop failed', e);
   }
@@ -527,7 +568,7 @@ export async function stopPresenceLoop(): Promise<void> {
       periodicRetryTimer = null;
     }
     if (pollTimer) {
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       pollTimer = null;
     }
     if (presenceChannel && subscribed) {
@@ -552,7 +593,7 @@ export async function stopPresenceLoop(): Promise<void> {
 
 export async function pushOfflineAndStop(): Promise<void> {
   try {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (channelRetryTimer) { clearTimeout(channelRetryTimer); channelRetryTimer = null; }
     if (periodicRetryTimer) { clearInterval(periodicRetryTimer); periodicRetryTimer = null; }
     currentStatus = 'offline';

@@ -169,7 +169,7 @@ export function Discover() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(() => load(), 30_000);
+    const interval = setInterval(() => { if (!document.hidden) load(); }, 30_000);
     return () => clearInterval(interval);
   }, []);
 

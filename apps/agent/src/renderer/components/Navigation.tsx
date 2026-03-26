@@ -31,6 +31,7 @@ export function Navigation() {
       }
     });
     const interval = setInterval(() => {
+      if (document.hidden) return;
       window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     }, 300_000);
     return () => clearInterval(interval);
@@ -39,6 +40,7 @@ export function Navigation() {
   useEffect(() => {
     if (!isAdmin) return;
     const poll = setInterval(() => {
+      if (document.hidden) return;
       window.api.getLivePresence().then(setLivePresence);
     }, 30_000);
     return () => clearInterval(poll);
