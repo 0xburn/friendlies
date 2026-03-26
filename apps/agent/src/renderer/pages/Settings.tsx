@@ -85,7 +85,9 @@ export function Settings() {
       else if (s.state === 'available') setUpdateMsg(null);
       else if (s.state === 'error') setUpdateMsg(null);
     });
-    return () => { unsub(); clearInterval(statsInterval); clearInterval(metricsInterval); };
+    const onVisible = () => { if (!document.hidden) { fetchStats(); fetchMetrics(); } };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { unsub(); clearInterval(statsInterval); clearInterval(metricsInterval); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
   async function handleBrowse() {
@@ -418,7 +420,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.86
+      friendlies v0.1.87
       </p>
     </div>
   );

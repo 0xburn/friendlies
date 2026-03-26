@@ -153,6 +153,7 @@ export function Discover() {
   const [adding, setAdding] = useState<string | null>(null);
   const [addedMap, setAddedMap] = useState<Map<string, 'pending' | 'friends'>>(new Map());
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  const [visibleCount, setVisibleCount] = useState(15);
   const [confirmBlock, setConfirmBlock] = useState<string | null>(null);
   const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
   const charFilterRef = useRef(charFilter);
@@ -167,6 +168,7 @@ export function Discover() {
     } catch {}
     setLoading(false);
     setLastRefresh(Date.now());
+    setVisibleCount(15);
   }
 
   useEffect(() => {
@@ -264,7 +266,7 @@ export function Discover() {
           </div>
         )}
 
-        {players.map((p) => {
+        {players.slice(0, visibleCount).map((p) => {
           const state = adding === p.connectCode ? 'adding' : (addedMap.get(p.connectCode) ?? null);
           return (
             <div key={p.userId} className="space-y-1">
@@ -301,6 +303,15 @@ export function Discover() {
             </div>
           );
         })}
+
+        {players.length > visibleCount && (
+          <button
+            onClick={() => setVisibleCount((c) => c + 15)}
+            className="w-full rounded-xl border border-[#2a2a2a] bg-[#141414] py-3 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#1a1a1a] transition-colors"
+          >
+            Load more ({players.length - visibleCount} remaining)
+          </button>
+        )}
       </div>
 
       {confirmBlock && (

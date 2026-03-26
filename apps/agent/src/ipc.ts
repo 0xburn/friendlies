@@ -684,7 +684,7 @@ export function registerIpcHandlers(
       if (!user) return [];
 
       const [{ data: myProfile }, { data: friendRows }, { data: blockedRows }] = await Promise.all([
-        supabase.from('profiles').select('latitude, longitude').eq('id', user.id).single(),
+        supabase.from('profiles').select('latitude, longitude, region').eq('id', user.id).single(),
         supabase.from('friends').select('friend_id').eq('user_id', user.id),
         supabase.from('blocked_users').select('blocked_user_id, blocked_connect_code').eq('user_id', user.id),
       ]);
@@ -756,17 +756,29 @@ export function registerIpcHandlers(
         }
       }
 
+      const myRegion = myProfile?.region as string | null ?? null;
+      const myCountry = myRegion?.split(',').pop()?.trim() ?? null;
+
       const results = presenceRows
         .filter((r: any) => profileMap[r.user_id])
         .map((r: any) => {
           const p = profileMap[r.user_id];
           const c = cacheMap[p.connect_code] || {};
-          const NO_GEO_PENALTY = 9999;
-          let distance = NO_GEO_PENALTY;
-          if (myLat != null && myLng != null && p.latitude != null && p.longitude != null) {
-            const cosLat = Math.cos((myLat * Math.PI) / 180);
-            distance = Math.pow(p.latitude - myLat, 2) + Math.pow((p.longitude - myLng) * cosLat, 2);
+          const hasGeo = myLat != null && myLng != null && p.latitude != null && p.longitude != null;
+          let distance: number;
+          if (hasGeo) {
+            const cosLat = Math.cos((myLat! * Math.PI) / 180);
+            distance = Math.pow(p.latitude - myLat!, 2) + Math.pow((p.longitude - myLng!) * cosLat, 2);
+          } else {
+            const theirRegion = p.region as string | null;
+            const theirCountry = theirRegion?.split(',').pop()?.trim() ?? null;
+            if (myRegion && theirRegion && myRegion === theirRegion) distance = 100;
+            else if (myCountry && theirCountry && myCountry === theirCountry) distance = 500;
+            else distance = 9999;
           }
+          // Small variance so the order shuffles slightly between refreshes
+          distance += distance * 0.08 * (Math.random() - 0.5);
+
           const resolved = resolvePresenceRow(r as any, PRESENCE_STALE_THRESHOLD, Date.now());
           return {
             userId: p.id,
@@ -794,14 +806,10 @@ export function registerIpcHandlers(
         const hasHistoryA = a.lastPlayedAt ? 1 : 0;
         const hasHistoryB = b.lastPlayedAt ? 1 : 0;
         if (hasHistoryA !== hasHistoryB) return hasHistoryB - hasHistoryA;
-        const statusOrder = (s: string) => s === 'in-game' ? 0 : 1;
-        const sd = statusOrder(a.status) - statusOrder(b.status);
-        if (sd !== 0) return sd;
-        if (a.distance !== b.distance) return a.distance - b.distance;
-        return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+        return a.distance - b.distance;
       });
 
-      return results.slice(0, 10);
+      return results.slice(0, 50);
     } catch (e) { console.error('discover:list', e); return []; }
   });
 

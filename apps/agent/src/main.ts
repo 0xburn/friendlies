@@ -56,6 +56,46 @@ function loadDotEnvFromAppDir(): void {
   } catch (e) { console.error('loadDotEnvFromAppDir', e); }
 }
 
+async function fetchGeoWithFallback(): Promise<{ lat: number; lon: number; region: string } | null> {
+  const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+
+  // Primary: ip-api.com (HTTP, free, no key)
+  try {
+    const res = await Promise.race([fetch('http://ip-api.com/json/?fields=lat,lon,regionName,country'), timeout(5000)]);
+    if (res.ok) {
+      const d = await res.json();
+      if (typeof d.lat === 'number' && typeof d.lon === 'number') {
+        return { lat: d.lat, lon: d.lon, region: [d.regionName, d.country].filter(Boolean).join(', ') || '' };
+      }
+    }
+  } catch { /* try fallback */ }
+
+  // Fallback: ipwho.is (HTTPS, free, no key)
+  try {
+    const res = await Promise.race([fetch('https://ipwho.is/'), timeout(5000)]);
+    if (res.ok) {
+      const d = await res.json();
+      if (d.success !== false && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+        return { lat: d.latitude, lon: d.longitude, region: [d.region, d.country].filter(Boolean).join(', ') || '' };
+      }
+    }
+  } catch { /* try fallback */ }
+
+  // Fallback 2: freeipapi.com (HTTPS, free, no key)
+  try {
+    const res = await Promise.race([fetch('https://freeipapi.com/api/json'), timeout(5000)]);
+    if (res.ok) {
+      const d = await res.json();
+      if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+        return { lat: d.latitude, lon: d.longitude, region: [d.regionName, d.countryName].filter(Boolean).join(', ') || '' };
+      }
+    }
+  } catch { /* all failed */ }
+
+  console.warn('[main] all geolocation services failed');
+  return null;
+}
+
 function findProtocolUrl(argv: string[]): string | null {
   return argv.find((a) => a.startsWith(`${APP_PROTOCOL}://`)) ?? null;
 }
@@ -372,14 +412,11 @@ async function refreshAgentState(): Promise<void> {
       };
 
       try {
-        const geoRes = await fetch('http://ip-api.com/json/?fields=lat,lon,regionName,country');
-        if (geoRes.ok) {
-          const geo = await geoRes.json();
-          if (typeof geo.lat === 'number' && typeof geo.lon === 'number') {
-            profileUpdate.latitude = geo.lat;
-            profileUpdate.longitude = geo.lon;
-            profileUpdate.region = [geo.regionName, geo.country].filter(Boolean).join(', ') || null;
-          }
+        const geo = await fetchGeoWithFallback();
+        if (geo) {
+          profileUpdate.latitude = geo.lat;
+          profileUpdate.longitude = geo.lon;
+          profileUpdate.region = geo.region;
         }
       } catch (e) { console.warn('[main] geolocation lookup failed:', e); }
 
