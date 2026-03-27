@@ -815,8 +815,8 @@ export function registerIpcHandlers(
 
           const resolved = resolvePresenceRow(r as any, PRESENCE_STALE_THRESHOLD, Date.now());
 
-          // Boost active players: LFG / status preset users appear ~30% closer
-          if (resolved.statusPreset || resolved.lookingToPlay) distance *= 0.7;
+          // Boost active players: LFG / status preset users appear closer
+          if (resolved.statusPreset || resolved.lookingToPlay) distance *= 0.4;
           return {
             userId: p.id,
             connectCode: p.connect_code,

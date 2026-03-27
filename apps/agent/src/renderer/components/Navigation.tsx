@@ -99,7 +99,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v0.2.3</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v0.2.4</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

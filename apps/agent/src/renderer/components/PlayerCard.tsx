@@ -63,15 +63,12 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
   }
 
   const isLfg = !!player.lookingToPlay;
-  const isInGameWithStatus = isLfg && !!player.opponentCode;
 
   return (
     <div className={`rounded-xl border overflow-hidden transition-all ${
-      isInGameWithStatus
-        ? 'border-amber-500/40 bg-[#141414] hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
-        : isLfg
-          ? 'border-[#21BA45]/40 bg-[#141414] hover:border-[#21BA45]/60 hover:shadow-[0_0_30px_rgba(33,186,69,0.12)]'
-          : 'border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
+      isLfg
+        ? 'border-[#21BA45]/40 bg-[#141414] hover:border-[#21BA45]/60 hover:shadow-[0_0_30px_rgba(33,186,69,0.12)]'
+        : 'border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
     }`}>
       <div onClick={handleClick}
         className="group flex items-center gap-4 p-4 cursor-pointer">
@@ -133,7 +130,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </div>
           {(player.statusPreset || (isLfg && !player.statusPreset)) && (
             <div className="min-w-0">
-              <span className={`text-[10px] font-medium ${isInGameWithStatus ? 'text-amber-400/80' : 'text-[#21BA45]/80'}`}>
+              <span className="text-[10px] font-medium text-[#21BA45]/80">
                 {player.statusPreset || 'Looking to play'}
               </span>
             </div>
