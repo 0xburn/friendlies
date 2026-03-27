@@ -16,6 +16,7 @@ interface Match {
   played_at: string;
   stage_id?: number | null;
   did_win?: boolean | null;
+  game_mode?: string | null;
 }
 
 interface CharCount {
@@ -254,6 +255,8 @@ function SessionSkeleton() {
 }
 
 export function Opponents() {
+  type ModeFilter = 'all' | 'ranked' | 'unranked';
+  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
   const [matches, setMatches] = useState<Match[]>([]);
   const [friendMap, setFriendMap] = useState<Map<string, { status: 'pending' | 'accepted'; discordUsername?: string | null }>>(new Map());
   const [adding, setAdding] = useState<string | null>(null);
@@ -408,7 +411,10 @@ export function Opponents() {
     setScanning(false);
   }
 
-  const sessions = groupIntoSessions(matches);
+  const filteredMatches = modeFilter === 'all'
+    ? matches
+    : matches.filter((m) => m.game_mode === modeFilter);
+  const sessions = groupIntoSessions(filteredMatches);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -424,13 +430,30 @@ export function Opponents() {
             {scanning ? 'Scanning...' : 'Rescan'}
           </button>
         </div>
-        {!initialLoading && (
+        <div className="flex items-center gap-2">
+          {(['all', 'ranked', 'unranked'] as ModeFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setModeFilter(f)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                modeFilter === f
+                  ? 'bg-[#21BA45]/15 text-[#21BA45] border border-[#21BA45]/30'
+                  : 'text-gray-500 hover:text-gray-300 border border-transparent'
+              }`}
+            >
+              {f === 'all' ? `All (${matches.length})` : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!initialLoading && (
+        <div className="flex items-center justify-end -mt-4">
           <span className="text-sm text-gray-500">
             {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-            <span className="text-gray-600 ml-1">({matches.length} games)</span>
+            <span className="text-gray-600 ml-1">({filteredMatches.length} games)</span>
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         {initialLoading && (

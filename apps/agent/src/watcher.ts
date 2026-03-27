@@ -32,9 +32,15 @@ function isReplayFilenameRecent(filePath: string, thresholdMs: number): boolean 
   return Date.now() - gameTime.getTime() < thresholdMs;
 }
 
-function mapGameMode(mode: number | null | undefined): string | null {
+function mapGameMode(mode: number | null | undefined, matchId?: string | null): string | null {
   if (mode === null || mode === undefined) return null;
-  if (mode === GameMode.ONLINE) return 'unranked';
+  if (mode === GameMode.ONLINE) {
+    if (matchId) {
+      if (matchId.startsWith('mode.ranked')) return 'ranked';
+      if (matchId.startsWith('mode.direct')) return 'direct';
+    }
+    return 'unranked';
+  }
   return String(mode);
 }
 
@@ -196,7 +202,7 @@ export async function processNewReplay(
       user_character_id: localPlayer?.characterId ?? null,
       opponent_character_id: opponent.characterId ?? null,
       stage_id: settings.stageId ?? null,
-      game_mode: mapGameMode(settings.gameMode ?? settings.inGameMode),
+      game_mode: mapGameMode(settings.gameMode ?? settings.inGameMode, settings.matchInfo?.matchId ?? settings.matchInfo?.sessionId),
       did_win: didWin,
       replay_filename: path.basename(filePath),
       played_at: playedAt,
