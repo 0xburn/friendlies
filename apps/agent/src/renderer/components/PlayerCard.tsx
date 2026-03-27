@@ -67,7 +67,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
   return (
     <div className={`rounded-xl overflow-hidden transition-all ${
       isLfg
-        ? 'border-2 border-amber-500/50 bg-[#161412] hover:border-amber-500/70 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
+        ? 'border-2 border-amber-500/50 bg-[#171411] hover:border-amber-500/70 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
         : 'border border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
     }`}>
       <div onClick={handleClick}
@@ -130,7 +130,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </div>
           {(player.statusPreset || (isLfg && !player.statusPreset)) && (
             <div className="min-w-0">
-              <span className="text-[10px] font-medium text-amber-400/80">
+              <span className="inline-block rounded-full border border-amber-500/25 bg-amber-500/8 px-2 py-0.5 text-[10px] font-medium text-amber-400/90">
                 {player.statusPreset || 'Looking to play'}
               </span>
             </div>
