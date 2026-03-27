@@ -91,7 +91,7 @@ export function Dashboard() {
   const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">

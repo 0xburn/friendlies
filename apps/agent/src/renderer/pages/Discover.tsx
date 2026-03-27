@@ -222,7 +222,7 @@ export function Discover() {
   const refreshLabel = ago < 5 ? 'just now' : `${ago}s ago`;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold">Discover</h1>

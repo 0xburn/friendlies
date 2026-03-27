@@ -79,7 +79,7 @@ export function GGs() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-display font-bold">GGs</h1>
         <p className="text-xs text-gray-500 mt-0.5">

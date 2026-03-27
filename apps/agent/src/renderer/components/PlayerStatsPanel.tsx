@@ -104,13 +104,16 @@ export function PlayerStatsPanel({ connectCode, topCharacters }: {
         </div>
 
         {topChars.length > 0 && (
-          <div className="flex items-center gap-1 ml-auto">
-            {topChars.map((c) => (
-              <div key={c.character} className="flex items-center gap-1">
-                <CharacterIcon characterId={c.character} size="sm" showName={false} />
-                <span className="text-[10px] text-gray-500">{c.gameCount}</span>
-              </div>
-            ))}
+          <div className="ml-auto">
+            <p className="text-[9px] text-gray-600 uppercase tracking-wider mb-1">Ranked Characters</p>
+            <div className="flex items-center gap-1">
+              {topChars.map((c) => (
+                <div key={c.character} className="flex items-center gap-1">
+                  <CharacterIcon characterId={c.character} size="sm" showName={false} />
+                  <span className="text-[10px] text-gray-500">{c.gameCount}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

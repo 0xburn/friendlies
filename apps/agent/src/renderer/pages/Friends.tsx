@@ -3,7 +3,7 @@ import { ConnectionTypeIcon } from '../components/ConnectionTypeIcon';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { PlayerCard } from '../components/PlayerCard';
 import { RankBadge } from '../components/RankBadge';
-import { getCharacterImagePath, getCharacterShortName } from '../lib/characters';
+import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 
 interface Friend {
   id: string;
@@ -16,6 +16,7 @@ interface Friend {
   region?: string | null;
   rating: number | null;
   characterId: number | null;
+  topCharacters?: { characterId: number; gameCount: number }[];
   status?: 'online' | 'in-game' | 'offline';
   onApp?: boolean;
   friendStatus?: 'pending' | 'accepted';
@@ -83,6 +84,10 @@ export function Friends() {
   const [hideConnectionType, setHideConnectionType] = useState(false);
   const [myConnectionType, setMyConnectionType] = useState<'wifi' | 'ethernet' | null>(null);
   const [myMainCharId, setMyMainCharId] = useState<number | null>(null);
+  const [myChosenMain, setMyChosenMain] = useState<number | null>(null);
+  const [myChosenSecondary, setMyChosenSecondary] = useState<number | null>(null);
+  const [mainPickerOpen, setMainPickerOpen] = useState(false);
+  const [secondaryPickerOpen, setSecondaryPickerOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [myStatusPreset, setMyStatusPreset] = useState<string | null>(null);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
@@ -91,6 +96,9 @@ export function Friends() {
   const [visibleCount, setVisibleCount] = useState(15);
 
   const [nudgeSent, setNudgeSent] = useState<Record<string, string>>({});
+
+  const HIDDEN_CHARACTERS = new Set([23]);
+  const CHAR_OPTIONS = Object.keys(CHARACTER_MAP).map(Number).filter((id) => !HIDDEN_CHARACTERS.has(id)).sort((a, b) => CHARACTER_MAP[a].localeCompare(CHARACTER_MAP[b]));
 
   const STATUS_PRESETS = ['Down for friendlies', 'Ranked grind', 'Warming up', 'Quick session', 'Running sets', 'Will play anyone', 'Labbing tech', 'Need spacie practice', 'Need floatie practice'];
   const NUDGE_OPTIONS = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi'];
@@ -109,8 +117,10 @@ export function Friends() {
       if (p) {
         const topChars = Array.isArray(p.top_characters) ? p.top_characters : [];
         setMyProfile({ rating_ordinal: p.rating_ordinal, wins: p.wins, losses: p.losses, region: p.region ?? null, topCharacters: topChars });
-        const mainChar = topChars[0]?.characterId;
-        if (mainChar != null) setMyMainCharId(mainChar);
+        setMyChosenMain(p.main_character ?? null);
+        setMyChosenSecondary(p.secondary_character ?? null);
+        const displayMain = p.main_character ?? topChars[0]?.characterId;
+        if (displayMain != null) setMyMainCharId(displayMain);
       }
     });
     window.api.getLocalStatus().then((s: any) => {
@@ -475,6 +485,20 @@ export function Friends() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function handleSetMain(charId: number | null) {
+    setMyChosenMain(charId);
+    setMainPickerOpen(false);
+    const topChars = myProfile?.topCharacters ?? [];
+    setMyMainCharId(charId ?? topChars[0]?.characterId ?? null);
+    await window.api.updateCharacters({ mainCharacter: charId });
+  }
+
+  async function handleSetSecondary(charId: number | null) {
+    setMyChosenSecondary(charId);
+    setSecondaryPickerOpen(false);
+    await window.api.updateCharacters({ secondaryCharacter: charId });
+  }
+
   // DC admin gate removed — feature well tested
   // const isDirectConnectUser = myIdentity?.connectCode === 'SMOK#1' || myIdentity?.connectCode === 'BF#0';
   const visibleSentInvites = sentInvites.filter((inv) => !inv.myOpened);
@@ -496,7 +520,7 @@ export function Friends() {
   const total = wins + losses;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       {/* Player status card */}
       {myIdentity && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
@@ -607,6 +631,102 @@ export function Friends() {
               >
                 {lfg ? '🎮' : '🎮 Looking to play?'}
               </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-6 mt-3 pt-3 border-t border-[#2a2a2a]">
+            <div className="relative">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Main</span>
+              <button
+                onClick={() => { setMainPickerOpen(!mainPickerOpen); setSecondaryPickerOpen(false); }}
+                className="flex items-center gap-2 mt-1 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] pl-1 pr-2.5 py-0.5 hover:border-[#3a3a3a] transition-colors"
+              >
+                {myChosenMain != null ? (
+                  <>
+                    {getCharacterImagePath(myChosenMain) && <img src={getCharacterImagePath(myChosenMain)} alt="" className="w-10 h-10 object-contain" />}
+                    <span className="text-xs text-white">{getCharacterShortName(myChosenMain)}</span>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-500">None</span>
+                )}
+                <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {mainPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMainPickerOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 max-h-[280px] overflow-y-auto min-w-[160px]">
+                    {myChosenMain != null && (
+                      <>
+                        <button
+                          onClick={() => handleSetMain(null)}
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                        >
+                          None
+                        </button>
+                        <div className="border-t border-[#2a2a2a] my-1" />
+                      </>
+                    )}
+                    {CHAR_OPTIONS.map((id) => (
+                      <button
+                        key={id}
+                        onClick={() => handleSetMain(id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                          myChosenMain === id ? 'text-[#21BA45] bg-[#21BA45]/10' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {getCharacterImagePath(id) && <img src={getCharacterImagePath(id)} alt="" className="w-8 h-8 object-contain" />}
+                        {CHARACTER_MAP[id]}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="relative">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Secondary</span>
+              <button
+                onClick={() => { setSecondaryPickerOpen(!secondaryPickerOpen); setMainPickerOpen(false); }}
+                className="flex items-center gap-2 mt-1 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] pl-1 pr-2.5 py-0.5 hover:border-[#3a3a3a] transition-colors"
+              >
+                {myChosenSecondary != null ? (
+                  <>
+                    {getCharacterImagePath(myChosenSecondary) && <img src={getCharacterImagePath(myChosenSecondary)} alt="" className="w-10 h-10 object-contain" />}
+                    <span className="text-xs text-white">{getCharacterShortName(myChosenSecondary)}</span>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-500">None</span>
+                )}
+                <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {secondaryPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setSecondaryPickerOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 max-h-[280px] overflow-y-auto min-w-[160px]">
+                    {myChosenSecondary != null && (
+                      <>
+                        <button
+                          onClick={() => handleSetSecondary(null)}
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                        >
+                          None
+                        </button>
+                        <div className="border-t border-[#2a2a2a] my-1" />
+                      </>
+                    )}
+                    {CHAR_OPTIONS.map((id) => (
+                      <button
+                        key={id}
+                        onClick={() => handleSetSecondary(id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                          myChosenSecondary === id ? 'text-[#21BA45] bg-[#21BA45]/10' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {getCharacterImagePath(id) && <img src={getCharacterImagePath(id)} alt="" className="w-8 h-8 object-contain" />}
+                        {CHARACTER_MAP[id]}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -942,6 +1062,7 @@ export function Friends() {
                 region: f.region,
                 rating: f.rating,
                 characterId: f.characterId,
+                topCharacters: f.topCharacters,
                 status: f.status,
                 currentCharacter: f.currentCharacter,
                 opponentCode: f.opponentCode,

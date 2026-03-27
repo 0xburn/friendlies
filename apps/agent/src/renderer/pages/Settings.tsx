@@ -143,7 +143,7 @@ export function Settings() {
   const notifsEnabled = settings.showNotifications;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-display font-bold">Settings</h1>
         {saved && (
@@ -459,7 +459,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v0.1.99
+      friendlies v0.2.0
       </p>
     </div>
   );

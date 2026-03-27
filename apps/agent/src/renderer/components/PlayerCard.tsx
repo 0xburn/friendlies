@@ -68,9 +68,9 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
   return (
     <div className={`rounded-xl border overflow-hidden transition-all ${
       isInGameWithStatus
-        ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
+        ? 'border-amber-500/40 bg-[#141414] hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
         : isLfg
-          ? 'border-[#21BA45]/40 bg-[#21BA45]/5 hover:border-[#21BA45]/60 hover:shadow-[0_0_30px_rgba(33,186,69,0.12)]'
+          ? 'border-[#21BA45]/40 bg-[#141414] hover:border-[#21BA45]/60 hover:shadow-[0_0_30px_rgba(33,186,69,0.12)]'
           : 'border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
     }`}>
       <div onClick={handleClick}
@@ -140,9 +140,12 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           )}
         </div>
         {player.topCharacters && player.topCharacters.length > 0 && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            {player.topCharacters.slice(0, 2).map((tc) => (
-              <CharacterIcon key={tc.characterId} characterId={tc.characterId} size="sm" />
+          <div className="flex items-center gap-3 shrink-0">
+            {player.topCharacters.slice(0, 2).map((tc, i) => (
+              <div key={tc.characterId} className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] text-gray-500 uppercase">{i === 0 ? 'Main' : 'Sec'}</span>
+                <CharacterIcon characterId={tc.characterId} size="sm" />
+              </div>
             ))}
           </div>
         )}
@@ -178,7 +181,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           <button
             onClick={(e) => { e.stopPropagation(); onAdd(); }}
             disabled={addDisabled}
-            className="shrink-0 rounded-lg border border-[#21BA45]/30 bg-[#21BA45]/10 px-3 py-1 text-[11px] font-medium text-[#21BA45] hover:bg-[#21BA45]/20 transition-colors disabled:opacity-30"
+            className="shrink-0 rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] px-3 py-1 text-[11px] font-medium text-gray-300 hover:bg-[#222] hover:text-white transition-colors disabled:opacity-30"
           >
             Add Friend
           </button>

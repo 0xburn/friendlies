@@ -107,9 +107,15 @@ export function registerIpcHandlers(
       if (!identity) return null;
       const [{ data: cache }, { data: profile }] = await Promise.all([
         supabase.from('slippi_cache').select('*').eq('connect_code', identity.connectCode).single(),
-        supabase.from('profiles').select('region, top_characters').eq('connect_code', identity.connectCode).single(),
+        supabase.from('profiles').select('region, top_characters, main_character, secondary_character').eq('connect_code', identity.connectCode).single(),
       ]);
-      return { ...cache, region: profile?.region ?? null, top_characters: profile?.top_characters ?? [] };
+      return {
+        ...cache,
+        region: profile?.region ?? null,
+        top_characters: profile?.top_characters ?? [],
+        main_character: profile?.main_character ?? null,
+        secondary_character: profile?.secondary_character ?? null,
+      };
     } catch { return null; }
   });
 
@@ -121,7 +127,7 @@ export function registerIpcHandlers(
       const t1 = performance.now();
       const { data } = await supabase
         .from('friends')
-        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, hide_region, hide_discord_unless_friends, hide_avatar)')
+        .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, hide_region, hide_discord_unless_friends, hide_avatar, main_character, secondary_character, top_characters)')
         .eq('user_id', user.id);
       if (!data) return [];
       const t2 = performance.now();
@@ -143,6 +149,14 @@ export function registerIpcHandlers(
         const c = cacheMap[code] || {};
         const isAccepted = f.status === 'accepted';
         const showDiscord = isAccepted || !p?.hide_discord_unless_friends;
+        const slippiChars: { characterId: number; gameCount: number }[] = Array.isArray(p?.top_characters) ? p.top_characters : [];
+        const topCharacters: { characterId: number; gameCount: number }[] = [];
+        const mainChar = p?.main_character;
+        const secChar = p?.secondary_character;
+        if (mainChar != null) topCharacters.push({ characterId: mainChar, gameCount: 0 });
+        else if (slippiChars[0]) topCharacters.push(slippiChars[0]);
+        if (secChar != null) topCharacters.push({ characterId: secChar, gameCount: 0 });
+        else if (slippiChars[1]) topCharacters.push(slippiChars[1]);
         return {
           id: f.id,
           friendId: f.friend_id,
@@ -154,6 +168,7 @@ export function registerIpcHandlers(
           region: p?.hide_region ? null : (p?.region || null),
           rating: c.rating_ordinal ?? null,
           characterId: c.characters?.[0]?.character ?? null,
+          topCharacters,
           onApp: !!f.friend_id,
           friendStatus: f.status || 'pending',
         };
@@ -737,15 +752,20 @@ export function registerIpcHandlers(
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, region, hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, discord_username, discord_id')
+        .select('id, connect_code, display_name, avatar_url, latitude, longitude, top_characters, main_character, secondary_character, region, hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, discord_username, discord_id')
         .in('id', candidateIds);
       if (!profiles) return [];
 
       const notBlocked = profiles.filter((p: any) => !blockedCodes.has(p.connect_code));
       const filtered = filterChars
         ? notBlocked.filter((p: any) => {
-            const chars: any[] = Array.isArray(p.top_characters) ? p.top_characters : [];
-            return chars.some((tc: any) => filterChars.has(tc.characterId));
+            const slippi: any[] = Array.isArray(p.top_characters) ? p.top_characters : [];
+            const charIds: number[] = [];
+            if (p.main_character != null) charIds.push(p.main_character);
+            else if (slippi[0]) charIds.push(slippi[0].characterId);
+            if (p.secondary_character != null) charIds.push(p.secondary_character);
+            else if (slippi[1]) charIds.push(slippi[1].characterId);
+            return charIds.some((id) => filterChars.has(id));
           })
         : notBlocked;
       if (filterChars && filtered.length === 0) return [];
@@ -812,7 +832,15 @@ export function registerIpcHandlers(
             discordId: p.hide_discord_unless_friends ? null : (p.discord_id || null),
             avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
             rating: c.rating_ordinal ?? null,
-            topCharacters: Array.isArray(p.top_characters) ? p.top_characters : [],
+            topCharacters: (() => {
+              const slippi: { characterId: number; gameCount: number }[] = Array.isArray(p.top_characters) ? p.top_characters : [];
+              const resolved: { characterId: number; gameCount: number }[] = [];
+              if (p.main_character != null) resolved.push({ characterId: p.main_character, gameCount: 0 });
+              else if (slippi[0]) resolved.push(slippi[0]);
+              if (p.secondary_character != null) resolved.push({ characterId: p.secondary_character, gameCount: 0 });
+              else if (slippi[1]) resolved.push(slippi[1]);
+              return resolved;
+            })(),
             region: p.hide_region ? null : (p.region || null),
             status: r.status,
             currentCharacter: r.current_character,
@@ -1039,6 +1067,20 @@ export function registerIpcHandlers(
         update.hide_connection_type = partial.hideConnectionType;
         setHideConnectionType(partial.hideConnectionType);
       }
+      const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
+      if (error) return { error: error.message };
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('profile:updateCharacters', async (_e, data: { mainCharacter?: number | null; secondaryCharacter?: number | null }) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+      const update: Record<string, any> = {};
+      if (data.mainCharacter !== undefined) update.main_character = data.mainCharacter;
+      if (data.secondaryCharacter !== undefined) update.secondary_character = data.secondaryCharacter;
+      if (Object.keys(update).length === 0) return { ok: true };
       const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
       if (error) return { error: error.message };
       return { ok: true };

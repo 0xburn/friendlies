@@ -411,7 +411,7 @@ export function Opponents() {
   const sessions = groupIntoSessions(matches);
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-display font-bold">Recent Opponents</h1>
