@@ -226,6 +226,7 @@ export async function logout(): Promise<void> {
   }
   authStore.delete(TOKEN_KEY_ACCESS);
   authStore.delete(TOKEN_KEY_REFRESH);
+  clearUserCache();
 }
 
 export async function isAuthenticated(): Promise<boolean> {
@@ -237,12 +238,31 @@ export async function isAuthenticated(): Promise<boolean> {
   }
 }
 
+let _cachedUser: User | null = null;
+let _cachedAt = 0;
+let _inflight: Promise<User | null> | null = null;
+const USER_CACHE_TTL = 5_000;
+
 export async function getCurrentUser(): Promise<User | null> {
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) return null;
-    return data.user;
-  } catch {
-    return null;
-  }
+  if (_cachedUser && Date.now() - _cachedAt < USER_CACHE_TTL) return _cachedUser;
+  if (_inflight) return _inflight;
+  _inflight = (async () => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return null;
+      _cachedUser = data.user;
+      _cachedAt = Date.now();
+      return _cachedUser;
+    } catch {
+      return null;
+    } finally {
+      _inflight = null;
+    }
+  })();
+  return _inflight;
+}
+
+export function clearUserCache(): void {
+  _cachedUser = null;
+  _cachedAt = 0;
 }

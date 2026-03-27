@@ -88,7 +88,8 @@ export function Friends() {
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [disableStatuses, setDisableStatuses] = useState(false);
   const [disableNudges, setDisableNudges] = useState(false);
-  
+  const [visibleCount, setVisibleCount] = useState(15);
+
   const [nudgeSent, setNudgeSent] = useState<Record<string, string>>({});
 
   const STATUS_PRESETS = ['Down for friendlies', 'Ranked grind', 'Warming up', 'Quick session', 'Running sets', 'Will play anyone', 'Labbing tech', 'Need spacie practice', 'Need floatie practice'];
@@ -128,9 +129,11 @@ export function Friends() {
     }).catch(() => {});
     window.api.getConnectionType().then(setMyConnectionType).catch(() => {});
 
-    Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites(), loadSentInvites()]).finally(() =>
-      setInitialLoading(false),
-    );
+    const loadStart = performance.now();
+    Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites(), loadSentInvites()]).finally(() => {
+      console.log(`[bench] Friends tab initial load: ${(performance.now() - loadStart).toFixed(0)}ms`);
+      setInitialLoading(false);
+    });
 
     const unsub = window.api.onPresenceUpdate((users) => {
       setOnlineMap((prev) => {
@@ -739,7 +742,7 @@ export function Friends() {
             {(['all', 'online', 'in-game', 'offline'] as const).map((f) => (
               <button
                 key={f}
-                onClick={() => setStatusFilter(f)}
+                onClick={() => { setStatusFilter(f); setVisibleCount(15); }}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
                   statusFilter === f
                     ? 'bg-[#21BA45]/15 text-[#21BA45]'
@@ -849,7 +852,7 @@ export function Friends() {
         <input
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setVisibleCount(15); }}
           placeholder="Search friends..."
           className="w-full rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#21BA45]/50"
         />
@@ -923,7 +926,7 @@ export function Friends() {
           </div>
         )}
 
-        {accepted.map((f) => {
+        {accepted.slice(0, visibleCount).map((f) => {
           const invState = inviteSent[f.connectCode];
           const nudgeMsg = nudgeSent[f.connectCode];
           return (
@@ -958,6 +961,15 @@ export function Friends() {
             />
           );
         })}
+
+        {accepted.length > visibleCount && (
+          <button
+            onClick={() => setVisibleCount((c) => c + 15)}
+            className="w-full rounded-xl border border-[#2a2a2a] bg-[#141414] py-3 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#1a1a1a] transition-colors"
+          >
+            Load more ({accepted.length - visibleCount} remaining)
+          </button>
+        )}
       </div>
     </div>
   );

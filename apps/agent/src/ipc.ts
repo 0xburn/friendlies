@@ -114,14 +114,17 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('friends:list', async () => {
+    const t0 = performance.now();
     try {
       const user = await getCurrentUser();
       if (!user) return [];
+      const t1 = performance.now();
       const { data } = await supabase
         .from('friends')
         .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, hide_region, hide_discord_unless_friends, hide_avatar)')
         .eq('user_id', user.id);
       if (!data) return [];
+      const t2 = performance.now();
 
       const codes = data
         .map((f: any) => (f.profiles as any)?.connect_code || f.friend_connect_code)
@@ -132,8 +135,9 @@ export function registerIpcHandlers(
         const { data: cached } = await supabase.from('slippi_cache').select('*').in('connect_code', codes);
         if (cached) cached.forEach((c: any) => { cacheMap[c.connect_code] = c; });
       }
+      const t3 = performance.now();
 
-      return data.map((f: any) => {
+      const result = data.map((f: any) => {
         const p = f.profiles as any;
         const code = p?.connect_code || f.friend_connect_code;
         const c = cacheMap[code] || {};
@@ -154,10 +158,13 @@ export function registerIpcHandlers(
           friendStatus: f.status || 'pending',
         };
       });
+      console.log(`[bench] friends:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} cache=${(t3-t2).toFixed(0)} rows=${data.length})`);
+      return result;
     } catch (e) { console.error('friends:list', e); return []; }
   });
 
   ipcMain.handle('friends:incoming', async () => {
+    const t0 = performance.now();
     try {
       const user = await getCurrentUser();
       if (!user) return [];
@@ -189,7 +196,7 @@ export function registerIpcHandlers(
         if (cached) cached.forEach((c: any) => { cacheMap[c.connect_code] = c; });
       }
 
-      return data.map((f: any) => {
+      const result = data.map((f: any) => {
         const p = f.profiles as any;
         const code = p?.connect_code || '';
         const c = cacheMap[code] || {};
@@ -205,6 +212,8 @@ export function registerIpcHandlers(
           characterId: c.characters?.[0]?.character ?? null,
         };
       });
+      console.log(`[bench] friends:incoming total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      return result;
     } catch (e) { console.error('friends:incoming', e); return []; }
   });
 
@@ -438,6 +447,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('invite:pending', async () => {
+    const t0 = performance.now();
     try {
       const user = await getCurrentUser();
       if (!user) return [];
@@ -459,12 +469,14 @@ export function registerIpcHandlers(
       const profileMap: Record<string, any> = {};
       (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
 
-      return data.map((d: any) => ({
+      const result = data.map((d: any) => ({
         ...d,
         connectCode: profileMap[d.sender_id]?.connect_code,
         displayName: profileMap[d.sender_id]?.display_name,
         discordUsername: profileMap[d.sender_id]?.discord_username,
       }));
+      console.log(`[bench] invite:pending total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      return result;
     } catch { return []; }
   });
 
@@ -524,6 +536,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('invite:sent', async () => {
+    const t0 = performance.now();
     try {
       const user = await getCurrentUser();
       if (!user) return [];
@@ -545,12 +558,14 @@ export function registerIpcHandlers(
       const profileMap: Record<string, any> = {};
       (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
 
-      return data.map((d: any) => ({
+      const result = data.map((d: any) => ({
         ...d,
         connectCode: profileMap[d.receiver_id]?.connect_code,
         displayName: profileMap[d.receiver_id]?.display_name,
         discordUsername: profileMap[d.receiver_id]?.discord_username,
       }));
+      console.log(`[bench] invite:sent total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      return result;
     } catch { return []; }
   });
 
@@ -646,15 +661,18 @@ export function registerIpcHandlers(
   ipcMain.handle('presence:getStatusPreset', () => getStatusPreset());
 
   ipcMain.handle('presence:friendStatuses', async () => {
+    const t0 = performance.now();
     try {
       const user = await getCurrentUser();
       if (!user) return {};
+      const t1 = performance.now();
 
       const { data: friendRows } = await supabase.from('friends')
         .select('friend_id, friend_connect_code, profiles!friends_friend_id_fkey(connect_code)')
         .eq('user_id', user.id)
         .eq('status', 'accepted');
       if (!friendRows || friendRows.length === 0) return {};
+      const t2 = performance.now();
 
       const friendIds = friendRows.map((f: any) => f.friend_id).filter(Boolean);
       if (friendIds.length === 0) return {};
@@ -663,6 +681,7 @@ export function registerIpcHandlers(
         .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, status_preset, connection_type, updated_at')
         .in('user_id', friendIds);
       if (!data) return {};
+      const t3 = performance.now();
 
       const now = Date.now();
       const result: Record<string, any> = {};
@@ -672,6 +691,7 @@ export function registerIpcHandlers(
         if (!code) continue;
         result[code] = resolvePresenceRow(row as any, PRESENCE_STALE_THRESHOLD, now);
       }
+      console.log(`[bench] presence:friendStatuses total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} rows=${data.length})`);
       return result;
     } catch (e) { console.error('presence:friendStatuses', e); return {}; }
   });
