@@ -45,8 +45,6 @@ function SkeletonCard() {
   );
 }
 
-const CONN_TYPE_USERS = new Set(['SMOK#1', 'BF#0']);
-
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
@@ -530,7 +528,7 @@ export function Friends() {
                 {myIdentity.displayName && (
                   <span className="text-xs text-gray-500">{myIdentity.displayName}</span>
                 )}
-                {myConnectionType && !hideConnectionType && myIdentity && CONN_TYPE_USERS.has(myIdentity.connectCode) && (
+                {myConnectionType && !hideConnectionType && (
                   <ConnectionTypeIcon type={myConnectionType} />
                 )}
                 {myProfile?.region && !hideRegion && (
@@ -946,7 +944,7 @@ export function Friends() {
                 playingSince: f.playingSince,
                 lookingToPlay: f.lookingToPlay,
                 statusPreset: disableStatuses ? undefined : (f.statusPreset ?? undefined),
-                connectionType: myIdentity && CONN_TYPE_USERS.has(myIdentity.connectCode) ? f.connectionType : undefined,
+                connectionType: f.connectionType ?? undefined,
               }}
               onClick={() => handleCopy(f.connectCode)}
               onBlock={() => setConfirmBlock({ code: f.connectCode })}

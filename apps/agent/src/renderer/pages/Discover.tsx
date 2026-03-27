@@ -148,8 +148,6 @@ function CharacterFilter({ selected, onToggle, onClear }: {
   );
 }
 
-const CONN_TYPE_USERS = new Set(['SMOK#1', 'BF#0']);
-
 export function Discover() {
   const [players, setPlayers] = useState<DiscoverPlayer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -297,7 +295,7 @@ export function Discover() {
                   currentCharacter: p.currentCharacter,
                   opponentCode: p.opponentCode,
                   playingSince: p.playingSince,
-                  connectionType: myCode && CONN_TYPE_USERS.has(myCode) ? p.connectionType : undefined,
+                  connectionType: p.connectionType ?? undefined,
                   lookingToPlay: p.lookingToPlay,
                   statusPreset: p.statusPreset,
                 }}

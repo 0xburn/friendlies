@@ -25,43 +25,85 @@ export const OPPONENT_RECENT_THRESHOLD = 10 * 60 * 1000;
 export const PRESENCE_STALE_THRESHOLD = 5 * 60 * 1000;
 export const APP_PROTOCOL = 'slippi-friends';
 
+function readLauncherVariant(): { isMainline: boolean; betaSuffix: string } {
+  try {
+    const home = os.homedir();
+    const launcherDir = process.platform === 'win32'
+      ? path.join(home, 'AppData', 'Roaming', 'Slippi Launcher')
+      : process.platform === 'darwin'
+        ? path.join(home, 'Library', 'Application Support', 'Slippi Launcher')
+        : path.join(home, '.config', 'Slippi Launcher');
+    const settingsPath = path.join(launcherDir, 'Settings');
+    if (!fs.existsSync(settingsPath)) return { isMainline: false, betaSuffix: '' };
+    const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const promoted = data?.netplayPromotedToStable ?? false;
+    const useBeta = data?.settings?.useNetplayBeta ?? false;
+    if (promoted || useBeta) {
+      return { isMainline: true, betaSuffix: promoted ? '' : '-beta' };
+    }
+  } catch {}
+  return { isMainline: false, betaSuffix: '' };
+}
+
 export function getSlippiUserJsonPaths(): string[] {
   const home = os.homedir();
+  const { isMainline, betaSuffix } = readLauncherVariant();
   const candidates: string[] = [];
 
   if (process.platform === 'win32') {
     const appData = path.join(home, 'AppData');
+    const launcherDir = path.join(appData, 'Roaming', 'Slippi Launcher');
+    // Prioritize the folder matching the Launcher's configured variant
     candidates.push(
-      // Slippi Launcher 2.x+ (netplay dolphin user dir)
-      path.join(appData, 'Roaming', 'Slippi Launcher', 'netplay', 'User', 'Slippi', 'user.json'),
-      path.join(appData, 'Roaming', 'Slippi Launcher', 'netplay', 'Slippi', 'user.json'),
-      path.join(appData, 'Roaming', 'Slippi Launcher', 'netplay', 'user.json'),
-      // Standalone Slippi Dolphin
+      path.join(launcherDir, `netplay${betaSuffix}`, 'User', 'Slippi', 'user.json'),
+    );
+    // Other Launcher-managed locations
+    for (const suffix of ['', '-beta']) {
+      const p = path.join(launcherDir, `netplay${suffix}`, 'User', 'Slippi', 'user.json');
+      if (!candidates.includes(p)) candidates.push(p);
+    }
+    candidates.push(
       path.join(appData, 'Roaming', 'com.project-slippi.dolphin', 'Slippi', 'user.json'),
       path.join(appData, 'Roaming', 'Slippi Dolphin', 'User', 'Slippi', 'user.json'),
-      // Older locations
-      path.join(appData, 'Local', 'com.project-slippi.dolphin', 'Slippi', 'user.json'),
-      path.join(appData, 'Local', 'Programs', 'slippi-launcher', 'resources', 'app.asar.unpacked', 'dolphin', 'user.json'),
       path.join(appData, 'Roaming', 'Slippi Desktop App', 'dolphin', 'user.json'),
-      // Documents fallback
       path.join(home, 'Documents', 'Slippi', 'user.json'),
     );
   } else if (process.platform === 'darwin') {
     const appSupport = path.join(home, 'Library', 'Application Support');
+    const configPath = path.join(appSupport, 'com.project-slippi.dolphin');
+    // Mainline and Ishiiruka share the same user dir base on macOS
     candidates.push(
-      path.join(appSupport, 'Slippi Launcher', 'netplay', 'User', 'Slippi', 'user.json'),
-      path.join(appSupport, 'Slippi Launcher', 'netplay', 'Slippi', 'user.json'),
-      path.join(appSupport, 'Slippi Launcher', 'netplay', 'user.json'),
-      path.join(appSupport, 'com.project-slippi.dolphin', 'Slippi', 'user.json'),
+      path.join(configPath, `netplay${betaSuffix}`, 'User', 'Slippi', 'user.json'),
+    );
+    for (const suffix of ['', '-beta']) {
+      const p = path.join(configPath, `netplay${suffix}`, 'User', 'Slippi', 'user.json');
+      if (!candidates.includes(p)) candidates.push(p);
+    }
+    candidates.push(
+      path.join(configPath, 'Slippi', 'user.json'),
       path.join(appSupport, 'Slippi Desktop App', 'dolphin', 'user.json'),
     );
   } else {
+    // Linux: Mainline and Ishiiruka use different base directories
+    if (isMainline) {
+      candidates.push(
+        path.join(home, '.config', 'slippi-dolphin', `netplay${betaSuffix}`, 'Slippi', 'user.json'),
+        path.join(home, '.config', 'slippi-dolphin', 'netplay', 'Slippi', 'user.json'),
+        path.join(home, '.config', 'slippi-dolphin', 'netplay-beta', 'Slippi', 'user.json'),
+        path.join(home, '.config', 'SlippiOnline', 'Slippi', 'user.json'),
+        path.join(home, '.config', 'SlippiOnline', 'user.json'),
+      );
+    } else {
+      candidates.push(
+        path.join(home, '.config', 'SlippiOnline', 'Slippi', 'user.json'),
+        path.join(home, '.config', 'SlippiOnline', 'user.json'),
+        path.join(home, '.config', 'slippi-dolphin', 'netplay', 'Slippi', 'user.json'),
+        path.join(home, '.config', 'slippi-dolphin', 'netplay-beta', 'Slippi', 'user.json'),
+      );
+    }
     candidates.push(
       path.join(home, '.config', 'Slippi Launcher', 'netplay', 'User', 'Slippi', 'user.json'),
-      path.join(home, '.config', 'Slippi Launcher', 'netplay', 'Slippi', 'user.json'),
-      path.join(home, '.config', 'Slippi Launcher', 'netplay', 'user.json'),
       path.join(home, '.config', 'com.project-slippi.dolphin', 'Slippi', 'user.json'),
-      path.join(home, '.config', 'SlippiOnline', 'user.json'),
     );
   }
 
