@@ -65,10 +65,10 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
   const isLfg = !!player.lookingToPlay;
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-all ${
+    <div className={`rounded-xl overflow-hidden transition-all ${
       isLfg
-        ? 'border-[#21BA45]/40 bg-[#141414] hover:border-[#21BA45]/60 hover:shadow-[0_0_30px_rgba(33,186,69,0.12)]'
-        : 'border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
+        ? 'border-2 border-amber-500/50 bg-[#161412] hover:border-amber-500/70 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
+        : 'border border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
     }`}>
       <div onClick={handleClick}
         className="group flex items-center gap-4 p-4 cursor-pointer">
@@ -130,7 +130,7 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           </div>
           {(player.statusPreset || (isLfg && !player.statusPreset)) && (
             <div className="min-w-0">
-              <span className="text-[10px] font-medium text-[#21BA45]/80">
+              <span className="text-[10px] font-medium text-amber-400/80">
                 {player.statusPreset || 'Looking to play'}
               </span>
             </div>
