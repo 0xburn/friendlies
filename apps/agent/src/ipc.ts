@@ -152,11 +152,8 @@ export function registerIpcHandlers(
         const slippiChars: { characterId: number; gameCount: number }[] = Array.isArray(p?.top_characters) ? p.top_characters : [];
         const topCharacters: { characterId: number; gameCount: number }[] = [];
         const mainChar = p?.main_character;
-        const secChar = p?.secondary_character;
         if (mainChar != null) topCharacters.push({ characterId: mainChar, gameCount: 0 });
         else if (slippiChars[0]) topCharacters.push(slippiChars[0]);
-        if (secChar != null) topCharacters.push({ characterId: secChar, gameCount: 0 });
-        else if (slippiChars[1]) topCharacters.push(slippiChars[1]);
         return {
           id: f.id,
           friendId: f.friend_id,
@@ -760,12 +757,8 @@ export function registerIpcHandlers(
       const filtered = filterChars
         ? notBlocked.filter((p: any) => {
             const slippi: any[] = Array.isArray(p.top_characters) ? p.top_characters : [];
-            const charIds: number[] = [];
-            if (p.main_character != null) charIds.push(p.main_character);
-            else if (slippi[0]) charIds.push(slippi[0].characterId);
-            if (p.secondary_character != null) charIds.push(p.secondary_character);
-            else if (slippi[1]) charIds.push(slippi[1].characterId);
-            return charIds.some((id) => filterChars.has(id));
+            const mainId = p.main_character ?? slippi[0]?.characterId;
+            return mainId != null && filterChars.has(mainId);
           })
         : notBlocked;
       if (filterChars && filtered.length === 0) return [];
@@ -837,8 +830,6 @@ export function registerIpcHandlers(
               const resolved: { characterId: number; gameCount: number }[] = [];
               if (p.main_character != null) resolved.push({ characterId: p.main_character, gameCount: 0 });
               else if (slippi[0]) resolved.push(slippi[0]);
-              if (p.secondary_character != null) resolved.push({ characterId: p.secondary_character, gameCount: 0 });
-              else if (slippi[1]) resolved.push(slippi[1]);
               return resolved;
             })(),
             region: p.hide_region ? null : (p.region || null),

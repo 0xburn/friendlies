@@ -140,13 +140,9 @@ export function PlayerCard({ player, showStatus = true, expandable = true, onCli
           )}
         </div>
         {player.topCharacters && player.topCharacters.length > 0 && (
-          <div className="flex items-center gap-3 shrink-0">
-            {player.topCharacters.slice(0, 2).map((tc, i) => (
-              <div key={tc.characterId} className="flex flex-col items-center gap-0.5">
-                <span className="text-[8px] text-gray-500 uppercase">{i === 0 ? 'Main' : 'Sec'}</span>
-                <CharacterIcon characterId={tc.characterId} size="sm" />
-              </div>
-            ))}
+          <div className="flex flex-col items-center gap-0.5 shrink-0">
+            <span className="text-[8px] text-gray-500 uppercase">Main</span>
+            <CharacterIcon characterId={player.topCharacters[0].characterId} size="sm" />
           </div>
         )}
         <RankBadge rating={player.rating ?? null} />

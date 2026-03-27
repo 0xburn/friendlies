@@ -681,53 +681,6 @@ export function Friends() {
                 </>
               )}
             </div>
-            <div className="relative">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider">Secondary</span>
-              <button
-                onClick={() => { setSecondaryPickerOpen(!secondaryPickerOpen); setMainPickerOpen(false); }}
-                className="flex items-center gap-2 mt-1 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] pl-1 pr-2.5 py-0.5 hover:border-[#3a3a3a] transition-colors"
-              >
-                {myChosenSecondary != null ? (
-                  <>
-                    {getCharacterImagePath(myChosenSecondary) && <img src={getCharacterImagePath(myChosenSecondary)} alt="" className="w-10 h-10 object-contain" />}
-                    <span className="text-xs text-white">{getCharacterShortName(myChosenSecondary)}</span>
-                  </>
-                ) : (
-                  <span className="text-xs text-gray-500">None</span>
-                )}
-                <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {secondaryPickerOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setSecondaryPickerOpen(false)} />
-                  <div className="absolute left-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 max-h-[280px] overflow-y-auto min-w-[160px]">
-                    {myChosenSecondary != null && (
-                      <>
-                        <button
-                          onClick={() => handleSetSecondary(null)}
-                          className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
-                        >
-                          None
-                        </button>
-                        <div className="border-t border-[#2a2a2a] my-1" />
-                      </>
-                    )}
-                    {CHAR_OPTIONS.map((id) => (
-                      <button
-                        key={id}
-                        onClick={() => handleSetSecondary(id)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                          myChosenSecondary === id ? 'text-[#21BA45] bg-[#21BA45]/10' : 'text-gray-300 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        {getCharacterImagePath(id) && <img src={getCharacterImagePath(id)} alt="" className="w-8 h-8 object-contain" />}
-                        {CHARACTER_MAP[id]}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         </div>
       )}
