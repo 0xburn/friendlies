@@ -1,6 +1,6 @@
 {
   "name": "@slippi-friends/agent",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "private": true,
   "description": "friendlies - a friends list for melee",
   "author": "Lucky 7s Melee LLC",
@@ -8,10 +8,10 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "concurrently -n tsc,vite,electron \"tsc -w --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && NODE_ENV=development electron .\"",
-    "build": "tsc && vite build && electron-builder",
-    "build:mac": "tsc && vite build && electron-builder --mac",
-    "build:win": "tsc && vite build && electron-builder --win",
-    "build:linux": "tsc && vite build && electron-builder --linux",
+    "build": "tsc && vite build && electron-builder --publish never",
+    "build:mac": "tsc && vite build && electron-builder --mac --publish never",
+    "build:win": "tsc && vite build && electron-builder --win --publish never",
+    "build:linux": "tsc && vite build && electron-builder --linux --publish never",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts"
   },

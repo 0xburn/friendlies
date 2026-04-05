@@ -248,7 +248,8 @@ export function launchDolphin(overrideUserDir?: string): void {
 
   const userDir = overrideUserDir ?? getDolphinUserDir();
 
-  const args = ['-e', isoPath];
+  // -b -e matches Slippi Launcher DolphinInstance (batch + execute); -u is Friendlies-specific.
+  const args = ['-b', '-e', isoPath];
   if (userDir) {
     args.push('-u', userDir);
   }
@@ -261,7 +262,10 @@ export function launchDolphin(overrideUserDir?: string): void {
     const child = execFile(exePath, args, { maxBuffer: 100 * 1000 * 1000 });
     child.unref();
   } else {
-    const child = spawn(exePath, args, { detached: true, stdio: 'ignore' });
+    // Windows/Linux: plain spawn like Slippi Launcher (no detached) — detached spawn on Windows
+    // was associated with bad fullscreen/focus (DWM compositing, visible cursor, click sounds).
+    const child = spawn(exePath, args);
+    child.stderr?.on('data', () => {});
     child.unref();
   }
 }

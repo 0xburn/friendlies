@@ -177,7 +177,6 @@ function AuthPrompt({ connectCode, displayName }: { connectCode: string; display
                     Browser didn't open?{' '}
                     <button
                       onClick={() => window.api.openExternal(authUrl)}
-                      className="hover:underline"
                       className="text-[#21BA45] hover:underline"
                     >
                       Click here to open manually
@@ -325,7 +324,6 @@ export function App() {
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all"
             className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all bg-[#21BA45] hover:bg-[#1ea33e]"
           >
             Restart
@@ -357,7 +355,6 @@ export function App() {
           </div>
           <button
             onClick={() => { setCodeClaimed(null); window.location.reload(); }}
-            className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all"
             className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all bg-[#21BA45] hover:bg-[#1ea33e]"
           >
             Retry
@@ -430,7 +427,6 @@ export function App() {
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all"
             className="w-full rounded-xl px-6 py-3 font-semibold text-white transition-all bg-[#21BA45] hover:bg-[#1ea33e]"
           >
             Retry
