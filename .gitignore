@@ -40,3 +40,4 @@ supabase/migrations/026_schema_update.sql
 supabase/migrations/027_schema_update.sql
 supabase/migrations/028_schema_update.sql
 siege.png
+*.har
