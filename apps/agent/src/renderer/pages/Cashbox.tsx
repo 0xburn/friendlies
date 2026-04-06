@@ -2520,39 +2520,6 @@ export function Cashbox() {
     return () => { cancelled = true; };
   }, [sggUserId]);
 
-  const CASHBOX_GO_LIVE = new Date('2026-04-07T17:30:00-04:00').getTime();
-  const DEV_BYPASS_CODES = ['SMOK#1'];
-  const isLive = Date.now() >= CASHBOX_GO_LIVE || (connectCode != null && DEV_BYPASS_CODES.includes(connectCode));
-
-  if (!isLive) {
-    return (
-      <div className="space-y-4 p-6 max-w-4xl">
-        <div>
-          <h1 className="text-xl font-display font-bold text-white">Cashbox</h1>
-        </div>
-        <GiveawayPromoCard registerUrl={snap?.ok ? snap.giveawayRegisterUrl : FALLBACK_CASHBOX_REGISTER} />
-        <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-6 space-y-3 text-center">
-          <p className="text-sm text-white font-medium">This feature goes live on April 7th for Cashbox</p>
-          <p className="text-xs text-gray-400 leading-relaxed">
-            You&apos;ll be able to sign in with start.gg, check in to your matches, choose characters
-            and stages, and launch Melee directly to your opponent&apos;s connect code all without
-            leaving the app.
-          </p>
-          <p className="text-[11px] text-gray-600">
-            {new Date(CASHBOX_GO_LIVE).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
-          </p>
-        </div>
-        <StartGgLinkCard
-          connected={sggConnected}
-          displayName={sggDisplayName}
-          onConnect={handleStartGgConnect}
-          onDisconnect={handleStartGgDisconnect}
-          busy={sggBusy}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 p-6 max-w-4xl">
       {snapWarning && (
