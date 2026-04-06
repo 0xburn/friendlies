@@ -1813,7 +1813,7 @@ export function registerIpcHandlers(
   ipcMain.handle('updater:download', () => downloadUpdate());
   ipcMain.handle('updater:install', () => quitAndInstall());
 
-  ipcMain.handle('directConnect:start', async (_e, connectCode: string) => {
+  ipcMain.handle('directConnect:start', async (_e, connectCode: string, source?: string, meta?: Record<string, unknown>) => {
     try {
       const service = getDirectConnectService();
       if (service.isActive()) return { error: 'Direct connect already in progress' };
@@ -1822,6 +1822,14 @@ export function registerIpcHandlers(
       service.on('status', (evt) => sendToRenderer('directConnect:status', evt));
 
       await service.start(connectCode);
+
+      if (source) {
+        const user = await getCurrentUser();
+        if (user) {
+          logEvent(user.id, `${source}_launch_melee`, { opponent_code: connectCode, ...meta });
+        }
+      }
+
       return { ok: true };
     } catch (e: any) {
       return { error: e.message };

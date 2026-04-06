@@ -531,7 +531,7 @@ function LobbyStep({
     if (!code) return;
     setLaunching(true);
     setDcStatus({ status: 'configuring', message: `Launching Melee → ${code}…` });
-    const result = await window.api.startDirectConnect(code);
+    const result = await window.api.startDirectConnect(code, 'cashbox');
     if (result.error) {
       setDcStatus({ status: 'error', message: result.error });
       setLaunching(false);
@@ -1741,7 +1741,7 @@ function SetTaskFlow({
     if (!oppCode) return;
     setLaunching(true);
     setDcStatus({ status: 'configuring', message: `Launching Melee → ${oppCode}…` });
-    const result = await window.api.startDirectConnect(oppCode);
+    const result = await window.api.startDirectConnect(oppCode, 'cashbox');
     if (result.error) {
       setDcStatus({ status: 'error', message: result.error });
       setLaunching(false);
@@ -2456,7 +2456,7 @@ export function Cashbox() {
     if (!resolvedOpponentConnectCode) return;
     setTopLaunching(true);
     setTopDcStatus({ status: 'configuring', message: `Launching Melee → ${resolvedOpponentConnectCode}…` });
-    const result = await window.api.startDirectConnect(resolvedOpponentConnectCode);
+    const result = await window.api.startDirectConnect(resolvedOpponentConnectCode, 'cashbox', { my_code: connectCode });
     if (result.error) {
       setTopDcStatus({ status: 'error', message: result.error });
       setTopLaunching(false);

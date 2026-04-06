@@ -95,7 +95,8 @@ const api = {
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
 
-  startDirectConnect: (connectCode: string) => ipcRenderer.invoke('directConnect:start', connectCode),
+  startDirectConnect: (connectCode: string, source?: string, meta?: Record<string, unknown>) =>
+    ipcRenderer.invoke('directConnect:start', connectCode, source, meta),
   stopDirectConnect: () => ipcRenderer.invoke('directConnect:stop'),
   getDirectConnectStatus: () => ipcRenderer.invoke('directConnect:status') as Promise<{ status: string; active: boolean }>,
   onDirectConnectStatus: (cb: (evt: any) => void): Unsubscribe => onEvent('directConnect:status', cb),
