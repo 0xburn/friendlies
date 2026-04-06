@@ -13,7 +13,7 @@ import { updateTrayStatus } from './tray';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
-import { enrichCashboxFriendliesOpponent } from './cashbox-enrich';
+import { enrichCashboxFriendliesOpponent, lookupFriendliesOpponent } from './cashbox-enrich';
 
 import { getCashboxSnapshot, reportBracketSet } from './startgg/cashbox';
 import {
@@ -385,6 +385,32 @@ export function registerIpcHandlers(
         discord_id: profile?.discord_id ?? null,
       };
     } catch { return null; }
+  });
+  ipcMain.handle('profiles:byConnectCode', async (_e, connectCode: unknown) => {
+    try {
+      if (typeof connectCode !== 'string' || !connectCode.trim()) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('connect_code, display_name, discord_username, main_character, secondary_character, top_characters, region, chosen_region, avatar_url, startgg_user_id')
+        .eq('connect_code', connectCode.trim().toUpperCase())
+        .maybeSingle();
+      return data ?? null;
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle('profiles:byStartGgUserId', async (_e, startGgUserId: unknown) => {
+    try {
+      if (typeof startGgUserId !== 'string' || !startGgUserId.trim()) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('connect_code, display_name, discord_username, main_character, secondary_character, top_characters, region, chosen_region, avatar_url, startgg_user_id')
+        .eq('startgg_user_id', startGgUserId.trim())
+        .maybeSingle();
+      return data ?? null;
+    } catch {
+      return null;
+    }
   });
 
   ipcMain.handle('friends:list', async () => {
@@ -1819,8 +1845,28 @@ export function registerIpcHandlers(
 
   ipcMain.handle('cashbox:getSnapshot', async () => {
     try {
-      const id = getIdentity();
-      const code = id?.connectCode?.trim();
+      // Cashbox should prefer the authenticated profile connect_code to avoid
+      // repeatedly touching Slippi identity files on each snapshot refresh.
+      let code: string | null = null;
+      const user = await getCurrentUser();
+      if (user?.id) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('connect_code')
+            .eq('id', user.id)
+            .maybeSingle();
+          const fromProfile = typeof profile?.connect_code === 'string' ? profile.connect_code.trim() : '';
+          if (fromProfile) code = fromProfile.toUpperCase();
+        } catch {
+          // Fallback below.
+        }
+      }
+      if (!code) {
+        const id = getIdentity();
+        const fromIdentity = id?.connectCode?.trim();
+        if (fromIdentity) code = fromIdentity;
+      }
       if (!code) {
         return {
           ok: false as const,
@@ -1831,7 +1877,6 @@ export function registerIpcHandlers(
       }
       const snap = await getCashboxSnapshot(code);
       if (snap.ok) {
-        const user = await getCurrentUser();
         await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
       } else {
         (snap as any).startggConnected = isStartGgConnected();
@@ -1840,6 +1885,35 @@ export function registerIpcHandlers(
     } catch (e: any) {
       console.error('cashbox:getSnapshot', e);
       return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('cashbox:lookupOpponent', async (_e, opponentCode: unknown) => {
+    if (typeof opponentCode !== 'string' || !opponentCode.trim()) {
+      return { ok: false as const, message: 'Invalid connect code' };
+    }
+    try {
+      const user = await getCurrentUser();
+      let viewerCode = '';
+      if (user?.id) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('connect_code')
+            .eq('id', user.id)
+            .maybeSingle();
+          viewerCode = typeof profile?.connect_code === 'string' ? profile.connect_code.trim() : '';
+        } catch { /* fallback */ }
+      }
+      if (!viewerCode) {
+        const id = getIdentity();
+        viewerCode = id?.connectCode?.trim() || '';
+      }
+      const result = await lookupFriendliesOpponent(opponentCode.trim(), user?.id ?? null, viewerCode);
+      return { ok: true as const, friendlies: result };
+    } catch (e: any) {
+      console.error('cashbox:lookupOpponent', e);
+      return { ok: false as const, message: e?.message || 'Unknown error' };
     }
   });
 

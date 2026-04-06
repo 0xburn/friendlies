@@ -53,7 +53,7 @@ export class DirectConnectService extends EventEmitter {
       launchDolphin();
 
       await sleep(1500);
-      this.setStatus('ready', `Dolphin launched — go to Direct Connect, ${code} is pre-filled!`, code);
+      this.setStatus('ready', `Dolphin launched: go to Direct Connect, ${code} is pre-filled!`, code);
 
     } catch (err: any) {
       this.setStatus('error', `Failed: ${err.message}`);

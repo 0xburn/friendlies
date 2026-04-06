@@ -35,6 +35,19 @@ body {
   .no-drag { -webkit-app-region: no-drag; }
 }
 
+select, option, optgroup {
+  background-color: #1a1a1a;
+  color: #e5e5e5;
+}
+option:checked {
+  background-color: rgba(33, 186, 69, 0.25);
+  color: #21BA45;
+}
+optgroup {
+  color: #888;
+  font-weight: 600;
+}
+
 ::selection { background-color: rgba(33, 186, 69, 0.3); color: white; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -5,81 +5,55 @@ import type { CashboxFriendliesOpponent, CashboxSnapshot } from './startgg/cashb
 import { supabase } from './supabase';
 
 /**
- * Loads friendlies profile / friends / presence for the mapped Slippi connect code on the next-match opponent.
- * Mutates snap.nextMatch.friendlies when snap.ok and nextMatch exists.
+ * Looks up friendlies profile / friends / presence for a given Slippi connect code.
+ * Returns a CashboxFriendliesOpponent or null if the code is empty.
  */
-export async function enrichCashboxFriendliesOpponent(
-  snap: Extract<CashboxSnapshot, { ok: true }>,
+export async function lookupFriendliesOpponent(
+  code: string,
   viewerUserId: string | null,
   viewerConnectCode: string,
-): Promise<void> {
-  const nm = snap.nextMatch;
-  if (!nm || !nm.slippiConnectCode) return;
+): Promise<CashboxFriendliesOpponent | null> {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
 
-  const code = nm.slippiConnectCode.trim();
-  if (!code) return;
+  const offNetwork: CashboxFriendliesOpponent = {
+    onNetwork: false,
+    connectCode: trimmed,
+    displayName: null,
+    discordUsername: null,
+    discordId: null,
+    avatarUrl: null,
+    rating: null,
+    mainCharacter: null,
+    topCharacters: [],
+    region: null,
+    status: 'offline',
+    currentCharacter: null,
+    opponentCode: null,
+    playingSince: null,
+    connectionType: null,
+    lookingToPlay: false,
+    statusPreset: null,
+    friendStatus: 'none',
+  };
+
+  if (!viewerUserId) return offNetwork;
 
   const profileSelect =
     'id, connect_code, display_name, discord_username, discord_id, avatar_url, main_character, top_characters, region, chosen_region, hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type';
 
-  if (!viewerUserId) {
-    nm.friendlies = {
-      onNetwork: false,
-      connectCode: code,
-      displayName: null,
-      discordUsername: null,
-      discordId: null,
-      avatarUrl: null,
-      rating: null,
-      mainCharacter: null,
-      topCharacters: [],
-      region: null,
-      status: 'offline',
-      currentCharacter: null,
-      opponentCode: null,
-      playingSince: null,
-      connectionType: null,
-      lookingToPlay: false,
-      statusPreset: null,
-      friendStatus: 'none',
-    };
-    return;
-  }
-
-  const variants = connectCodeLookupVariants(code);
+  const variants = connectCodeLookupVariants(trimmed);
   const { data: profileRows } = await supabase.from('profiles').select(profileSelect).in('connect_code', variants);
 
-  const normTarget = normalizeSlippiConnectCode(code);
+  const normTarget = normalizeSlippiConnectCode(trimmed);
   const opp =
-    profileRows?.find((r: { connect_code: string }) => r.connect_code === code) ??
+    profileRows?.find((r: { connect_code: string }) => r.connect_code === trimmed) ??
     profileRows?.find(
       (r: { connect_code: string }) => normalizeSlippiConnectCode(r.connect_code) === normTarget,
     ) ??
     profileRows?.[0];
 
-  if (!opp) {
-    nm.friendlies = {
-      onNetwork: false,
-      connectCode: code,
-      displayName: null,
-      discordUsername: null,
-      discordId: null,
-      avatarUrl: null,
-      rating: null,
-      mainCharacter: null,
-      topCharacters: [],
-      region: null,
-      status: 'offline',
-      currentCharacter: null,
-      opponentCode: null,
-      playingSince: null,
-      connectionType: null,
-      lookingToPlay: false,
-      statusPreset: null,
-      friendStatus: 'none',
-    };
-    return;
-  }
+  if (!opp) return offNetwork;
 
   const resolvedCode = opp.connect_code as string;
 
@@ -155,7 +129,7 @@ export async function enrichCashboxFriendliesOpponent(
     if (inc) friendStatus = 'pending_in';
   }
 
-  nm.friendlies = {
+  return {
     onNetwork: true,
     userId: opp.id,
     connectCode: opp.connect_code,
@@ -180,4 +154,19 @@ export async function enrichCashboxFriendliesOpponent(
     statusPreset: resolved.statusPreset,
     friendStatus,
   };
+}
+
+/**
+ * Loads friendlies profile / friends / presence for the mapped Slippi connect code on the next-match opponent.
+ * Mutates snap.nextMatch.friendlies when snap.ok and nextMatch exists.
+ */
+export async function enrichCashboxFriendliesOpponent(
+  snap: Extract<CashboxSnapshot, { ok: true }>,
+  viewerUserId: string | null,
+  viewerConnectCode: string,
+): Promise<void> {
+  const nm = snap.nextMatch;
+  if (!nm || !nm.slippiConnectCode) return;
+  const result = await lookupFriendliesOpponent(nm.slippiConnectCode, viewerUserId, viewerConnectCode);
+  if (result) nm.friendlies = result;
 }

@@ -3,11 +3,11 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 const baseLinks = [
   { to: '/', label: 'Friends', icon: '♟' },
+  { to: '/cashbox', label: 'Cashbox', icon: '▣' },
   { to: '/discover', label: 'Discover', icon: '◎' },
   { to: '/ggs', label: 'GGs', icon: '✦' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/leaderboard', label: 'Leaderboard', icon: '▲' },
-  { to: '/cashbox', label: 'Cashbox', icon: '◆' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
@@ -78,7 +78,7 @@ export function Navigation() {
                   if (isActive) {
                     return `${base} ring-1 ring-amber-400/50 bg-amber-500/20 text-amber-100 shadow-[0_0_22px_rgba(245,158,11,0.14)]`;
                   }
-                  return `${base} border border-amber-500/35 bg-amber-500/10 text-amber-200/95 hover:bg-amber-500/16 hover:border-amber-400/50`;
+                  return `${base} text-amber-300/80 hover:text-amber-200 hover:bg-amber-500/10`;
                 }
                 return `${base} ${
                   isActive
@@ -109,7 +109,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.15</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.16</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

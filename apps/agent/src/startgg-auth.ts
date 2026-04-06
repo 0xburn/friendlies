@@ -260,15 +260,36 @@ export function startStartGgAuth(): Promise<void> {
     });
 
     let settled = false;
+    const callbackFilter = { urls: [`http://localhost:${LOCAL_AUTH_PORT}/${STARTGG_CALLBACK_PATH}*`] };
 
     function finish(err?: Error) {
       if (settled) return;
       settled = true;
+      try { ses.webRequest.onBeforeRequest(callbackFilter, () => {}); } catch {}
       try { win.close(); } catch {}
       cleanupServer();
       if (err) reject(err);
       else resolve();
     }
+
+    // Intercept the redirect to localhost so the window closes instantly
+    // without loading the callback page (fixes the "double approve" issue).
+    ses.webRequest.onBeforeRequest(callbackFilter, (details, callback) => {
+      if (settled) { callback({ cancel: false }); return; }
+      try {
+        const parsed = new URL(details.url);
+        const code = parsed.searchParams.get('code');
+        if (code) {
+          callback({ cancel: true });
+          exchangeCodeForTokens(code)
+            .then(() => extractAndStoreSessionCookies())
+            .then(() => finish())
+            .catch((e) => finish(e));
+          return;
+        }
+      } catch {}
+      callback({ cancel: false });
+    });
 
     const server = createServer(async (req, res) => {
       if (!req.url?.startsWith(`/${STARTGG_CALLBACK_PATH}`)) {
@@ -461,4 +482,41 @@ export function getStartGgUserInfo(): { userId: string | null; displayName: stri
     userId: (store.get(KEY_USER_ID) as string) || null,
     displayName: (store.get(KEY_DISPLAY_NAME) as string) || null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Session re-login (opens a browser window for the user to log back in when
+// www.start.gg session cookies have expired)
+// ---------------------------------------------------------------------------
+
+let _reLoginInFlight: Promise<void> | null = null;
+
+export function reLoginStartGgSession(): Promise<void> {
+  if (_reLoginInFlight) return _reLoginInFlight;
+
+  console.log('[startgg-auth] opening browser for session re-login');
+  _reLoginInFlight = new Promise<void>((resolve) => {
+    const ses = getStartGgSession();
+    const win = new BrowserWindow({
+      width: 620,
+      height: 720,
+      title: 'Log in to start.gg — close this window when done',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        session: ses,
+      },
+    });
+
+    win.on('closed', () => {
+      extractAndStoreSessionCookies()
+        .then(() => { console.log('[startgg-auth] re-login window closed, cookies refreshed'); })
+        .catch((e) => { console.error('[startgg-auth] re-login cookie extraction failed', e); })
+        .finally(() => { _reLoginInFlight = null; resolve(); });
+    });
+
+    win.loadURL('https://www.start.gg/');
+  });
+
+  return _reLoginInFlight;
 }

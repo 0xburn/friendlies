@@ -43,6 +43,13 @@ export function setStartGgCookieRefresher(fn: CookieRefresher): void {
   _cookieRefresher = fn;
 }
 
+type SessionReAuthenticator = () => Promise<void>;
+let _sessionReAuthenticator: SessionReAuthenticator | null = null;
+
+export function setStartGgSessionReAuthenticator(fn: SessionReAuthenticator): void {
+  _sessionReAuthenticator = fn;
+}
+
 async function wwwRestHeaders(skipCookies = false): Promise<Record<string, string>> {
   const h: Record<string, string> = {
     Accept: '*/*',
@@ -238,17 +245,56 @@ async function fetchSetRestJson(setId: string): Promise<unknown | null> {
   const expand = encodeURIComponent(JSON.stringify(['setTask']));
   const cacheBust = Date.now();
   const url = `${WWW_ORIGIN}/api/-/rest/set/${setId}?id=${setId}&expand=${expand}&_=${cacheBust}`;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const cacheKey = String(setId);
+
+  type LastGoodSetPayload = { at: number; payload: unknown };
+  const anyGlobal = globalThis as unknown as { __startggLastGoodSetPayloads?: Map<string, LastGoodSetPayload> };
+  if (!anyGlobal.__startggLastGoodSetPayloads) anyGlobal.__startggLastGoodSetPayloads = new Map();
+  const lastGoodSetPayloads = anyGlobal.__startggLastGoodSetPayloads;
+
+  async function parseSetJsonWithRetry(res: Response): Promise<unknown | null> {
+    const txt = await res.text().catch(() => '');
+    const body = txt.trim();
+    if (!body) return null;
+    try {
+      return JSON.parse(body);
+    } catch {
+      // start.gg occasionally returns truncated JSON; one immediate retry usually recovers.
+      await sleep(120);
+      return null;
+    }
+  }
+
   try {
     const headers = await wwwRestHeaders(false);
     headers['Cache-Control'] = 'no-store, no-cache, must-revalidate';
     headers['Pragma'] = 'no-cache';
-    const res = await fetch(url, { method: 'GET', headers });
-    const cfCache = res.headers.get('cf-cache-status') ?? '?';
-    if (!res.ok) {
-      console.warn('[startgg rest] set HTTP', res.status, `cf=${cfCache}`, await res.text().catch(() => ''));
-      return null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(url, { method: 'GET', headers });
+      const cfCache = res.headers.get('cf-cache-status') ?? '?';
+      if (!res.ok) {
+        console.warn('[startgg rest] set HTTP', res.status, `cf=${cfCache}`, await res.text().catch(() => ''));
+        return null;
+      }
+      const parsed = await parseSetJsonWithRetry(res);
+      if (parsed != null) {
+        lastGoodSetPayloads.set(cacheKey, { at: Date.now(), payload: parsed });
+        return parsed;
+      }
+      if (attempt === 0) {
+        // brief retry on malformed/truncated response
+        await sleep(180);
+      }
     }
-    return await res.json();
+
+    const fallback = lastGoodSetPayloads.get(cacheKey);
+    if (fallback && Date.now() - fallback.at < 30_000) {
+      console.warn(`[startgg rest] set ${setId}: malformed JSON, using cached payload (${Date.now() - fallback.at}ms old)`);
+      return fallback.payload;
+    }
+    console.warn(`[startgg rest] set ${setId}: malformed JSON and no fresh cache available`);
+    return null;
   } catch (e) {
     console.error('[startgg rest] set fetch', e);
     return null;
@@ -356,7 +402,7 @@ async function putTaskWithRetry(
   body: Record<string, unknown>,
   label: string,
 ): Promise<{ ok: boolean; tasks?: RawSetTask[]; message?: string; status?: number }> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const useSession = !!_sessionFetcher;
       const headers = await wwwRestHeaders(useSession);
@@ -372,10 +418,17 @@ async function putTaskWithRetry(
       }
       const json = await res.json().catch(() => null);
       const result = parseTaskMutationResponse(json);
-      if (!result.ok && result.message === 'Login is required' && attempt === 0 && _cookieRefresher) {
-        console.log('[startgg rest] session expired, refreshing cookies and retrying…');
-        await _cookieRefresher();
-        continue;
+      if (!result.ok && result.message === 'Login is required') {
+        if (attempt === 0 && _cookieRefresher) {
+          console.log('[startgg rest] session expired, refreshing cookies and retrying…');
+          await _cookieRefresher();
+          continue;
+        }
+        if (attempt === 1 && _sessionReAuthenticator) {
+          console.log('[startgg rest] cookie refresh insufficient, opening browser for re-login…');
+          await _sessionReAuthenticator();
+          continue;
+        }
       }
       if (!result.ok) console.warn(`[startgg rest] ${label} rejected:`, result.message);
       if (result.ok && result.tasks.length > 0) {
@@ -428,19 +481,60 @@ query SetUpdatedAt($setId: ID!) {
   }
 }`.trim();
 
+type SetUpdatedAtCache = {
+  at: number;
+  result: { ok: true; state: number; updatedAt: number } | { ok: false; message: string };
+};
+
+const _setUpdatedAtCache = new Map<string, SetUpdatedAtCache>();
+const _setUpdatedAtInflight = new Map<string, Promise<{ ok: true; state: number; updatedAt: number } | { ok: false; message: string }>>();
+const SET_UPDATED_AT_TTL_MS = 1200;
+
 export async function fetchSetUpdatedAt(
   setId: string,
 ): Promise<{ ok: true; state: number; updatedAt: number } | { ok: false; message: string }> {
-  const r = await startGgGraphql<{ set: { state: number; updatedAt: number } | null }>(
-    SET_UPDATED_AT_QUERY,
-    { setId },
-    'SetUpdatedAt',
-  );
-  if (r.errors?.length) {
-    return { ok: false, message: r.errors[0].message };
+  const now = Date.now();
+  const cached = _setUpdatedAtCache.get(setId);
+  if (cached && now - cached.at < SET_UPDATED_AT_TTL_MS) {
+    return cached.result;
   }
-  if (!r.data?.set) {
-    return { ok: false, message: 'Set not found' };
+
+  const inflight = _setUpdatedAtInflight.get(setId);
+  if (inflight) return inflight;
+
+  const p = (async () => {
+    const r = await startGgGraphql<{ set: { state: number; updatedAt: number } | null }>(
+      SET_UPDATED_AT_QUERY,
+      { setId },
+      'SetUpdatedAt',
+    );
+    if (r.errors?.length) {
+      const result = { ok: false as const, message: r.errors[0].message };
+      _setUpdatedAtCache.set(setId, { at: Date.now(), result });
+      return result;
+    }
+    if (!r.data?.set) {
+      const result = { ok: false as const, message: 'Set not found' };
+      _setUpdatedAtCache.set(setId, { at: Date.now(), result });
+      return result;
+    }
+    const result = { ok: true as const, state: r.data.set.state, updatedAt: r.data.set.updatedAt };
+    _setUpdatedAtCache.set(setId, { at: Date.now(), result });
+    return result;
+  })().finally(() => {
+    _setUpdatedAtInflight.delete(setId);
+  });
+
+  _setUpdatedAtInflight.set(setId, p);
+  return p;
+}
+
+export function clearSetUpdatedAtCache(setId?: string): void {
+  if (setId) {
+    _setUpdatedAtCache.delete(setId);
+    _setUpdatedAtInflight.delete(setId);
+    return;
   }
-  return { ok: true, state: r.data.set.state, updatedAt: r.data.set.updatedAt };
+  _setUpdatedAtCache.clear();
+  _setUpdatedAtInflight.clear();
 }

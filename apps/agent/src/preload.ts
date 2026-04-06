@@ -20,6 +20,10 @@ const api = {
   getIdentity: () => ipcRenderer.invoke('identity:get') as Promise<{ uid: string; connectCode: string; displayName: string; staleAccount?: boolean } | null>,
   linkIdentity: () => ipcRenderer.invoke('identity:link'),
   getProfile: () => ipcRenderer.invoke('identity:profile'),
+  getProfileByConnectCode: (connectCode: string) =>
+    ipcRenderer.invoke('profiles:byConnectCode', connectCode),
+  getProfileByStartGgUserId: (startGgUserId: string) =>
+    ipcRenderer.invoke('profiles:byStartGgUserId', startGgUserId),
 
   getFriends: () => ipcRenderer.invoke('friends:list'),
   getIncomingRequests: () => ipcRenderer.invoke('friends:incoming'),
@@ -106,6 +110,12 @@ const api = {
 
   trackBannerClick: (banner: string) => ipcRenderer.invoke('banner:click', banner),
   getCashboxSnapshot: () => ipcRenderer.invoke('cashbox:getSnapshot'),
+  lookupCashboxOpponent: (code: string) =>
+    ipcRenderer.invoke('cashbox:lookupOpponent', code) as Promise<{
+      ok: boolean;
+      friendlies?: any;
+      message?: string;
+    }>,
   completeCashboxModerationTask: (taskId: string) =>
     ipcRenderer.invoke('cashbox:completeModerationTask', taskId) as Promise<{
       ok: boolean;

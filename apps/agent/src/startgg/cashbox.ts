@@ -9,9 +9,10 @@ import {
   setStartGgWebCookieProvider,
   setStartGgCookieRefresher,
   setStartGgSessionFetcher,
+  setStartGgSessionReAuthenticator,
   type CashboxModerationTask,
 } from './www-rest-moderation';
-import { getStartGgUserToken, getStartGgWebCookies, refreshStartGgWebCookies, startGgSessionFetch } from '../startgg-auth';
+import { getStartGgUserToken, getStartGgWebCookies, refreshStartGgWebCookies, startGgSessionFetch, reLoginStartGgSession, getStartGgUserInfo } from '../startgg-auth';
 import { supabase } from '../supabase';
 import { getCurrentUser } from '../auth';
 
@@ -19,15 +20,16 @@ setStartGgUserTokenProvider(getStartGgUserToken);
 setStartGgWebCookieProvider(getStartGgWebCookies);
 setStartGgCookieRefresher(refreshStartGgWebCookies);
 setStartGgSessionFetcher(startGgSessionFetch);
+setStartGgSessionReAuthenticator(reLoginStartGgSession);
 
 /** Public tournament slug on start.gg (safe to commit). */
-export const CASHBOX_TOURNAMENT_SLUG = 'friendlies-test';
+export const CASHBOX_TOURNAMENT_SLUG = 'the-cashbox-21';
 
 /**
  * Pinned event for Start.gg integration testing. Set to null for production Cashbox
  * (then use START_GG_CASHBOX_EVENT_SLUG / _EVENT_ID or auto-detect from tournament).
  */
-const CASHBOX_DEV_EVENT_SLUG: string | null = 'tournament/friendlies-test/event/melee-singles-test';
+const CASHBOX_DEV_EVENT_SLUG: string | null = null;
 
 /** Your Slippi connect code → how we find YOUR start.gg entrant for this event (raw entrant id, user:slug, or participant:id).
  *  Unrelated to anonymous check-in: if you are not in this map, the tab cannot load your bracket row at all. */
@@ -661,6 +663,7 @@ query CashboxOpponentEntrant($id: ID!) {
       gamerTag
       prefix
       user {
+        id
         slug
         authorizations {
           type
@@ -684,6 +687,7 @@ function formatAuthTypeLabel(t: string): string {
 export type CashboxStartGgSocial = { type: string; handle: string; url: string | null };
 
 export type CashboxStartGgOpponent = {
+  userId: string | null;
   gamerTags: string[];
   prefix: string | null;
   socials: CashboxStartGgSocial[];
@@ -751,10 +755,12 @@ async function fetchOpponentStartGgProfile(opponentEntrantId: string): Promise<C
   let prefix: string | null = null;
   const socials: CashboxStartGgSocial[] = [];
   let userSlug: string | null = null;
+  let userId: string | null = null;
   for (const p of ent.participants ?? []) {
     if (p?.gamerTag) gamerTags.push(String(p.gamerTag));
     if (p?.prefix) prefix = String(p.prefix);
     const u = p?.user;
+    if (u?.id != null) userId = String(u.id);
     if (u?.slug) {
       userSlug = String(u.slug).replace(/^user\//i, '').trim() || userSlug;
     }
@@ -768,7 +774,7 @@ async function fetchOpponentStartGgProfile(opponentEntrantId: string): Promise<C
       });
     }
   }
-  return { gamerTags, prefix, socials, userSlug };
+  return { userId, gamerTags, prefix, socials, userSlug };
 }
 
 function resolveSlippiCodeForOpponent(
@@ -1019,6 +1025,15 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
   }
 
   if (!entrantId) {
+    const localInfo = getStartGgUserInfo();
+    if (localInfo.userId) {
+      console.log('[cashbox] Supabase profile had no startgg_user_id; trying local store:', localInfo.userId);
+      const eid = await entrantIdForUserInEvent(localInfo.userId, meta.tournamentSlug, meta.eventId);
+      if (eid) entrantId = eid;
+    }
+  }
+
+  if (!entrantId) {
     return {
       ok: false,
       reason: 'not_mapped',
@@ -1029,7 +1044,11 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
     };
   }
 
-  const pack = await fetchEntrantSets(entrantId, meta.eventId);
+  // Batch 1: fetch entrant sets and panel extras in parallel
+  const [pack, extras] = await Promise.all([
+    fetchEntrantSets(entrantId, meta.eventId),
+    fetchCashboxPanelExtras(meta.tournamentId, entrantId),
+  ]);
   if (!pack.ok) {
     return { ok: false, reason: 'api', message: pack.message, giveawayRegisterUrl };
   }
@@ -1037,7 +1056,6 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
   const { nodes, entrantName } = pack;
   const bracketUrl = bracketUrlFor(meta.eventSlug, meta.tournamentSlug);
   const bracketEmbedUrl = bracketEmbedUrlFor(meta.eventSlug, meta.tournamentSlug);
-  const extras = await fetchCashboxPanelExtras(meta.tournamentId, entrantId);
 
   let nextMatch: CashboxNextMatchDetail | null = null;
   const completed: typeof nodes = [];
@@ -1060,7 +1078,6 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
         slippiConnectCode: null,
         slippiMapMissing: true,
       };
-      await hydrateNextMatchOpponent(nextMatch, entrantId);
     }
   }
 
@@ -1091,49 +1108,41 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
 
   const bracketSets = nodes.map((n) => toBracketSetRow(entrantId, n));
 
-  let currentPhasePool: CashboxPhasePool | null = null;
   const anchor = pickAnchorSetForPhaseGroup(nodes);
   const pgId = anchor?.phaseGroup?.id;
-  if (pgId) {
-    try {
-      currentPhasePool = await fetchPhaseGroupPool(String(pgId), String(entrantId));
-    } catch (e) {
-      console.error('[cashbox] fetchPhaseGroupPool', e);
-    }
-  }
+
+  // Batch 2: hydrate opponent, fetch pool, and fetch moderation data in parallel
+  const [, currentPhasePool, moderationPayload] = await Promise.all([
+    nextMatch
+      ? hydrateNextMatchOpponent(nextMatch, entrantId)
+      : Promise.resolve(),
+    pgId
+      ? fetchPhaseGroupPool(String(pgId), String(entrantId)).catch((e) => { console.error('[cashbox] fetchPhaseGroupPool', e); return null; })
+      : Promise.resolve(null),
+    nextMatch?.phaseGroupId
+      ? fetchPhaseGroupRestJson(nextMatch.phaseGroupId).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   let matchModeration: CashboxMatchModeration | null = null;
   if (nextMatch) {
     const setUrl = setPageUrlFor(meta.tournamentSlug, meta.eventSlug, nextMatch.setId);
     if (nextMatch.phaseGroupId) {
-      try {
-        const payload = await fetchPhaseGroupRestJson(nextMatch.phaseGroupId);
-        const tasks = payload
-          ? extractModerationTasksFromPhaseGroupPayload(payload, nextMatch.setId)
-          : [];
-        matchModeration = {
-          phaseGroupId: nextMatch.phaseGroupId,
-          setId: nextMatch.setId,
-          setUrl,
-          tasks,
-          phaseGroupFetched: !!payload,
-          hint: !payload
-            ? 'Could not load moderation tasks (often needs a logged-in session). Set START_GG_WEB_COOKIE from your browser cookies for start.gg, restart the app, or use the button below.'
-            : tasks.length === 0
+      const tasks = moderationPayload
+        ? extractModerationTasksFromPhaseGroupPayload(moderationPayload, nextMatch.setId)
+        : [];
+      matchModeration = {
+        phaseGroupId: nextMatch.phaseGroupId,
+        setId: nextMatch.setId,
+        setUrl,
+        tasks,
+        phaseGroupFetched: !!moderationPayload,
+        hint: !moderationPayload
+          ? 'Could not load moderation tasks (often needs a logged-in session). Set START_GG_WEB_COOKIE from your browser cookies for start.gg, restart the app, or use the button below.'
+          : tasks.length === 0
               ? 'Loaded phase data but no tasks matched this set. Use “Open match on start.gg” to finish check-in / reporting.'
-              : null,
-        };
-      } catch (e) {
-        console.error('[cashbox] matchModeration', e);
-        matchModeration = {
-          phaseGroupId: nextMatch.phaseGroupId,
-          setId: nextMatch.setId,
-          setUrl,
-          tasks: [],
-          phaseGroupFetched: false,
-          hint: 'Error loading moderation data. Open the match on start.gg.',
-        };
-      }
+            : null,
+      };
     } else {
       matchModeration = {
         phaseGroupId: null,

@@ -7,8 +7,15 @@ import {
   SLIPPI_TO_STARTGG_CHAR,
   LEGAL_STAGES,
 } from '../lib/characters';
+import { getRankLabel, getRankTier } from '../lib/ranks';
 
 type CashboxStartGgSocial = { type: string; handle: string; url: string | null };
+type LuckyStatsOpponent = {
+  elo: number | null;
+  wins: number | null;
+  losses: number | null;
+  rank: number | null;
+};
 
 type CashboxFriendlies = {
   onNetwork: boolean;
@@ -60,6 +67,7 @@ type NextMatch = {
   opponentName: string | null;
   opponentEntrantId: string | null;
   startGg: null | {
+    userId?: string | null;
     gamerTags: string[];
     prefix: string | null;
     socials: CashboxStartGgSocial[];
@@ -128,6 +136,41 @@ type Snapshot =
 const FRIENDLIES_URL = 'https://luckystats.gg/friendlies';
 const SIEGE_INFO_URL = 'https://start.gg/fullhouse';
 const FALLBACK_CASHBOX_REGISTER = 'https://www.start.gg/tournament/the-cashbox-21/register';
+
+function coerceNum(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractLuckyStatsPlayer(raw: any, id: string): LuckyStatsOpponent | null {
+  const candidates: any[] = [];
+  if (Array.isArray(raw)) candidates.push(...raw);
+  if (Array.isArray(raw?.players)) candidates.push(...raw.players);
+  if (Array.isArray(raw?.data)) candidates.push(...raw.data);
+  if (Array.isArray(raw?.data?.players)) candidates.push(...raw.data.players);
+  const byId = raw?.playersById?.[id] ?? raw?.data?.playersById?.[id] ?? raw?.[id];
+  if (byId) candidates.push(byId);
+
+  const row = candidates.find((p) => {
+    const ids = [
+      p?.id,
+      p?.startggUserId,
+      p?.startgg_user_id,
+      p?.startggId,
+      p?.startgg_id,
+      p?.playerId,
+    ].map((v) => String(v ?? ''));
+    return ids.includes(String(id));
+  });
+  if (!row) return null;
+
+  return {
+    elo: coerceNum(row.elo ?? row.Elo ?? row.rating ?? row.mmr ?? row.points),
+    wins: coerceNum(row.wins ?? row.setWins ?? row.win_count),
+    losses: coerceNum(row.losses ?? row.setLosses ?? row.loss_count),
+    rank: coerceNum(row.rank ?? row.placement ?? row.globalRank),
+  };
+}
 
 function GiveawayPromoCard({ registerUrl }: { registerUrl?: string | null }) {
   const reg = (registerUrl && registerUrl.trim()) || FALLBACK_CASHBOX_REGISTER;
@@ -270,29 +313,34 @@ function CharPickerGrid({
   selected,
   onSelect,
   label,
+  autoOpen = false,
 }: {
   selected: number | null;
   onSelect: (id: number | null) => void;
   label: string;
+  autoOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
 
   if (!open) {
-    return (
+    return selected != null ? (
       <button
         type="button"
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-300"
       >
-        {selected != null ? (
-          <>
-            <CharacterIcon characterId={selected} size="sm" />
-            <span className="text-gray-300">{getCharacterShortName(selected)}</span>
-            <span className="text-gray-600 ml-0.5">— tap to change</span>
-          </>
-        ) : (
-          <span className="italic text-gray-600">None selected — tap to pick</span>
-        )}
+        <CharacterIcon characterId={selected} size="sm" />
+        <span className="text-gray-300">{getCharacterShortName(selected)}</span>
+        <span className="text-gray-600 ml-0.5">— tap to change</span>
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/60 transition-colors animate-pulse"
+      >
+        <span className="text-base leading-none">👆</span>
+        <span>Pick your character now</span>
       </button>
     );
   }
@@ -557,6 +605,7 @@ function GameSetupStep({
   defaultSelfChar,
   localCharPicked,
   onCharPreSelect,
+  actionError,
 }: {
   task: RawSetTask;
   siblingTask: RawSetTask | null;
@@ -569,6 +618,7 @@ function GameSetupStep({
   defaultSelfChar?: number | null;
   localCharPicked?: boolean;
   onCharPreSelect?: (id: number | null) => void;
+  actionError?: string | null;
 }) {
   const meta = task.metadata;
   const gameNum = typeof meta.gameNum === 'number' ? meta.gameNum : '?';
@@ -599,28 +649,30 @@ function GameSetupStep({
   const setSelectedChar = (id: number | null) => {
     setSelectedCharRaw(id);
     onCharPreSelect?.(id);
+    if (charConfirmDismissed) setCharConfirmDismissed(false);
   };
   const [selectedStrikes, setSelectedStrikes] = useState<number[]>([]);
+  const [charConfirmDismissed, setCharConfirmDismissed] = useState(false);
+  const prevConfirmTaskId = useRef(task.id);
+  if (task.id !== prevConfirmTaskId.current) {
+    prevConfirmTaskId.current = task.id;
+    if (charConfirmDismissed) setCharConfirmDismissed(false);
+  }
+
+  const action = (task._raw.action as string) ?? '';
+  const isCharAction = action === 'setup_blind' || action === 'setup_character';
+  const showCharConfirm = !myCharPicked && selectedChar != null && !charConfirmDismissed && (isMyTurn || isCharAction);
+
+  const prevLogRef = useRef('');
+  const logKey = `${task.id}:${action}:${isMyTurn}:${myCharPicked}:${selectedChar}:${showCharConfirm}`;
+  if (logKey !== prevLogRef.current) {
+    prevLogRef.current = logKey;
+    console.log(`[cashbox char] task=${task.id} action=${action} isMyTurn=${isMyTurn} isCharAction=${isCharAction} myCharPicked=${myCharPicked} selectedChar=${selectedChar} showCharConfirm=${showCharConfirm}`);
+  }
 
   useEffect(() => {
     setSelectedStrikes([]);
   }, [strikeCurrent, task.id]);
-
-  const autoSubmittedRef = useRef(false);
-  useEffect(() => {
-    const action = (task._raw.action as string) ?? '';
-    const isCharPhase = action === 'setup_blind' || action === 'setup_character';
-    if (isCharPhase && isMyTurn && !myCharPicked && selectedChar != null && !busy && !autoSubmittedRef.current) {
-      const sggCharId = SLIPPI_TO_STARTGG_CHAR[selectedChar];
-      if (sggCharId != null) {
-        autoSubmittedRef.current = true;
-        console.log(`[cashbox] auto-submitting pre-selected character ${selectedChar} (startgg=${sggCharId})`);
-        const body = { ...task._raw };
-        body.metadata = { ...meta, selection: { 0: sggCharId } };
-        onUpdate(body);
-      }
-    }
-  });
 
   if (task.isCompleted) {
     const selectedStageId = typeof meta.stageSelection === 'number' ? (meta.stageSelection as number) : null;
@@ -655,7 +707,11 @@ function GameSetupStep({
   function submitCharacter() {
     if (selectedChar == null || busy) return;
     const sggCharId = SLIPPI_TO_STARTGG_CHAR[selectedChar];
-    if (sggCharId == null) return;
+    console.log(`[cashbox char] submit: slippi=${selectedChar} sgg=${sggCharId} taskId=${task.id} action=${action}`);
+    if (sggCharId == null) {
+      console.error(`[cashbox char] no start.gg mapping for slippi char ${selectedChar}`);
+      return;
+    }
     const body = { ...task._raw };
     body.metadata = {
       ...meta,
@@ -682,19 +738,60 @@ function GameSetupStep({
     });
   }
 
-  const action = (task._raw.action as string) ?? '';
   const banStages = (meta.banStages ?? []) as number[];
   const banList = Array.isArray(meta.banList) ? meta.banList as number[] : [];
   const bannedIds = new Set(banList.map(Number));
   const availableBanStages = banStages.filter((id) => !bannedIds.has(id));
 
   const [selectedBan, setSelectedBan] = useState<number | null>(null);
+  const [selectedPickStage, setSelectedPickStage] = useState<number | null>(null);
 
   function submitBan() {
     if (selectedBan == null || busy) return;
     const body = { ...task._raw };
     body.metadata = { ...meta, selection: [selectedBan] };
     onUpdate(body);
+  }
+
+  function submitPickStage() {
+    if (selectedPickStage == null || busy) return;
+    const body = { ...task._raw };
+    body.metadata = { ...meta, selection: [selectedPickStage] };
+    onUpdate(body);
+  }
+
+  if (showCharConfirm && selectedChar != null) {
+    return (
+      <div className="space-y-2.5">
+        <p className="text-[11px] text-gray-500 font-medium">Game {gameNum} — Character select</p>
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 space-y-3">
+          <p className="text-xs text-gray-300">Lock in this character?</p>
+          <div className="flex items-center gap-2">
+            <CharacterIcon characterId={selectedChar} size="sm" />
+            <span className="text-sm font-medium text-white">{getCharacterShortName(selectedChar)}</span>
+          </div>
+          {actionError && <p className="text-xs text-red-400/90">{actionError}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => submitCharacter()}
+              disabled={busy}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+            >
+              {busy ? 'Submitting…' : 'Confirm'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCharConfirmDismissed(true)}
+              disabled={busy}
+              className="rounded-md bg-white/5 px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+            >
+              Change
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (action === 'setup_ban') {
@@ -710,6 +807,12 @@ function GameSetupStep({
               onSelect={setSelectedChar}
               label="Your character"
             />
+            {selectedChar != null && !myCharPicked && (
+              <button type="button" onClick={submitCharacter} disabled={busy}
+                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                {busy ? 'Submitting…' : `Lock in ${getCharacterShortName(selectedChar)}`}
+              </button>
+            )}
           </div>
         </div>
       );
@@ -748,6 +851,83 @@ function GameSetupStep({
   }
 
   const stageSelection = typeof meta.stageSelection === 'number' ? meta.stageSelection : null;
+  const availableCounterpickStages = banStages.filter((id) => !bannedIds.has(id));
+  const isCounterpickStageStep =
+    action === 'setup_stage' ||
+    action === 'setup_counterpick' ||
+    action === 'setup_pick' ||
+    (banStages.length > 0 && banList.length > 0 && !inStrikePhase && stageSelection == null);
+
+  if (isCounterpickStageStep) {
+    if (!isMyTurn && isOppTurn) {
+      return (
+        <div className="space-y-2.5">
+          <p className="text-[11px] text-gray-500 font-medium">Game {gameNum} — Counterpick stage</p>
+          <p className="text-xs text-amber-400">Waiting for {oppLabel} to choose a stage…</p>
+          <div className="flex flex-wrap gap-1.5">
+            {availableCounterpickStages.map((sid) => (
+              <span
+                key={sid}
+                className="rounded-md px-2.5 py-1.5 text-[11px] font-medium bg-white/5 text-gray-300"
+              >
+                {stageNameByStartGgId(sid)}
+              </span>
+            ))}
+          </div>
+          <div className="space-y-2 pt-1">
+            <p className="text-[11px] text-gray-500">Pre-select your character while waiting:</p>
+            <CharPickerGrid
+              selected={selectedChar}
+              onSelect={setSelectedChar}
+              label="Your character"
+            />
+            {selectedChar != null && !myCharPicked && (
+              <button type="button" onClick={submitCharacter} disabled={busy}
+                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                {busy ? 'Submitting…' : `Lock in ${getCharacterShortName(selectedChar)}`}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2.5">
+        <p className="text-[11px] text-gray-500 font-medium">Game {gameNum} — Pick a stage</p>
+        {!isMyTurn && !isOppTurn && (
+          <p className="text-[11px] text-amber-400">
+            Turn info is stale. You can still pick here to unblock Game {gameNum}.
+          </p>
+        )}
+        <p className="text-xs text-white">Choose your counterpick stage.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {availableCounterpickStages.map((sid) => (
+            <button
+              key={sid}
+              type="button"
+              disabled={busy}
+              onClick={() => setSelectedPickStage(sid)}
+              className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                selectedPickStage === sid
+                  ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              {stageNameByStartGgId(sid)}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={submitPickStage}
+          disabled={busy || selectedPickStage == null}
+          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+        >
+          {busy ? '…' : `Pick ${selectedPickStage != null ? stageNameByStartGgId(selectedPickStage) : '…'}`}
+        </button>
+      </div>
+    );
+  }
 
   if (action === 'setup_blind' || action === 'setup_character') {
     if (!isMyTurn && !myCharPicked) {
@@ -765,6 +945,12 @@ function GameSetupStep({
               onSelect={setSelectedChar}
               label="Your character"
             />
+            {selectedChar != null && (
+              <button type="button" onClick={submitCharacter} disabled={busy}
+                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                {busy ? 'Submitting…' : `Lock in ${getCharacterShortName(selectedChar)}`}
+              </button>
+            )}
           </div>
         </div>
       );
@@ -783,6 +969,12 @@ function GameSetupStep({
                 <CharacterIcon characterId={startggCharToSlippi(myChars[0]) ?? 0} size="sm" />
                 <span>{getCharacterShortName(startggCharToSlippi(myChars[0]) ?? 0)}</span>
               </div>
+            ) : selectedChar != null ? (
+              <div className="flex items-center gap-2 text-xs text-gray-300">
+                <span>Your pick:</span>
+                <CharacterIcon characterId={selectedChar} size="sm" />
+                <span>{getCharacterShortName(selectedChar)}</span>
+              </div>
             ) : (
               <p className="text-xs text-gray-300">Character locked in.</p>
             )}
@@ -796,6 +988,7 @@ function GameSetupStep({
               selected={selectedChar}
               onSelect={setSelectedChar}
               label="Your character"
+              autoOpen
             />
             <button
               type="button"
@@ -824,6 +1017,12 @@ function GameSetupStep({
               onSelect={setSelectedChar}
               label="Your character"
             />
+            {selectedChar != null && !myCharPicked && (
+              <button type="button" onClick={submitCharacter} disabled={busy}
+                className="rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                {busy ? 'Submitting…' : `Lock in ${getCharacterShortName(selectedChar)}`}
+              </button>
+            )}
           </div>
         </div>
       );
@@ -946,6 +1145,7 @@ function ReportGameStep({
   oppLabel,
   oppEntrantId,
   onAction,
+  onClearReport,
   busy,
   submittedWinnerId,
 }: {
@@ -1052,11 +1252,17 @@ function SetTaskFlow({
   sggConnected,
   onRefresh,
   defaultSelfChar,
+  opponentConnectCodeFallback,
+  onOpponentCodeResolved,
+  setUrl,
 }: {
   next: NextMatch;
   sggConnected: boolean;
   onRefresh: () => void | Promise<void>;
   defaultSelfChar?: number | null;
+  opponentConnectCodeFallback?: string | null;
+  onOpponentCodeResolved?: (code: string | null) => void;
+  setUrl?: string | null;
 }) {
   const [tasks, setTasks] = useState<RawSetTask[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1067,11 +1273,30 @@ function SetTaskFlow({
   const [preSelectedChar, setPreSelectedChar] = useState<number | null>(null);
   const fetchNowRef = useRef<() => void>(() => {});
 
+  const [webTaskView, setWebTaskView] = useState(true);
+  useEffect(() => {
+    window.api.getSettings().then((s: any) => {
+      if (s?.useWebTaskView === false) setWebTaskView(false);
+    });
+  }, []);
+
   const selfId = Number(next.selfEntrantId);
   const oppId = next.opponentEntrantId ? Number(next.opponentEntrantId) : null;
   const selfLabel = next.selfEntrantName || 'You';
   const oppLabel = next.opponentName || 'Opponent';
   const pgId = next.phaseGroupId;
+  const lobbyRoomCode = (() => {
+    const lobbyTask = tasks.find((t) => t.type === 2);
+    const room = lobbyTask?.metadata?.room;
+    if (typeof room !== 'string') return null;
+    const c = room.trim();
+    return c.length > 0 ? c : null;
+  })();
+  const oppCode = lobbyRoomCode ?? opponentConnectCodeFallback ?? next.slippiConnectCode ?? next.friendlies?.connectCode ?? null;
+
+  useEffect(() => {
+    onOpponentCodeResolved?.(oppCode);
+  }, [oppCode, onOpponentCodeResolved]);
 
   const fetchTasks = useCallback(async () => {
     if (!pgId) { setLoadError('No phase group — cannot load tasks.'); return; }
@@ -1112,13 +1337,40 @@ function SetTaskFlow({
     }
   }, [pgId, next.setId]);
 
+  const allSetDone = tasks.length > 0 && tasks.every((t) => t.isCompleted);
+  const allSetDoneRef = useRef(false);
+  useEffect(() => {
+    if (allSetDone && !allSetDoneRef.current) {
+      allSetDoneRef.current = true;
+      console.log('[cashbox] all set tasks complete — triggering snapshot reload');
+      void onRefresh();
+    } else if (!allSetDone) {
+      allSetDoneRef.current = false;
+    }
+  }, [allSetDone, onRefresh]);
+
+  const myTasksForPoll = tasks.filter((t) => t.entrantId === selfId);
+  const myActiveSetup = myTasksForPoll.find((t) => t.type === 7 && t.active && !t.isCompleted);
+  const setupWaitingForOpp = myActiveSetup != null && (() => {
+    const turn = (myActiveSetup.metadata?.turn ?? {}) as Record<string, boolean>;
+    return !turn[String(selfId)];
+  })();
+  const waitingForOpponent = (tasks.length > 0
+    && myTasksForPoll.length > 0
+    && myTasksForPoll.every((t) => t.isCompleted)
+    && !allSetDone)
+    || setupWaitingForOpp;
+  const waitingRef = useRef(waitingForOpponent);
+  waitingRef.current = waitingForOpponent;
+
   useEffect(() => {
     let active = true;
     let tid: ReturnType<typeof setTimeout> | null = null;
     async function poll() {
       if (!active) return;
       await fetchTasks();
-      if (active) tid = setTimeout(poll, 1500);
+      const interval = waitingRef.current ? 700 : 2500;
+      if (active) tid = setTimeout(poll, interval);
     }
     fetchNowRef.current = () => {
       if (tid) clearTimeout(tid);
@@ -1134,6 +1386,7 @@ function SetTaskFlow({
   useEffect(() => {
     let active = true;
     let tid: ReturnType<typeof setTimeout> | null = null;
+    let rateLimitBackoff = 0;
     async function gqlPoll() {
       if (!active) return;
       try {
@@ -1144,9 +1397,14 @@ function SetTaskFlow({
             fetchNowRef.current();
           }
           lastGqlUpdatedAt.current = r.updatedAt;
+          rateLimitBackoff = 0;
+        } else if (!r.ok && String(r.message ?? '').toLowerCase().includes('rate limit')) {
+          rateLimitBackoff = Math.min((rateLimitBackoff || 2800) * 2, 20_000);
         }
       } catch {}
-      if (active) tid = setTimeout(gqlPoll, 3000);
+      const baseDelay = waitingRef.current ? 1500 : 3500;
+      const delayMs = rateLimitBackoff || baseDelay;
+      if (active) tid = setTimeout(gqlPoll, delayMs);
     }
     void gqlPoll();
     return () => { active = false; if (tid) clearTimeout(tid); };
@@ -1168,7 +1426,12 @@ function SetTaskFlow({
   if (!pgId) return null;
 
   const myTasks = tasks.filter((t) => t.entrantId === selfId);
-  const currentTask = myTasks.find((t) => !t.isCompleted && t.active);
+  const activeTask = myTasks.find((t) => !t.isCompleted && t.active);
+  const fallbackTask = !activeTask
+    ? [...myTasks].filter((t) => !t.isCompleted).sort((a, b) => a.taskOrder - b.taskOrder || a.id - b.id)[0] ?? null
+    : null;
+  const currentTask = activeTask ?? fallbackTask ?? null;
+  const usingFallbackTask = !activeTask && !!fallbackTask;
   const siblingOf = (t: RawSetTask) => tasks.find((x) => x.id === t.siblingId) ?? null;
   const taskKey = currentTask ? `${currentTask.id}:${currentTask.type}:${currentTask.isCompleted}` : 'none';
   if (taskKey !== prevCurrentRef.current) {
@@ -1182,7 +1445,12 @@ function SetTaskFlow({
         const map = new Map(prev.map((t) => [t.id, t]));
         for (const t of newTasks) {
           const existing = map.get(t.id);
-          if (existing && existing.isCompleted && !t.isCompleted) continue;
+          if (existing) {
+            if (existing.isCompleted && !t.isCompleted) continue;
+            const existingTs = existing.updatedAtMicro ?? existing.updatedAt ?? 0;
+            const incomingTs = t.updatedAtMicro ?? t.updatedAt ?? 0;
+            if (existingTs > incomingTs) continue;
+          }
           map.set(t.id, t);
         }
         return [...map.values()].sort((a, b) => a.taskOrder - b.taskOrder || a.id - b.id);
@@ -1221,20 +1489,35 @@ function SetTaskFlow({
   }
 
   function burstRefresh() {
-    let i = 0;
-    function next() {
-      if (i >= 3) return;
-      i++;
-      setTimeout(() => {
-        fetchNowRef.current();
-        next();
-      }, 800);
+    const delays = [0, 250, 500, 1000, 1600];
+    for (const d of delays) {
+      setTimeout(() => fetchNowRef.current(), d);
     }
-    fetchNowRef.current();
-    next();
   }
 
-  const AUTO_ADVANCE_TYPES = new Set([2, 4]);
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function waitForTaskConvergence(taskId: number): Promise<void> {
+    for (let i = 0; i < 8; i++) {
+      if (i > 0) await sleep(180 + i * 120);
+      try {
+        const freshResult = await window.api.getSetTasks(pgId!, next.setId, true);
+        if (!freshResult.ok || !freshResult.tasks) continue;
+        applyResponseTasks(freshResult.tasks);
+        const task = freshResult.tasks.find((t: RawSetTask) => t.id === taskId);
+        const activeMine = freshResult.tasks
+          .filter((t: RawSetTask) => t.entrantId === selfId && !t.isCompleted && t.active)
+          .sort((a: RawSetTask, b: RawSetTask) => a.taskOrder - b.taskOrder)[0];
+        if (!task || task.isCompleted || (activeMine && activeMine.id !== taskId)) return;
+      } catch {
+        // Best-effort convergence probe; keep trying.
+      }
+    }
+  }
+
+  const AUTO_ADVANCE_TYPES = new Set([2]);
 
   function tryAutoAdvance(completedTask: RawSetTask, responseTasks?: RawSetTask[]) {
     const allTasks = responseTasks && responseTasks.length > 0 ? responseTasks : tasks;
@@ -1290,6 +1573,7 @@ function SetTaskFlow({
           tryAutoAdvance(task, r.tasks);
           burstRefresh();
         }
+        await waitForTaskConvergence(task.id);
         return;
       }
     } catch (e: any) {
@@ -1358,6 +1642,7 @@ function SetTaskFlow({
           tryAutoAdvance(returnedTask, r.tasks);
         }
         burstRefresh();
+        await waitForTaskConvergence(Number(taskId));
         return;
       }
     } catch (e: any) {
@@ -1396,8 +1681,7 @@ function SetTaskFlow({
             continue;
           }
           if (stale) {
-            setSubmittedReports((prev) => ({ ...prev, [task.id]: winnerId }));
-            markTaskDoneLocally(task.id);
+            setActionError('Result changed on start.gg. Please pick winner again or verify/dispute below.');
             scheduleRefresh(300);
           } else {
             setActionError(r.message || 'Failed');
@@ -1412,6 +1696,7 @@ function SetTaskFlow({
         }
         applyResponseTasks(r.tasks);
         burstRefresh();
+        await waitForTaskConvergence(task.id);
         return;
       }
     } catch (e: any) {
@@ -1446,9 +1731,11 @@ function SetTaskFlow({
     );
   }
 
-  const allMyDone = myTasks.every((t) => t.isCompleted);
+  const allMyDone = myTasks.length > 0 && myTasks.every((t) => t.isCompleted);
   const checkInDone = myTasks.some((t) => t.type === 1 && t.isCompleted);
-  const oppCode = next.slippiConnectCode;
+  const latestReportTask = [...myTasks]
+    .filter((t) => t.type === 3)
+    .sort((a, b) => b.taskOrder - a.taskOrder)[0] ?? null;
 
   async function handleLaunchMelee() {
     if (!oppCode) return;
@@ -1461,42 +1748,82 @@ function SetTaskFlow({
     }
   }
 
+  function toggleWebTaskView() {
+    const next = !webTaskView;
+    setWebTaskView(next);
+    window.api.updateSettings({ useWebTaskView: next });
+  }
+
   return (
     <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
-        <button
-          type="button"
-          onClick={() => fetchNowRef.current()}
-          disabled={busy}
-          className="text-[11px] text-gray-600 hover:text-gray-400 disabled:opacity-50"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleWebTaskView}
+            className={`text-[11px] transition-colors ${webTaskView ? 'text-[#21BA45]' : 'text-gray-600 hover:text-gray-400'}`}
+            title={webTaskView ? 'Switch to native task view' : 'Switch to start.gg browser view'}
+          >
+            {webTaskView ? 'Native view' : 'Browser view'}
+          </button>
+          {!webTaskView && (
+            <button
+              type="button"
+              onClick={() => fetchNowRef.current()}
+              disabled={busy}
+              className="text-[11px] text-gray-600 hover:text-gray-400 disabled:opacity-50"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
+
+      {webTaskView ? (
+        setUrl ? (
+          <div className="space-y-2">
+            <webview
+              src={setUrl}
+              partition="persist:startgg"
+              style={{ width: '100%', height: '520px', borderRadius: '6px', border: '1px solid #252525' }}
+              ref={(el: any) => {
+                if (!el) return;
+                if (el._scrollBound) return;
+                el._scrollBound = true;
+                el.addEventListener('did-finish-load', () => {
+                  el.executeJavaScript(`
+                    (function() {
+                      var el = document.querySelector('[class*="tasks"], [class*="moderation"], [class*="SetModeration"]');
+                      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                      else { window.scrollBy(0, 450); }
+                    })();
+                  `);
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">Waiting for set URL to load…</p>
+        )
+      ) : (
+        <>
+
+      {setUrl && (
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          Having issues with native-view? You can manage your set tasks directly in the Browser view!
+        </p>
+      )}
 
       <TaskStepIndicator tasks={tasks} myEntrantId={selfId} />
 
-      {checkInDone && oppCode && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleLaunchMelee}
-            disabled={launching}
-            className="rounded-md bg-[#7c3aed] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#6d28d9] disabled:opacity-50 transition-colors flex items-center gap-1.5"
-          >
-            {launching ? 'Launching…' : `Open Melee → ${oppCode}`}
-          </button>
-          {dcStatus && (
-            <span className={`text-[11px] ${dcStatus.status === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
-              {dcStatus.message}
-            </span>
-          )}
-        </div>
-      )}
-
       {actionError && <p className="text-xs text-red-400/90">{actionError}</p>}
       {loadError && <p className="text-xs text-amber-200/80">{loadError}</p>}
+      {usingFallbackTask && (
+        <p className="text-[11px] text-amber-300/90">
+          Task state was stale; showing next pending step to avoid lock.
+        </p>
+      )}
 
       {allMyDone ? (
         <p className="text-sm text-[#21BA45]">All tasks complete for this set.</p>
@@ -1517,13 +1844,14 @@ function SetTaskFlow({
               task={currentTask}
               siblingTask={siblingOf(currentTask)}
               oppLabel={oppLabel}
-              opponentConnectCode={next.slippiConnectCode}
+              opponentConnectCode={oppCode}
               onAction={() => void handleComplete(currentTask)}
               busy={busy}
             />
           )}
           {currentTask.type === 7 && (
             <GameSetupStep
+              key={currentTask.id}
               task={currentTask}
               siblingTask={siblingOf(currentTask)}
               selfEntrantId={selfId}
@@ -1535,6 +1863,7 @@ function SetTaskFlow({
               defaultSelfChar={preSelectedChar ?? defaultSelfChar}
               localCharPicked={!!submittedSetups[currentTask.id]?.charPicked}
               onCharPreSelect={setPreSelectedChar}
+              actionError={actionError}
             />
           )}
           {currentTask.type === 3 && (
@@ -1566,6 +1895,29 @@ function SetTaskFlow({
               >
                 {busy ? '…' : 'Confirm result'}
               </button>
+              {latestReportTask && oppId != null && (
+                <div className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2 space-y-2">
+                  <p className="text-[11px] text-amber-300">Wrong winner selected? Re-submit before confirming.</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleReportWinner(latestReportTask, selfId)}
+                      disabled={busy}
+                      className="flex-1 rounded-md bg-[#21BA45]/20 border border-[#21BA45]/40 px-2 py-1.5 text-[11px] font-medium text-[#21BA45] hover:bg-[#21BA45]/30 disabled:opacity-50"
+                    >
+                      {selfLabel} won
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleReportWinner(latestReportTask, oppId)}
+                      disabled={busy}
+                      className="flex-1 rounded-md bg-white/10 border border-white/20 px-2 py-1.5 text-[11px] font-medium text-gray-200 hover:bg-white/15 disabled:opacity-50"
+                    >
+                      {oppLabel} won
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {![1, 2, 3, 4, 7].includes(currentTask.type) && (
@@ -1598,6 +1950,9 @@ function SetTaskFlow({
             </div>
           )}
         </div>
+      )}
+
+        </>
       )}
     </div>
   );
@@ -1828,15 +2183,8 @@ function CashboxPhasePoolView({ pool, viewerEntrantId }: { pool: PhasePool; view
   const rows = buildPoolBracketRows(pool.matches);
 
   return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#111] overflow-hidden flex flex-col max-h-[min(280px,30vh)]">
-      <div className="px-4 py-2.5 border-b border-[#2a2a2a] shrink-0">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Current pool / phase</span>
-        <p className="text-xs text-gray-200 mt-0.5 font-semibold">{pool.title}</p>
-        <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">
-          Rounds flow left → right (like start.gg). Your matches are highlighted.
-        </p>
-      </div>
-      <div className="overflow-y-auto overflow-x-auto px-3 py-3 min-h-[120px]">
+    <div className="rounded-xl border border-[#2a2a2a] bg-[#111] overflow-hidden flex flex-col max-h-[min(700px,75vh)] min-h-[300px]">
+      <div className="overflow-y-auto overflow-x-auto px-3 py-3 min-h-[260px]">
         <div className="min-w-max space-y-8">
           {rows.map((row) => (
             <div key={row.title ?? 'bracket'}>
@@ -1929,6 +2277,7 @@ function StartGgLinkCard({
 
 export function Cashbox() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
+  const [snapWarning, setSnapWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [inviteSent, setInviteSent] = useState<string | true | null>(null);
@@ -1938,12 +2287,23 @@ export function Cashbox() {
   const [addNote, setAddNote] = useState<string | null>(null);
   const [sggConnected, setSggConnected] = useState(false);
   const [sggDisplayName, setSggDisplayName] = useState<string | null>(null);
+  const [sggUserId, setSggUserId] = useState<string | null>(null);
   const [sggBusy, setSggBusy] = useState(false);
-  const [myMainChar, setMyMainChar] = useState<number | null>(null);
+  const [connectCode, setConnectCode] = useState<string | null>(null);
+  const [luckyStats, setLuckyStats] = useState<LuckyStatsOpponent | null>(null);
+  const [luckyStatsLoading, setLuckyStatsLoading] = useState(false);
+  const [selfElo, setSelfElo] = useState<number | null>(null);
+  const [liveOpponentConnectCode, setLiveOpponentConnectCodeRaw] = useState<string | null>(null);
+  const liveCodeSetIdRef = useRef<string | null>(null);
+  const setLiveOpponentConnectCode = (code: string | null) => {
+    if (code) setLiveOpponentConnectCodeRaw(code);
+  };
+  const [lobbyFriendlies, setLobbyFriendlies] = useState<CashboxFriendlies | null>(null);
+  const lastGoodSnapRef = useRef<Snapshot | null>(null);
 
   useEffect(() => {
     window.api.getProfile().then((p: any) => {
-      if (p?.main_character != null) setMyMainChar(p.main_character);
+      if (p?.connect_code) setConnectCode(String(p.connect_code));
     }).catch(() => {});
   }, []);
 
@@ -1951,7 +2311,18 @@ export function Cashbox() {
     setLoading(true);
     try {
       const data = await window.api.getCashboxSnapshot();
-      setSnap(data as Snapshot);
+      const nextSnap = data as Snapshot;
+      const msg = !nextSnap.ok ? String(nextSnap.message ?? '') : '';
+      const rateLimited = !nextSnap.ok
+        && nextSnap.reason === 'config'
+        && msg.toLowerCase().includes('rate limit');
+      if (rateLimited && lastGoodSnapRef.current?.ok) {
+        setSnapWarning('start.gg API rate-limited; showing last known match state.');
+      } else {
+        setSnap(nextSnap);
+        if (nextSnap.ok) lastGoodSnapRef.current = nextSnap;
+        setSnapWarning(null);
+      }
       if (data && typeof data === 'object' && (data as Snapshot).ok) {
         const ok = data as Extract<Snapshot, { ok: true }>;
         const fs = ok.nextMatch?.friendlies?.friendStatus;
@@ -1972,24 +2343,50 @@ export function Cashbox() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 20_000);
-    return () => clearInterval(t);
-  }, [load]);
+  const eventCompleted = snap?.ok && snap.extras.eventState === '3';
+  if (snap?.ok) {
+    console.log('[cashbox ui] eventState=%s nextMatch=%s bracketSets=%d', snap.extras.eventState, !!snap.nextMatch, snap.bracketSets.length);
+  }
+  const eventNotStarted = snap?.ok && (
+    snap.extras.eventState === '1'
+    || snap.extras.eventState === null
+    || (!snap.nextMatch && snap.bracketSets.every((s) => s.state !== 'completed'))
+  );
+  const hasPendingSets = snap?.ok
+    ? snap.bracketSets.some((s) => s.state === 'pending')
+    : false;
+  const betweenSets = snap?.ok && !snap.nextMatch && !eventCompleted;
 
   useEffect(() => {
-    window.api.isStartGgConnected().then((info) => {
+    void load();
+    let active = true;
+    let tid: ReturnType<typeof setTimeout> | null = null;
+    function scheduleNext() {
+      if (!active) return;
+      const interval = betweenSets ? 8_000 : 45_000;
+      tid = setTimeout(() => { void load().then(scheduleNext); }, interval);
+    }
+    scheduleNext();
+    return () => { active = false; if (tid) clearTimeout(tid); };
+  }, [load, betweenSets]);
+
+  useEffect(() => {
+    window.api.isStartGgConnected().then((info: any) => {
       setSggConnected(info.connected);
       setSggDisplayName(info.displayName);
+      setSggUserId(info.userId ?? null);
     });
     const unsub = window.api.onStartGgAuthChanged((connected) => {
       setSggConnected(connected);
       if (connected) {
-        window.api.isStartGgConnected().then((info) => setSggDisplayName(info.displayName));
+        window.api.isStartGgConnected().then((info: any) => {
+          setSggDisplayName(info.displayName);
+          setSggUserId(info.userId ?? null);
+        });
         void load();
       } else {
         setSggDisplayName(null);
+        setSggUserId(null);
       }
     });
     return unsub;
@@ -2032,7 +2429,8 @@ export function Cashbox() {
       await window.api.disconnectStartGg();
       setSggConnected(false);
       setSggDisplayName(null);
-      void load();
+      setSnap(null);
+      lastGoodSnapRef.current = null;
     } catch (e) {
       console.error('startgg disconnect', e);
     }
@@ -2040,11 +2438,91 @@ export function Cashbox() {
   }
 
   const next = snap && snap.ok ? snap.nextMatch : null;
-  const fr = next?.friendlies;
-  const oppCode = next?.slippiConnectCode ?? null;
+  const fr = next?.friendlies ?? lobbyFriendlies;
+  const opponentStartGgUserId = next?.startGg?.userId ? String(next.startGg.userId) : null;
+  const resolvedOpponentConnectCode = liveOpponentConnectCode ?? next?.slippiConnectCode ?? fr?.connectCode ?? null;
+  const friendliesRankLabel = fr?.rating != null ? getRankLabel(getRankTier(Number(fr.rating))) : null;
+
+  const [topLaunching, setTopLaunching] = useState(false);
+  const [topDcStatus, setTopDcStatus] = useState<{ status: string; message: string } | null>(null);
+  useEffect(() => {
+    const unsub = window.api.onDirectConnectStatus((evt: any) => {
+      setTopDcStatus(evt);
+      if (evt.status === 'ready' || evt.status === 'error') setTopLaunching(false);
+    });
+    return unsub;
+  }, []);
+  async function handleTopLaunchMelee() {
+    if (!resolvedOpponentConnectCode) return;
+    setTopLaunching(true);
+    setTopDcStatus({ status: 'configuring', message: `Launching Melee → ${resolvedOpponentConnectCode}…` });
+    const result = await window.api.startDirectConnect(resolvedOpponentConnectCode);
+    if (result.error) {
+      setTopDcStatus({ status: 'error', message: result.error });
+      setTopLaunching(false);
+    }
+  }
+
+  useEffect(() => {
+    const newSetId = next?.setId ?? null;
+    if (newSetId && liveCodeSetIdRef.current && newSetId !== liveCodeSetIdRef.current) {
+      setLiveOpponentConnectCodeRaw(null);
+      setLobbyFriendlies(null);
+    }
+    if (newSetId) liveCodeSetIdRef.current = newSetId;
+  }, [next?.setId]);
+
+  useEffect(() => {
+    if (!liveOpponentConnectCode || next?.friendlies) return;
+    let cancelled = false;
+    window.api.lookupCashboxOpponent(liveOpponentConnectCode).then((r) => {
+      if (cancelled || !r.ok || !r.friendlies) return;
+      setLobbyFriendlies(r.friendlies);
+      const fs = r.friendlies.friendStatus;
+      if (fs === 'friends') setAddState('friends');
+      else if (fs === 'pending_out') setAddState('pending');
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [liveOpponentConnectCode, next?.friendlies]);
+
+  useEffect(() => {
+    if (!opponentStartGgUserId) {
+      setLuckyStats(null);
+      setLuckyStatsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function loadLuckyStats() {
+      setLuckyStatsLoading(true);
+      try {
+        const res = await fetch(`https://luckystats.gg/api/stream/players?ids=${encodeURIComponent(opponentStartGgUserId!)}`);
+        const json = await res.json();
+        if (!cancelled) setLuckyStats(extractLuckyStatsPlayer(json, opponentStartGgUserId!));
+      } catch {
+        if (!cancelled) setLuckyStats(null);
+      } finally {
+        if (!cancelled) setLuckyStatsLoading(false);
+      }
+    }
+    void loadLuckyStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [opponentStartGgUserId]);
+
+  useEffect(() => {
+    if (!sggUserId) { setSelfElo(null); return; }
+    let cancelled = false;
+    fetch(`https://luckystats.gg/api/stream/players?ids=${encodeURIComponent(sggUserId)}`)
+      .then((r) => r.json())
+      .then((json) => { if (!cancelled) setSelfElo(extractLuckyStatsPlayer(json, sggUserId)?.elo ?? null); })
+      .catch(() => { if (!cancelled) setSelfElo(null); });
+    return () => { cancelled = true; };
+  }, [sggUserId]);
 
   const CASHBOX_GO_LIVE = new Date('2026-04-07T17:30:00-04:00').getTime();
-  const isLive = Date.now() >= CASHBOX_GO_LIVE;
+  const DEV_BYPASS_CODES = ['SMOK#1'];
+  const isLive = Date.now() >= CASHBOX_GO_LIVE || (connectCode != null && DEV_BYPASS_CODES.includes(connectCode));
 
   if (!isLive) {
     return (
@@ -2057,74 +2535,249 @@ export function Cashbox() {
           <p className="text-sm text-white font-medium">This feature goes live on April 7th for Cashbox</p>
           <p className="text-xs text-gray-400 leading-relaxed">
             You&apos;ll be able to sign in with start.gg, check in to your matches, choose characters
-            and stages, and launch Melee directly to your opponent&apos;s connect code — all without
+            and stages, and launch Melee directly to your opponent&apos;s connect code all without
             leaving the app.
           </p>
           <p className="text-[11px] text-gray-600">
             {new Date(CASHBOX_GO_LIVE).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
           </p>
         </div>
+        <StartGgLinkCard
+          connected={sggConnected}
+          displayName={sggDisplayName}
+          onConnect={handleStartGgConnect}
+          onDisconnect={handleStartGgDisconnect}
+          busy={sggBusy}
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-4 p-6 max-w-4xl">
+      {snapWarning && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          {snapWarning}
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-display font-bold text-white">Cashbox</h1>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="mt-2 rounded-md bg-[#21BA45] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1ea33e] disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Refreshing…' : 'Refresh now'}
+        </button>
       </div>
 
-      {loading && !snap ? (
+      {!sggConnected && !loading ? (
+        <div className="space-y-4">
+          <GiveawayPromoCard registerUrl={FALLBACK_CASHBOX_REGISTER} />
+          <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-6 space-y-4">
+            <div className="text-center space-y-2">
+              <h2 className="text-lg font-display font-bold text-white">Connect your start.gg account</h2>
+              <p className="text-sm text-gray-400 leading-relaxed max-w-md mx-auto">
+                Link your start.gg account to see your bracket, check in to matches,
+                choose characters and stages, and launch Melee directly to your opponent.
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={handleStartGgConnect}
+                disabled={sggBusy}
+                className="rounded-lg bg-[#21BA45] px-6 py-3 text-sm font-bold text-white hover:bg-[#1ea33e] disabled:opacity-50 transition-colors"
+              >
+                {sggBusy ? 'Connecting\u2026' : 'Connect start.gg'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : loading && !snap ? (
         <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-10 text-center text-sm text-gray-500 animate-pulse">
           Loading…
         </div>
       ) : snap && !snap.ok ? (
         <div className="space-y-4">
-          {snap.reason === 'not_mapped' && (
-            <GiveawayPromoCard registerUrl={snap.giveawayRegisterUrl ?? FALLBACK_CASHBOX_REGISTER} />
-          )}
-          <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-6 space-y-2">
-            <p className="text-sm text-yellow-200/90 font-medium">
-              {snap.reason === 'no_token' && 'Start.gg token not configured'}
-              {snap.reason === 'not_mapped' && 'Not registered in Cashbox map'}
-              {snap.reason === 'config' && 'Tournament configuration'}
-              {snap.reason === 'api' && 'Could not reach start.gg'}
-              {!['no_token', 'not_mapped', 'config', 'api'].includes(snap.reason) && 'Unavailable'}
-            </p>
-            <p className="text-xs text-gray-400 leading-relaxed">{snap.message}</p>
-            {snap.reason !== 'not_mapped' && snap.giveawayRegisterUrl && (
+          {snap.reason === 'not_mapped' && snap.startggConnected ? (
+            <div className="rounded-xl border border-amber-500/25 bg-gradient-to-b from-amber-500/10 to-[#111] px-4 py-5 space-y-3 text-center">
+              <p className="text-sm text-white font-medium">You&apos;re not registered for Cashbox yet</p>
+              <p className="text-xs text-gray-400 leading-relaxed max-w-md mx-auto">
+                Your start.gg account is connected, but you&apos;re not in the bracket.
+                Register on start.gg if it&apos;s not too late!
+              </p>
               <button
                 type="button"
-                onClick={() => void window.api.openExternal(snap.giveawayRegisterUrl!)}
-                className="mt-2 text-xs font-semibold text-amber-400/90 hover:underline"
+                onClick={() => void window.api.openExternal(snap.giveawayRegisterUrl ?? FALLBACK_CASHBOX_REGISTER)}
+                className="rounded-lg bg-amber-500 px-4 py-2.5 text-xs font-bold text-black hover:bg-amber-400 transition-colors"
               >
                 Register on start.gg (Cashbox)
               </button>
-            )}
-          </div>
-          {snap.reason === 'not_mapped' && !snap.startggConnected && (
-            <StartGgLinkCard
-              connected={sggConnected}
-              displayName={sggDisplayName}
-              onConnect={handleStartGgConnect}
-              onDisconnect={handleStartGgDisconnect}
-              busy={sggBusy}
-            />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-6 space-y-2">
+              <p className="text-sm text-yellow-200/90 font-medium">
+                {snap.reason === 'no_token' && 'Start.gg token not configured'}
+                {snap.reason === 'not_mapped' && 'Could not find your registration'}
+                {snap.reason === 'config' && 'Tournament configuration'}
+                {snap.reason === 'api' && 'Could not reach start.gg'}
+                {!['no_token', 'not_mapped', 'config', 'api'].includes(snap.reason) && 'Unavailable'}
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed">{snap.message}</p>
+            </div>
           )}
+          <StartGgLinkCard
+            connected={sggConnected}
+            displayName={sggDisplayName}
+            onConnect={handleStartGgConnect}
+            onDisconnect={handleStartGgDisconnect}
+            busy={sggBusy}
+          />
+        </div>
+      ) : snap?.ok && eventNotStarted ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-500/25 bg-gradient-to-b from-emerald-500/10 to-[#111] px-4 py-5 space-y-4">
+            <div className="text-center space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">You&apos;re registered!</p>
+              <p className="text-lg font-display font-bold text-white">{snap.tournamentName}</p>
+              <p className="text-sm text-gray-300">{snap.eventName}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Playing as</p>
+                <p className="text-gray-100 font-medium">{snap.entrantName}</p>
+              </div>
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Connect Code</p>
+                <p className="text-gray-100 font-mono">{connectCode ?? 'Not linked'}</p>
+              </div>
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">LuckyStats Elo</p>
+                <p className="text-gray-100 font-semibold">
+                  {selfElo != null ? String(Math.round(selfElo)) : 'Unavailable'}
+                </p>
+              </div>
+              {snap.extras.initialSeed != null && (
+                <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                  <p className="text-gray-500">Seed</p>
+                  <p className="text-gray-100 font-semibold">{snap.extras.initialSeed}</p>
+                </div>
+              )}
+              {snap.extras.eventEntrantCount != null && (
+                <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                  <p className="text-gray-500">Entrants</p>
+                  <p className="text-gray-100 font-semibold">{snap.extras.eventEntrantCount}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="text-center pt-1">
+              <p className="text-sm text-amber-300 font-medium">Come back here when the tournament starts!</p>
+              {formatStartGgTimestamp(snap.extras.eventStartAt) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Starts: {formatStartGgTimestamp(snap.extras.eventStartAt)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <StartGgLinkCard
+            connected={sggConnected}
+            displayName={sggDisplayName}
+            onConnect={handleStartGgConnect}
+            onDisconnect={handleStartGgDisconnect}
+            busy={sggBusy}
+          />
         </div>
       ) : snap?.ok ? (
         <div className="space-y-4">
           <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-4 space-y-4">
             <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Next match</h2>
             {!next ? (
-              <p className="text-sm text-gray-500">No pending sets in this event (or bracket complete).</p>
+              eventCompleted ? (
+                <p className="text-sm text-gray-500">Bracket complete — no more sets.</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-400">Waiting for bracket to update…</p>
+                  {snap.currentPhasePool && (
+                    <p className="text-xs text-gray-500">
+                      Phase: <span className="text-gray-300">{snap.currentPhasePool.title}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500">Your next match will load here soon.</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-[11px] text-amber-300/80">Checking every few seconds</span>
+                  </div>
+                </div>
+              )
             ) : (
               <>
-                <div>
-                  <p className="text-sm text-white font-medium">{next.roundText}</p>
-                  {next.scoreDisplay && (
-                    <p className="text-xs text-gray-500 mt-0.5">{next.scoreDisplay}</p>
+                <div className="rounded-xl border border-[#2c2c2c] bg-gradient-to-br from-[#171717] via-[#121212] to-[#101010] px-4 py-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500">Set details</p>
+                      <p className="text-lg text-white font-semibold mt-1">{next.roundText}</p>
+                      {next.scoreDisplay && (
+                        <p className="text-xs text-gray-500 mt-0.5">{next.scoreDisplay}</p>
+                      )}
+                    </div>
+                    {next.bestOf != null && (
+                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                        Bo{next.bestOf}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                      <p className="text-gray-500">Opponent</p>
+                      <p className="text-gray-100 font-medium truncate">{next.opponentName || 'TBD'}</p>
+                    </div>
+                    <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                      <p className="text-gray-500">Connect Code</p>
+                      <p className="text-gray-100 font-mono">{resolvedOpponentConnectCode ?? 'Unknown'}</p>
+                    </div>
+                    <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                      <p className="text-gray-500">LuckyStats Elo</p>
+                      <p className="text-gray-100 font-semibold">
+                        {luckyStatsLoading
+                          ? 'Loading...'
+                          : luckyStats?.elo != null
+                            ? String(Math.round(luckyStats.elo))
+                            : 'Unavailable'}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                      <p className="text-gray-500">Slippi Rank</p>
+                      <p className="text-gray-100 font-semibold">
+                        {friendliesRankLabel ?? 'Unavailable'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {resolvedOpponentConnectCode && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTopLaunchMelee}
+                        disabled={topLaunching}
+                        className="rounded-md bg-[#7c3aed] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#6d28d9] disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                      >
+                        {topLaunching ? 'Launching…' : `Open Melee → ${resolvedOpponentConnectCode}`}
+                      </button>
+                      {topDcStatus && (
+                        <span className={`text-[11px] ${topDcStatus.status === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
+                          {topDcStatus.message}
+                        </span>
+                      )}
+                    </div>
                   )}
+
                 </div>
 
                 {snap.matchModeration && snap.matchModeration.tasks.length > 0 && (
@@ -2139,7 +2792,9 @@ export function Cashbox() {
                   next={next}
                   sggConnected={sggConnected}
                   onRefresh={load}
-                  defaultSelfChar={myMainChar}
+                  opponentConnectCodeFallback={resolvedOpponentConnectCode}
+                  onOpponentCodeResolved={setLiveOpponentConnectCode}
+                  setUrl={snap.matchModeration?.setUrl}
                 />
               </>
             )}
@@ -2149,6 +2804,7 @@ export function Cashbox() {
             <CashboxPhasePoolView pool={snap.currentPhasePool} viewerEntrantId={snap.entrantId} />
           )}
 
+          {/* TODO: re-enable these once Cashbox integration is further along
           <GiveawayPromoCard registerUrl={snap.giveawayRegisterUrl} />
 
           <div className="rounded-xl border border-[#2a2a2a] bg-[#111] px-4 py-4 space-y-1">
@@ -2221,6 +2877,7 @@ export function Cashbox() {
               )}
             </div>
           )}
+          */}
 
           <StartGgLinkCard
             connected={sggConnected}

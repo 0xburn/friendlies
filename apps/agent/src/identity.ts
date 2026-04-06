@@ -9,6 +9,12 @@ import { supabase } from './supabase';
 
 const identityStore = new Store({ name: 'slippi-friends-identity' });
 const KEY_USER_JSON_PATH = 'userJsonPath';
+const IDENTITY_CACHE_TTL_MS = 2_000;
+
+let lastLoggedLauncherActiveId: string | null = null;
+let lastLoggedUserJsonPath: string | null = null;
+let lastNoUserJsonLogAt = 0;
+let identityCache: { at: number; value: SlippiIdentity | null } | null = null;
 
 export interface SlippiIdentity {
   uid: string;
@@ -35,7 +41,10 @@ function getLauncherActiveUid(): string | null {
       const data = JSON.parse(fs.readFileSync(p, 'utf8'));
       const activeId = data?.accounts?.activeId;
       if (activeId && typeof activeId === 'string') {
-        console.log(`[identity] Launcher activeId: ${activeId}`);
+        if (activeId !== lastLoggedLauncherActiveId) {
+          console.log(`[identity] Launcher activeId: ${activeId}`);
+          lastLoggedLauncherActiveId = activeId;
+        }
         return activeId;
       }
     }
@@ -48,7 +57,10 @@ export function findUserJson(): string | null {
     const paths = getSlippiUserJsonPaths();
     for (const p of paths) {
       if (fs.existsSync(p)) {
-        console.log(`[identity] FOUND user.json at: ${p}`);
+        if (p !== lastLoggedUserJsonPath) {
+          console.log(`[identity] FOUND user.json at: ${p}`);
+          lastLoggedUserJsonPath = p;
+        }
         identityStore.set(KEY_USER_JSON_PATH, p);
         return p;
       }
@@ -57,7 +69,10 @@ export function findUserJson(): string | null {
     if (cached && fs.existsSync(cached)) {
       return cached;
     }
-    console.log('[identity] no user.json found anywhere');
+    if (Date.now() - lastNoUserJsonLogAt > 60_000) {
+      console.log('[identity] no user.json found anywhere');
+      lastNoUserJsonLogAt = Date.now();
+    }
   } catch (e) {
     console.error('findUserJson failed', e);
   }
@@ -115,10 +130,20 @@ export async function verifyIdentity(
 
 export function getIdentity(): SlippiIdentity | null {
   try {
+    const now = Date.now();
+    if (identityCache && now - identityCache.at < IDENTITY_CACHE_TTL_MS) {
+      return identityCache.value ? { ...identityCache.value } : null;
+    }
     const found = findUserJson();
-    if (!found) return null;
+    if (!found) {
+      identityCache = { at: now, value: null };
+      return null;
+    }
     const identity = readSlippiIdentity(found);
-    if (!identity) return null;
+    if (!identity) {
+      identityCache = { at: now, value: null };
+      return null;
+    }
 
     const launcherUid = getLauncherActiveUid();
     if (launcherUid && launcherUid !== identity.uid) {
@@ -129,6 +154,7 @@ export function getIdentity(): SlippiIdentity | null {
       identity.staleAccount = true;
     }
 
+    identityCache = { at: now, value: { ...identity } };
     return identity;
   } catch (e) {
     console.error('getIdentity failed', e);
