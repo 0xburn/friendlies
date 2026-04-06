@@ -13,6 +13,22 @@ import { updateTrayStatus } from './tray';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
+import { enrichCashboxFriendliesOpponent } from './cashbox-enrich';
+
+import { getCashboxSnapshot, reportBracketSet } from './startgg/cashbox';
+import {
+  completeStartGgModerationTask,
+  completeStartGgTask,
+  updateStartGgTask,
+  fetchRawSetTasks,
+  fetchSetUpdatedAt,
+} from './startgg/www-rest-moderation';
+import {
+  startStartGgAuth,
+  disconnectStartGg,
+  isStartGgConnected,
+  getStartGgUserInfo,
+} from './startgg-auth';
 
 const SLIPPI_API_NAME_TO_ID: Record<string, number> = {
   CAPTAIN_FALCON: 0, DONKEY_KONG: 1, FOX: 2, MR_GAME_AND_WATCH: 3,
@@ -163,6 +179,18 @@ async function batchFetchRatings(codes: string[]): Promise<Map<string, RatingCac
   }
 
   return result;
+}
+
+/** DB `player_ratings` is only upsertable for the signed-in user's code (RLS). Prefer fresh Slippi-derived entries from `batchFetchRatings` for everyone else. */
+function displayEffectiveRating(
+  connectCode: string,
+  liveByCode: Map<string, RatingCacheEntry>,
+  dbRow?: { effective_rating?: number | null } | null,
+): number | null {
+  const live = liveByCode.get(connectCode);
+  if (live !== undefined) return live.effectiveRating;
+  const db = dbRow?.effective_rating;
+  return db != null ? db : null;
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -381,6 +409,7 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
+      const liveRatings = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
       const t3 = performance.now();
 
       const result = data.map((f: any) => {
@@ -403,7 +432,7 @@ export function registerIpcHandlers(
           discordId: showDiscord ? (p?.discord_id || null) : null,
           avatarUrl: p?.hide_avatar ? null : (p?.avatar_url || null),
           region: p?.hide_region ? null : (p?.chosen_region || p?.region || null),
-          rating: rEntry?.effective_rating ?? null,
+          rating: displayEffectiveRating(code, liveRatings, rEntry),
           characterId: mainChar ?? slippiChars[0]?.characterId ?? null,
           topCharacters,
           onApp: !!f.friend_id,
@@ -449,6 +478,7 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
+      const liveRatingsIncoming = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
       if (senderIds.length > 0) {
         const { data: presRows } = await supabase.from('presence_log').select('user_id, connection_type').in('user_id', senderIds);
         if (presRows) presRows.forEach((r: any) => { presenceMap[r.user_id] = r; });
@@ -469,7 +499,7 @@ export function registerIpcHandlers(
           discordUsername: p?.hide_discord_unless_friends ? null : (p?.discord_username || null),
           discordId: p?.hide_discord_unless_friends ? null : (p?.discord_id || null),
           avatarUrl: p?.hide_avatar ? null : (p?.avatar_url || null),
-          rating: rEntry?.effective_rating ?? null,
+          rating: displayEffectiveRating(code, liveRatingsIncoming, rEntry),
           characterId: mainChar,
           connectionType: p?.hide_connection_type ? null : (pres.connection_type || null),
           region: p?.hide_region ? null : (p?.chosen_region || p?.region || null),
@@ -761,6 +791,7 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
+      const liveRatingsPending = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
 
       const result = data.map((d: any) => {
         const p = profileMap[d.sender_id] || {};
@@ -775,7 +806,7 @@ export function registerIpcHandlers(
           discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
           avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
           mainCharacter: mainChar,
-          rating: rEntry?.effective_rating ?? null,
+          rating: displayEffectiveRating(p.connect_code, liveRatingsPending, rEntry),
           connectionType: p.hide_connection_type ? null : (pres.connection_type || null),
           region: p.hide_region ? null : (p.chosen_region || p.region || null),
         };
@@ -893,6 +924,7 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
+      const liveRatingsSent = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
 
       const result = data.map((d: any) => {
         const p = profileMap[d.receiver_id] || {};
@@ -907,7 +939,7 @@ export function registerIpcHandlers(
           discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
           avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
           mainCharacter: mainChar,
-          rating: rEntry?.effective_rating ?? null,
+          rating: displayEffectiveRating(p.connect_code, liveRatingsSent, rEntry),
           connectionType: p.hide_connection_type ? null : (pres.connection_type || null),
           region: p.hide_region ? null : (p.chosen_region || p.region || null),
         };
@@ -1160,34 +1192,34 @@ export function registerIpcHandlers(
 
       const codes = filtered.map((p: any) => p.connect_code).filter(Boolean);
       let ratingsMap: Record<string, any> = {};
-      if (codes.length > 0) {
-        const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
-        if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
-      }
-      const t5 = performance.now();
-
-      const missingCodes = codes.filter((c: string) => !ratingsMap[c]);
-      if (missingCodes.length > 0) {
-        void batchFetchRatings(missingCodes);
-      }
-
       const matchHistoryMap: Record<string, string> = {};
+
       if (codes.length > 0) {
-        const { data: matchRows } = await supabase
-          .from('matches')
-          .select('opponent_connect_code, played_at')
-          .eq('user_id', user.id)
-          .in('opponent_connect_code', codes)
-          .order('played_at', { ascending: false });
-        if (matchRows) {
-          for (const m of matchRows as any[]) {
+        const [ratingsResult, matchResult] = await Promise.all([
+          supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes),
+          supabase.from('matches')
+            .select('opponent_connect_code, played_at')
+            .eq('user_id', user.id)
+            .in('opponent_connect_code', codes)
+            .order('played_at', { ascending: false }),
+        ]);
+        if (ratingsResult.data) ratingsResult.data.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
+        if (matchResult.data) {
+          for (const m of matchResult.data as any[]) {
             if (!matchHistoryMap[m.opponent_connect_code]) {
               matchHistoryMap[m.opponent_connect_code] = m.played_at;
             }
           }
         }
       }
-      const t6 = performance.now();
+
+      const liveRatingsDiscover = new Map<string, RatingCacheEntry>();
+      for (const code of codes) {
+        const cached = slippiRatingCache.get(code);
+        if (cached) liveRatingsDiscover.set(code, cached);
+      }
+      const t5 = performance.now();
+      const t6 = t5;
 
       const myRegion = (myProfile?.region as string | null) ?? localGeo?.region ?? null;
       const myCountry = myRegion?.split(',').pop()?.trim() ?? null;
@@ -1227,7 +1259,7 @@ export function registerIpcHandlers(
             discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
             discordId: p.hide_discord_unless_friends ? null : (p.discord_id || null),
             avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
-            rating: rEntry?.effective_rating ?? null,
+            rating: displayEffectiveRating(p.connect_code, liveRatingsDiscover, rEntry),
             topCharacters: (() => {
               const slippi: { characterId: number; gameCount: number }[] = Array.isArray(p.top_characters) ? p.top_characters : [];
               const resolved: { characterId: number; gameCount: number }[] = [];
@@ -1299,7 +1331,7 @@ export function registerIpcHandlers(
         mutualFriendCount: mutualMap.get(r.userId) ?? 0,
       }));
 
-      console.log(`[bench] discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} missingRatings=${missingCodes.length})`);
+      console.log(`[bench] discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} nullRatings=${withMutuals.filter((r: any) => r.rating == null).length})`);
       return withMutuals;
     } catch (e) { console.error('discover:list', e); return []; }
     })();
@@ -1656,15 +1688,18 @@ export function registerIpcHandlers(
           getUser(connectCode: $cc, fbUid: $uid) { ...userProfilePage __typename }
         }
       `;
-      const res = await fetch('https://internal.slippi.gg/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          operationName: 'UserProfilePageQuery',
-          variables: { cc: connectCode, uid: connectCode },
-          query,
+      const [res, ratingEntry] = await Promise.all([
+        fetch('https://internal.slippi.gg/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operationName: 'UserProfilePageQuery',
+            variables: { cc: connectCode, uid: connectCode },
+            query,
+          }),
         }),
-      });
+        fetchSlippiRating(connectCode),
+      ]);
       if (!res.ok) return null;
       const text = await res.text();
       let data: any;
@@ -1672,10 +1707,12 @@ export function registerIpcHandlers(
       const user = data?.data?.getUser;
       if (!user?.fbUid) return null;
       const r = user.rankedNetplayProfile;
+      const rawOrdinal = r?.ratingOrdinal ?? null;
+      const displayRating = ratingEntry?.effectiveRating ?? rawOrdinal;
       return {
         displayName: user.displayName || '',
         connectCode: user.connectCode?.code || connectCode,
-        rankedRating: r?.ratingOrdinal ?? null,
+        rankedRating: displayRating,
         rankedWins: r?.wins ?? 0,
         rankedLosses: r?.losses ?? 0,
         globalPlacement: r?.dailyGlobalPlacement ?? null,
@@ -1699,7 +1736,18 @@ export function registerIpcHandlers(
     } catch { return null; }
   });
 
-  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url));
+  ipcMain.handle('shell:openExternal', async (_e, url: string) => {
+    const raw = typeof url === 'string' ? url.trim() : '';
+    if (!raw) {
+      console.warn('[shell] openExternal: empty url');
+      return;
+    }
+    try {
+      await shell.openExternal(raw);
+    } catch (e) {
+      console.error('[shell] openExternal failed:', raw, e);
+    }
+  });
 
   ipcMain.handle('banner:click', async (_e, banner: string) => {
     try {
@@ -1767,5 +1815,112 @@ export function registerIpcHandlers(
   ipcMain.handle('directConnect:status', () => {
     const service = getDirectConnectService();
     return { status: service.getStatus(), active: service.isActive() };
+  });
+
+  ipcMain.handle('cashbox:getSnapshot', async () => {
+    try {
+      const id = getIdentity();
+      const code = id?.connectCode?.trim();
+      if (!code) {
+        return {
+          ok: false as const,
+          reason: 'not_mapped' as const,
+          message: 'No Slippi connect code found.',
+          startggConnected: isStartGgConnected(),
+        };
+      }
+      const snap = await getCashboxSnapshot(code);
+      if (snap.ok) {
+        const user = await getCurrentUser();
+        await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
+      } else {
+        (snap as any).startggConnected = isStartGgConnected();
+      }
+      return snap;
+    } catch (e: any) {
+      console.error('cashbox:getSnapshot', e);
+      return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('cashbox:completeModerationTask', async (_e, taskId: unknown) => {
+    if (typeof taskId !== 'string' || !/^\d+$/.test(taskId)) {
+      return { ok: false as const, message: 'Invalid task id' };
+    }
+    return completeStartGgModerationTask(taskId);
+  });
+
+  ipcMain.handle(
+    'cashbox:reportSet',
+    async (
+      _e,
+      setId: unknown,
+      winnerId: unknown,
+      gameData: unknown,
+    ) => {
+      if (typeof setId !== 'string') return { ok: false, message: 'Invalid setId' };
+      const wId = typeof winnerId === 'number' ? winnerId : null;
+      const gd = Array.isArray(gameData) ? gameData : [];
+      return reportBracketSet(setId, wId, gd);
+    },
+  );
+
+  // --- Task-driven set flow (REST) ---
+
+  ipcMain.handle('cashbox:getSetTasks', async (_e, phaseGroupId: unknown, setId: unknown, forceFresh?: unknown) => {
+    if (typeof phaseGroupId !== 'string' || typeof setId !== 'string') {
+      return { ok: false, message: 'Invalid phaseGroupId or setId' };
+    }
+    return fetchRawSetTasks(phaseGroupId, setId, !!forceFresh);
+  });
+
+  ipcMain.handle('cashbox:getSetUpdatedAt', async (_e, setId: unknown) => {
+    if (typeof setId !== 'string') return { ok: false, message: 'Invalid setId' };
+    return fetchSetUpdatedAt(setId);
+  });
+
+  ipcMain.handle('cashbox:taskComplete', async (_e, taskId: unknown, body: unknown) => {
+    if (typeof taskId !== 'string' || !/^\d+$/.test(taskId)) {
+      return { ok: false, message: 'Invalid task id' };
+    }
+    const b = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+    return completeStartGgTask(taskId, b);
+  });
+
+  ipcMain.handle('cashbox:taskUpdate', async (_e, taskId: unknown, body: unknown) => {
+    if (typeof taskId !== 'string' || !/^\d+$/.test(taskId)) {
+      return { ok: false, message: 'Invalid task id' };
+    }
+    const b = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+    return updateStartGgTask(taskId, b);
+  });
+
+  // --- start.gg OAuth ---
+
+  ipcMain.handle('startgg:connect', async () => {
+    try {
+      await startStartGgAuth();
+      mainWindow?.webContents.send('startgg:authChanged', true);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Failed to start auth' };
+    }
+  });
+
+  ipcMain.handle('startgg:disconnect', async () => {
+    try {
+      await disconnectStartGg();
+      mainWindow?.webContents.send('startgg:authChanged', false);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Failed to disconnect' };
+    }
+  });
+
+  ipcMain.handle('startgg:isConnected', () => {
+    return {
+      connected: isStartGgConnected(),
+      ...getStartGgUserInfo(),
+    };
   });
 }

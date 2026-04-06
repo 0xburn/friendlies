@@ -49,6 +49,12 @@ jobs:
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+          if [ -n "${{ secrets.START_GG_TOKEN }}" ]; then
+            echo "START_GG_TOKEN=${{ secrets.START_GG_TOKEN }}" >> .env
+          fi
+
+      - name: Stage agent .env for Electron extraResources
+        run: cp .env apps/agent/.env
 
       - name: Build agent
         shell: bash

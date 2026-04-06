@@ -8,6 +8,7 @@ import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
 import { Discover } from './pages/Discover';
 import { Leaderboard } from './pages/Leaderboard';
+import { Cashbox } from './pages/Cashbox';
 import { UpdateBanner } from './components/UpdateBanner';
 
 function DocumentVisibilityReporter() {
@@ -462,6 +463,7 @@ export function App() {
           <Route path="/ggs" element={<GGs />} />
           <Route path="/opponents" element={<Opponents />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/cashbox" element={<Cashbox />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -105,6 +105,61 @@ const api = {
   onUnreadNudgeCount: (cb: (count: number) => void): Unsubscribe => onEvent('nudge:unreadCount', cb),
 
   trackBannerClick: (banner: string) => ipcRenderer.invoke('banner:click', banner),
+  getCashboxSnapshot: () => ipcRenderer.invoke('cashbox:getSnapshot'),
+  completeCashboxModerationTask: (taskId: string) =>
+    ipcRenderer.invoke('cashbox:completeModerationTask', taskId) as Promise<{
+      ok: boolean;
+      message?: string;
+      status?: number;
+    }>,
+  reportCashboxSet: (
+    setId: string,
+    winnerId: number | null,
+    gameData: { winnerId: number; gameNum: number }[],
+  ) =>
+    ipcRenderer.invoke('cashbox:reportSet', setId, winnerId, gameData) as Promise<{
+      ok: boolean;
+      message?: string;
+      state?: number | null;
+    }>,
+  getSetTasks: (phaseGroupId: string, setId: string, forceFresh?: boolean) =>
+    ipcRenderer.invoke('cashbox:getSetTasks', phaseGroupId, setId, forceFresh) as Promise<{
+      ok: boolean;
+      tasks?: any[];
+      message?: string;
+    }>,
+  getSetUpdatedAt: (setId: string) =>
+    ipcRenderer.invoke('cashbox:getSetUpdatedAt', setId) as Promise<{
+      ok: boolean;
+      state?: number;
+      updatedAt?: number;
+      message?: string;
+    }>,
+  taskComplete: (taskId: string, body: Record<string, unknown>) =>
+    ipcRenderer.invoke('cashbox:taskComplete', taskId, body) as Promise<{
+      ok: boolean;
+      tasks?: any[];
+      message?: string;
+    }>,
+  taskUpdate: (taskId: string, body: Record<string, unknown>) =>
+    ipcRenderer.invoke('cashbox:taskUpdate', taskId, body) as Promise<{
+      ok: boolean;
+      tasks?: any[];
+      message?: string;
+    }>,
+  connectStartGg: () =>
+    ipcRenderer.invoke('startgg:connect') as Promise<{ ok: boolean; error?: string }>,
+  disconnectStartGg: () =>
+    ipcRenderer.invoke('startgg:disconnect') as Promise<{ ok: boolean; error?: string }>,
+  isStartGgConnected: () =>
+    ipcRenderer.invoke('startgg:isConnected') as Promise<{
+      connected: boolean;
+      userId: string | null;
+      displayName: string | null;
+    }>,
+  onStartGgAuthChanged: (cb: (connected: boolean) => void): Unsubscribe =>
+    onEvent('startgg:authChanged', cb),
+
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   reportDocumentHidden: (hidden: boolean) => ipcRenderer.send('visibility:document', hidden),
 };

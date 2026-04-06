@@ -7,6 +7,10 @@ files:
   - "assets/**/*"
   - "!dist/renderer/src"
 
+extraResources:
+  - from: .env
+    to: .env
+
 extraMetadata:
   main: dist/main.js
 

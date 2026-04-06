@@ -7,6 +7,7 @@ const baseLinks = [
   { to: '/ggs', label: 'GGs', icon: '✦' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/leaderboard', label: 'Leaderboard', icon: '▲' },
+  { to: '/cashbox', label: 'Cashbox', icon: '◆' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
@@ -71,13 +72,20 @@ export function Navigation() {
               key={link.to}
               to={link.to}
               end={link.to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={({ isActive }) => {
+                const base = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors';
+                if (link.to === '/cashbox') {
+                  if (isActive) {
+                    return `${base} ring-1 ring-amber-400/50 bg-amber-500/20 text-amber-100 shadow-[0_0_22px_rgba(245,158,11,0.14)]`;
+                  }
+                  return `${base} border border-amber-500/35 bg-amber-500/10 text-amber-200/95 hover:bg-amber-500/16 hover:border-amber-400/50`;
+                }
+                return `${base} ${
                   isActive
                     ? 'bg-[#21BA45]/10 text-[#21BA45]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`
-              }
+                }`;
+              }}
             >
               <span className="text-base">{link.icon}</span>
               {link.label}

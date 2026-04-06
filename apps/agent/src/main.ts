@@ -4,6 +4,7 @@ import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   listenForTokenRefresh, logout, restoreSession, startAuthFlow,
 } from './auth';
+import { handleStartGgCallback, isStartGgConnected } from './startgg-auth';
 import { APP_PROTOCOL, PRESENCE_STALE_THRESHOLD } from './config';
 import { getIdentity, verifyIdentity, type SlippiIdentity } from './identity';
 import { registerIpcHandlers, sendToRenderer } from './ipc';
@@ -51,9 +52,16 @@ function parseDotEnvContent(content: string): void {
 function loadDotEnvFromAppDir(): void {
   try {
     const fs = require('fs') as typeof import('fs');
-    for (const root of [app.getAppPath(), path.join(__dirname, '..')]) {
-      const p = path.join(root, '.env');
-      if (fs.existsSync(p)) { parseDotEnvContent(fs.readFileSync(p, 'utf8')); break; }
+    const paths: string[] = [];
+    if (app.isPackaged) {
+      paths.push(path.join(process.resourcesPath, '.env'));
+    }
+    paths.push(path.join(app.getAppPath(), '.env'));
+    paths.push(path.join(__dirname, '..', '.env'));
+    for (const envPath of paths) {
+      if (fs.existsSync(envPath)) {
+        parseDotEnvContent(fs.readFileSync(envPath, 'utf8'));
+      }
     }
   } catch (e) { console.error('loadDotEnvFromAppDir', e); }
 }
@@ -471,6 +479,11 @@ async function refreshAgentState(): Promise<void> {
 
 async function handleDeepLink(url: string): Promise<void> {
   try {
+    if (url.includes('startgg-callback')) {
+      await handleStartGgCallback(url);
+      sendToRenderer('startgg:authChanged', isStartGgConnected());
+      return;
+    }
     if (!url.includes('auth-callback')) return;
     await handleAuthCallback(url);
     const user = await getCurrentUser();
