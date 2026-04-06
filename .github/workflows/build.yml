@@ -52,6 +52,9 @@ jobs:
           if [ -n "${{ secrets.START_GG_TOKEN }}" ]; then
             echo "START_GG_TOKEN=${{ secrets.START_GG_TOKEN }}" >> .env
           fi
+          if [ -n "${{ secrets.STARTGG_CLIENT_ID }}" ]; then
+            echo "STARTGG_CLIENT_ID=${{ secrets.STARTGG_CLIENT_ID }}" >> .env
+          fi
 
       - name: Stage agent .env for Electron extraResources
         run: cp .env apps/agent/.env
