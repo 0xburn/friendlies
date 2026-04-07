@@ -98,11 +98,20 @@ query CashboxParticipantPage($slug: String!, $page: Int!, $perPage: Int!) {
   }
 }`.trim();
 
+const _entrantCache = new Map<string, { entrantId: string; ts: number }>();
+const ENTRANT_CACHE_TTL = 120_000;
+
 async function entrantIdForUserInEvent(
   userId: string,
   tournamentSlug: string,
   eventId: string,
 ): Promise<string | null> {
+  const cacheKey = `${userId}:${tournamentSlug}:${eventId}`;
+  const cached = _entrantCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ENTRANT_CACHE_TTL) {
+    return cached.entrantId;
+  }
+
   let page = 1;
   let totalPages = 1;
   const targetEvent = String(eventId);
@@ -112,17 +121,25 @@ async function entrantIdForUserInEvent(
       { slug: tournamentSlug, page, perPage: 512 },
       'CashboxParticipantPage',
     );
-    if (r.errors?.length || !r.data?.tournament?.participants) return null;
+    if (r.errors?.length || !r.data?.tournament?.participants) {
+      console.warn('[cashbox] entrantIdForUserInEvent failed at page', page, 'errors:', r.errors);
+      return null;
+    }
     const pg = r.data.tournament.participants;
     totalPages = pg.pageInfo?.totalPages ?? 1;
     for (const node of pg.nodes ?? []) {
       if (String(node?.user?.id) !== String(userId)) continue;
       for (const ent of node.entrants ?? []) {
-        if (String(ent?.event?.id) === targetEvent && ent?.id) return String(ent.id);
+        if (String(ent?.event?.id) === targetEvent && ent?.id) {
+          const id = String(ent.id);
+          _entrantCache.set(cacheKey, { entrantId: id, ts: Date.now() });
+          return id;
+        }
       }
     }
     page++;
   }
+  console.warn('[cashbox] entrantIdForUserInEvent: user', userId, 'not found in', tournamentSlug, 'event', eventId, '(scanned', page - 1, 'pages)');
   return null;
 }
 
@@ -207,14 +224,17 @@ async function resolveMapValueToEntrantId(
 async function resolveStartGgUserIdFromProfile(): Promise<string | null> {
   try {
     const user = await getCurrentUser();
-    if (!user) return null;
-    const { data } = await supabase
+    if (!user) { console.log('[cashbox] resolveStartGgUserIdFromProfile: no current user'); return null; }
+    const { data, error } = await supabase
       .from('profiles')
       .select('startgg_user_id')
       .eq('id', user.id)
       .maybeSingle();
+    if (error) console.warn('[cashbox] resolveStartGgUserIdFromProfile query error:', error.message);
+    console.log('[cashbox] resolveStartGgUserIdFromProfile:', { userId: user.id, startgg_user_id: data?.startgg_user_id ?? '(null)' });
     return data?.startgg_user_id || null;
-  } catch {
+  } catch (e: any) {
+    console.error('[cashbox] resolveStartGgUserIdFromProfile exception:', e?.message);
     return null;
   }
 }
@@ -1019,8 +1039,10 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
   if (!entrantId) {
     const startggUserId = await resolveStartGgUserIdFromProfile();
     if (startggUserId) {
+      console.log('[cashbox] resolved startgg_user_id from Supabase profile:', startggUserId);
       const eid = await entrantIdForUserInEvent(startggUserId, meta.tournamentSlug, meta.eventId);
       if (eid) entrantId = eid;
+      else console.warn('[cashbox] entrantIdForUserInEvent returned null for Supabase userId', startggUserId);
     }
   }
 

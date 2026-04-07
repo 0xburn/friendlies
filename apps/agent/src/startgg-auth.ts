@@ -375,6 +375,21 @@ async function exchangeCodeForTokens(code: string): Promise<void> {
 
   storeTokens(data);
   console.log('[startgg-auth] linked, user_id:', data.startgg_user_id ?? '(unknown)');
+
+  if (data.startgg_user_id) {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        await supabase
+          .from('profiles')
+          .update({ startgg_user_id: String(data.startgg_user_id) })
+          .eq('id', user.id);
+        console.log('[startgg-auth] wrote startgg_user_id to Supabase profile');
+      }
+    } catch (e) {
+      console.error('[startgg-auth] failed to write startgg_user_id to profile:', e);
+    }
+  }
 }
 
 /** Handle a deep-link callback (fallback path if protocol handler works). */
