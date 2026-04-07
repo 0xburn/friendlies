@@ -8,6 +8,7 @@ import {
   LEGAL_STAGES,
 } from '../lib/characters';
 import { getRankLabel, getRankTier } from '../lib/ranks';
+import { normalizeSlippiConnectCode } from '../../connect-code-normalize';
 
 type CashboxStartGgSocial = { type: string; handle: string; url: string | null };
 type LuckyStatsOpponent = {
@@ -409,6 +410,131 @@ const TASK_TYPE_LABELS: Record<number, string> = {
   7: 'Game setup',
 };
 
+function lobbyRoomFromMetadata(metadata: Record<string, any> | undefined): string | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const room = metadata.room ?? metadata.Room;
+  if (typeof room !== 'string') return null;
+  const c = room.trim();
+  return c.length > 0 ? c : null;
+}
+
+/** Opponent's submitted direct code from start.gg lobby tasks (type 2). */
+function opponentLobbyConnectFromTasks(
+  tasks: RawSetTask[],
+  selfId: number,
+  oppId: number | null,
+  viewerConnectCode: string | null,
+): string | null {
+  const lobbyTasks = tasks.filter((t) => t.type === 2);
+  if (lobbyTasks.length === 0) return null;
+
+  const normViewer = viewerConnectCode ? normalizeSlippiConnectCode(viewerConnectCode) : '';
+
+  const tryTask = (t: RawSetTask | undefined): string | null => {
+    if (!t || t.type !== 2) return null;
+    return lobbyRoomFromMetadata(t.metadata);
+  };
+
+  if (oppId != null) {
+    const byOpp = lobbyTasks.find((t) => t.entrantId === oppId);
+    const r = tryTask(byOpp);
+    if (r) return r;
+  }
+
+  const oppLobbies = lobbyTasks.filter((t) => t.entrantId !== selfId);
+  const withRoom = oppLobbies
+    .map((t) => ({ t, r: tryTask(t) }))
+    .filter((x): x is { t: RawSetTask; r: string } => x.r != null);
+  if (withRoom.length > 0) {
+    withRoom.sort((a, b) => (b.t.updatedAtMicro ?? 0) - (a.t.updatedAtMicro ?? 0));
+    return withRoom[0].r;
+  }
+
+  const myLobby = lobbyTasks.find((t) => t.entrantId === selfId);
+  if (myLobby) {
+    const sib = tasks.find((x) => x.id === myLobby.siblingId);
+    const r = tryTask(sib);
+    if (r) return r;
+  }
+
+  const distinct = new Set<string>();
+  for (const t of lobbyTasks) {
+    const r = tryTask(t);
+    if (r) distinct.add(r);
+  }
+  for (const r of distinct) {
+    if (!normViewer || normalizeSlippiConnectCode(r) !== normViewer) return r;
+  }
+  return null;
+}
+
+/**
+ * Run inside the embedded start.gg `<webview>` (and same-origin nested iframes).
+ * Player REST tasks can list the wrong entrant when viewing as TO/admin; the visible task UI is authoritative.
+ */
+const WEBVIEW_SLIPPI_SCRAPE_SCRIPT = `(function() {
+  try {
+    var text = '';
+    var sel = '[class*="SetModeration"], [class*="Moderation"], [class*="Task"], [class*="task"], main, [role="main"]';
+    function harvestDoc(doc, depth) {
+      if (!doc || depth > 6) return;
+      try {
+        if (doc.body && doc.body.innerText) text += "\\n" + doc.body.innerText;
+        var nodes = doc.querySelectorAll(sel);
+        for (var i = 0; i < nodes.length; i++) {
+          text += "\\n" + (nodes[i].innerText || "");
+        }
+        var ifr = doc.querySelectorAll("iframe");
+        for (var j = 0; j < ifr.length; j++) {
+          try {
+            var child = ifr[j].contentDocument;
+            if (child) harvestDoc(child, depth + 1);
+          } catch (e1) {}
+        }
+      } catch (e2) {}
+    }
+    harvestDoc(document, 0);
+    var re = /\\b([A-Za-z][A-Za-z0-9]{0,5}#\\d{1,4})\\b/g;
+    var m;
+    var out = [];
+    var seen = {};
+    while ((m = re.exec(text)) !== null) {
+      var c = m[1].toUpperCase();
+      if (!seen[c]) { seen[c] = true; out.push(m[1]); }
+    }
+    return { codes: out, haystack: text.slice(0, 80000) };
+  } catch (e) {
+    return { codes: [], haystack: "" };
+  }
+})()`;
+
+function pickOpponentCodeFromWebviewScrape(payload: unknown, viewerConnectCode: string | null): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const o = payload as { codes?: unknown; haystack?: unknown };
+  const codes = o.codes;
+  const haystack = typeof o.haystack === 'string' ? o.haystack : '';
+  if (!Array.isArray(codes)) return null;
+  const normV = viewerConnectCode ? normalizeSlippiConnectCode(viewerConnectCode).toUpperCase() : '';
+  const valid = codes
+    .filter((c): c is string => typeof c === 'string')
+    .map((c) => c.trim())
+    .filter((c) => /^[A-Za-z][A-Za-z0-9]{0,5}#\d{1,4}$/i.test(c));
+  const lower = haystack.toLowerCase();
+  const idx = lower.indexOf('direct connect');
+  const slice = idx >= 0 ? haystack.slice(idx, idx + 220) : haystack;
+  const sliceUp = slice.toUpperCase();
+  for (const raw of valid) {
+    const n = normalizeSlippiConnectCode(raw).toUpperCase();
+    if (!n || n === normV) continue;
+    if (sliceUp.includes(raw.toUpperCase())) return raw.toUpperCase();
+  }
+  for (const raw of valid) {
+    const n = normalizeSlippiConnectCode(raw).toUpperCase();
+    if (n && n !== normV) return raw.toUpperCase();
+  }
+  return null;
+}
+
 const STARTGG_STAGE_NAMES: Record<number, string> = {};
 for (const s of LEGAL_STAGES) STARTGG_STAGE_NAMES[s.startggId] = s.short;
 
@@ -545,13 +671,14 @@ function LobbyStep({
   }
 
   const meta = task.metadata;
-  const room = meta.room != null ? String(meta.room) : null;
+  const room = lobbyRoomFromMetadata(meta);
   const roomTerm = meta.roomTerm != null ? String(meta.roomTerm) : 'Direct Connect Code';
+  const displayConnectCode = opponentConnectCode ?? room;
 
   if (task.isCompleted) {
     return (
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-gray-400">Lobby ready{room ? `: ${room}` : ''}.</p>
+        <p className="text-xs text-gray-400">Lobby ready{displayConnectCode ? `: ${displayConnectCode}` : ''}.</p>
         {siblingTask && !siblingTask.isCompleted && (
           <p className="text-[11px] text-amber-400">Waiting for {oppLabel}…</p>
         )}
@@ -564,9 +691,9 @@ function LobbyStep({
       <p className="text-xs text-gray-300">
         Connect to your opponent using their {roomTerm}.
       </p>
-      {room && (
+      {displayConnectCode && (
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-white font-mono">{room}</span>
+          <span className="text-lg font-bold text-white font-mono">{displayConnectCode}</span>
         </div>
       )}
       {dcStatus && (
@@ -1257,15 +1384,24 @@ function SetTaskFlow({
   onRefresh,
   defaultSelfChar,
   opponentConnectCodeFallback,
+  browserOpponentCode,
+  viewerConnectCode,
   onOpponentCodeResolved,
+  onTaskBrowserOpponentConnect,
   setUrl,
 }: {
   next: NextMatch;
   sggConnected: boolean;
   onRefresh: () => void | Promise<void>;
   defaultSelfChar?: number | null;
+  /** Snapshot only (Slippi map / friendlies) — must not include live lobby state (avoids stale self-code loop). */
   opponentConnectCodeFallback?: string | null;
+  /** From parent: code scraped from embedded start.gg task webview (authoritative when set). */
+  browserOpponentCode?: string | null;
+  viewerConnectCode?: string | null;
+  /** REST / map fallback for header when webview has not scraped yet. */
   onOpponentCodeResolved?: (code: string | null) => void;
+  onTaskBrowserOpponentConnect?: (code: string | null) => void;
   setUrl?: string | null;
 }) {
   const [tasks, setTasks] = useState<RawSetTask[]>([]);
@@ -1276,6 +1412,11 @@ function SetTaskFlow({
   const [submittedSetups, setSubmittedSetups] = useState<Record<number, { charPicked?: boolean; strikesSent?: number }>>({});
   const [preSelectedChar, setPreSelectedChar] = useState<number | null>(null);
   const fetchNowRef = useRef<() => void>(() => {});
+  const taskWebviewRef = useRef<{ executeJavaScript: (s: string) => Promise<unknown> } | null>(null);
+  const onBrowserCbRef = useRef(onTaskBrowserOpponentConnect);
+  onBrowserCbRef.current = onTaskBrowserOpponentConnect;
+  const viewerCodeRef = useRef(viewerConnectCode ?? null);
+  viewerCodeRef.current = viewerConnectCode ?? null;
 
   const [webTaskView, setWebTaskView] = useState(true);
   useEffect(() => {
@@ -1289,18 +1430,43 @@ function SetTaskFlow({
   const selfLabel = next.selfEntrantName || 'You';
   const oppLabel = next.opponentName || 'Opponent';
   const pgId = next.phaseGroupId;
-  const lobbyRoomCode = (() => {
-    const lobbyTask = tasks.find((t) => t.type === 2);
-    const room = lobbyTask?.metadata?.room;
-    if (typeof room !== 'string') return null;
-    const c = room.trim();
-    return c.length > 0 ? c : null;
-  })();
-  const oppCode = lobbyRoomCode ?? opponentConnectCodeFallback ?? next.slippiConnectCode ?? next.friendlies?.connectCode ?? null;
+  const lobbyRoomCode = opponentLobbyConnectFromTasks(tasks, selfId, oppId, viewerConnectCode ?? null);
+  const oppCodeFromRest =
+    lobbyRoomCode ?? opponentConnectCodeFallback ?? next.slippiConnectCode ?? next.friendlies?.connectCode ?? null;
+  const oppCode = browserOpponentCode ?? oppCodeFromRest;
 
   useEffect(() => {
-    onOpponentCodeResolved?.(oppCode);
-  }, [oppCode, onOpponentCodeResolved]);
+    onOpponentCodeResolved?.(oppCodeFromRest);
+  }, [oppCodeFromRest, onOpponentCodeResolved]);
+
+  useEffect(() => {
+    if (!webTaskView) {
+      onTaskBrowserOpponentConnect?.(null);
+    }
+  }, [webTaskView, onTaskBrowserOpponentConnect]);
+
+  const scrapeOpponentFromTaskWebview = useCallback(
+    async (wv: { executeJavaScript: (s: string) => Promise<unknown> }) => {
+      if (!onBrowserCbRef.current) return;
+      try {
+        const raw = await wv.executeJavaScript(WEBVIEW_SLIPPI_SCRAPE_SCRIPT);
+        const picked = pickOpponentCodeFromWebviewScrape(raw, viewerCodeRef.current);
+        if (picked != null) onBrowserCbRef.current(picked);
+      } catch {
+        /* SPA mid-navigation — keep last good code */
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!webTaskView || !setUrl) return;
+    const id = setInterval(() => {
+      const wv = taskWebviewRef.current;
+      if (wv) void scrapeOpponentFromTaskWebview(wv);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [webTaskView, setUrl, next.setId, scrapeOpponentFromTaskWebview]);
 
   const fetchTasks = useCallback(async () => {
     if (!pgId) { setLoadError('No phase group — cannot load tasks.'); return; }
@@ -1318,8 +1484,12 @@ function SetTaskFlow({
         for (const [id, nt] of newMap) {
           const existing = prevMap.get(id);
           if (existing && existing.updatedAtMicro > nt.updatedAtMicro) {
-            kept++;
-            continue;
+            const incomingRoom = lobbyRoomFromMetadata(nt.metadata);
+            const existingRoom = lobbyRoomFromMetadata(existing.metadata);
+            if (!(nt.type === 2 && incomingRoom && !existingRoom)) {
+              kept++;
+              continue;
+            }
           }
           if (existing && (existing.isCompleted !== nt.isCompleted || existing.active !== nt.active)) {
             console.log(`[cashbox poll] task ${id} type=${nt.type}: completed=${existing.isCompleted}→${nt.isCompleted} active=${existing.active}→${nt.active} micro=${existing.updatedAtMicro}→${nt.updatedAtMicro}`);
@@ -1710,7 +1880,7 @@ function SetTaskFlow({
     }
   }
 
-  if (loadError && tasks.length === 0) {
+  if (loadError && tasks.length === 0 && !webTaskView) {
     return (
       <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3 space-y-2">
         <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
@@ -1726,7 +1896,7 @@ function SetTaskFlow({
     );
   }
 
-  if (tasks.length === 0) {
+  if (!webTaskView && tasks.length === 0) {
     return (
       <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3">
         <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
@@ -1787,23 +1957,37 @@ function SetTaskFlow({
       {webTaskView ? (
         setUrl ? (
           <div className="space-y-2">
+            {loadError && tasks.length === 0 && (
+              <p className="text-[11px] text-amber-300/90">
+                Task API: {loadError} — connect code below is read from the embedded start.gg page.
+              </p>
+            )}
             <webview
+              key={next.setId}
               src={setUrl}
               partition="persist:startgg"
               style={{ width: '100%', height: '520px', borderRadius: '6px', border: '1px solid #252525' }}
               ref={(el: any) => {
+                taskWebviewRef.current = el ?? null;
                 if (!el) return;
-                if (el._scrollBound) return;
-                el._scrollBound = true;
-                el.addEventListener('did-finish-load', () => {
+                if (el._cashboxScrollBound) return;
+                el._cashboxScrollBound = true;
+                const scrollTasks = () => {
                   el.executeJavaScript(`
                     (function() {
                       var el = document.querySelector('[class*="tasks"], [class*="moderation"], [class*="SetModeration"]');
                       if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
                       else { window.scrollBy(0, 450); }
                     })();
-                  `);
-                });
+                  `).catch(() => {});
+                };
+                const onLoad = () => {
+                  scrollTasks();
+                  void scrapeOpponentFromTaskWebview(el);
+                };
+                el.addEventListener('did-finish-load', onLoad);
+                el.addEventListener('did-navigate', onLoad);
+                el.addEventListener('did-navigate-in-page', onLoad);
               }}
             />
           </div>
@@ -2299,10 +2483,12 @@ export function Cashbox() {
   const [selfElo, setSelfElo] = useState<number | null>(null);
   const [selfLuckyStatsId, setSelfLuckyStatsId] = useState<string | null>(null);
   const [liveOpponentConnectCode, setLiveOpponentConnectCodeRaw] = useState<string | null>(null);
+  /** Opponent Slippi code scraped from embedded start.gg task webview (same UI you see in Native view). */
+  const [taskBrowserOpponentCode, setTaskBrowserOpponentCode] = useState<string | null>(null);
   const liveCodeSetIdRef = useRef<string | null>(null);
-  const setLiveOpponentConnectCode = (code: string | null) => {
-    if (code) setLiveOpponentConnectCodeRaw(code);
-  };
+  const setLiveOpponentConnectCode = useCallback((code: string | null) => {
+    setLiveOpponentConnectCodeRaw(code);
+  }, []);
   const [lobbyFriendlies, setLobbyFriendlies] = useState<CashboxFriendlies | null>(null);
   const lastGoodSnapRef = useRef<Snapshot | null>(null);
 
@@ -2460,7 +2646,9 @@ export function Cashbox() {
   const next = snap && snap.ok ? snap.nextMatch : null;
   const fr = next?.friendlies ?? lobbyFriendlies;
   const opponentStartGgUserId = next?.startGg?.userId ? String(next.startGg.userId) : null;
-  const resolvedOpponentConnectCode = liveOpponentConnectCode ?? next?.slippiConnectCode ?? fr?.connectCode ?? null;
+  const snapshotOpponentConnectCode = next?.slippiConnectCode ?? fr?.connectCode ?? null;
+  const resolvedOpponentConnectCode =
+    taskBrowserOpponentCode ?? liveOpponentConnectCode ?? snapshotOpponentConnectCode;
   const friendliesRankLabel = fr?.rating != null ? getRankLabel(getRankTier(Number(fr.rating))) : null;
 
   const [topLaunching, setTopLaunching] = useState(false);
@@ -2487,15 +2675,17 @@ export function Cashbox() {
     const newSetId = next?.setId ?? null;
     if (newSetId && liveCodeSetIdRef.current && newSetId !== liveCodeSetIdRef.current) {
       setLiveOpponentConnectCodeRaw(null);
+      setTaskBrowserOpponentCode(null);
       setLobbyFriendlies(null);
     }
     if (newSetId) liveCodeSetIdRef.current = newSetId;
   }, [next?.setId]);
 
   useEffect(() => {
-    if (!liveOpponentConnectCode || next?.friendlies) return;
+    const codeForLookup = taskBrowserOpponentCode ?? liveOpponentConnectCode;
+    if (!codeForLookup || next?.friendlies) return;
     let cancelled = false;
-    window.api.lookupCashboxOpponent(liveOpponentConnectCode).then((r) => {
+    window.api.lookupCashboxOpponent(codeForLookup).then((r) => {
       if (cancelled || !r.ok || !r.friendlies) return;
       setLobbyFriendlies(r.friendlies);
       const fs = r.friendlies.friendStatus;
@@ -2503,7 +2693,7 @@ export function Cashbox() {
       else if (fs === 'pending_out') setAddState('pending');
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [liveOpponentConnectCode, next?.friendlies]);
+  }, [taskBrowserOpponentCode, liveOpponentConnectCode, next?.friendlies]);
 
   useEffect(() => {
     if (!opponentStartGgUserId) {
@@ -2804,8 +2994,11 @@ export function Cashbox() {
                   next={next}
                   sggConnected={sggConnected}
                   onRefresh={load}
-                  opponentConnectCodeFallback={resolvedOpponentConnectCode}
+                  opponentConnectCodeFallback={snapshotOpponentConnectCode}
+                  browserOpponentCode={taskBrowserOpponentCode}
+                  viewerConnectCode={connectCode}
                   onOpponentCodeResolved={setLiveOpponentConnectCode}
+                  onTaskBrowserOpponentConnect={setTaskBrowserOpponentCode}
                   setUrl={snap.matchModeration?.setUrl}
                 />
               </>
