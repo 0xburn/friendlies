@@ -28,6 +28,7 @@ import {
   disconnectStartGg,
   isStartGgConnected,
   getStartGgUserInfo,
+  getStartGgUserToken,
 } from './startgg-auth';
 
 const SLIPPI_API_NAME_TO_ID: Record<string, number> = {
@@ -1805,6 +1806,7 @@ export function registerIpcHandlers(
       await shell.openExternal(`https://discord.com/users/${discordId}`);
     }
   });
+
   ipcMain.handle('clipboard:write', (_e, text: string) => { clipboard.writeText(text); });
 
   ipcMain.handle('perf:metrics', () => app.getAppMetrics());
@@ -1851,49 +1853,61 @@ export function registerIpcHandlers(
     return { status: service.getStatus(), active: service.isActive() };
   });
 
+  let _snapshotInflight: Promise<any> | null = null;
+
   ipcMain.handle('cashbox:getSnapshot', async () => {
-    try {
-      // Cashbox should prefer the authenticated profile connect_code to avoid
-      // repeatedly touching Slippi identity files on each snapshot refresh.
-      let code: string | null = null;
-      const user = await getCurrentUser();
-      if (user?.id) {
-        try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('connect_code')
-            .eq('id', user.id)
-            .maybeSingle();
-          const fromProfile = typeof profile?.connect_code === 'string' ? profile.connect_code.trim() : '';
-          if (fromProfile) code = fromProfile.toUpperCase();
-        } catch {
-          // Fallback below.
-        }
-      }
-      if (!code) {
-        const id = getIdentity();
-        const fromIdentity = id?.connectCode?.trim();
-        if (fromIdentity) code = fromIdentity;
-      }
-      if (!code) {
-        return {
-          ok: false as const,
-          reason: 'not_mapped' as const,
-          message: 'No Slippi connect code found.',
-          startggConnected: isStartGgConnected(),
-        };
-      }
-      const snap = await getCashboxSnapshot(code);
-      if (snap.ok) {
-        await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
-      } else {
-        (snap as any).startggConnected = isStartGgConnected();
-      }
-      return snap;
-    } catch (e: any) {
-      console.error('cashbox:getSnapshot', e);
-      return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
+    if (_snapshotInflight) {
+      console.log('[cashbox] dedup: sharing in-flight snapshot request');
+      return _snapshotInflight;
     }
+
+    const p = (async () => {
+      try {
+        let code: string | null = null;
+        const user = await getCurrentUser();
+        if (user?.id) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('connect_code')
+              .eq('id', user.id)
+              .maybeSingle();
+            const fromProfile = typeof profile?.connect_code === 'string' ? profile.connect_code.trim() : '';
+            if (fromProfile) code = fromProfile.toUpperCase();
+          } catch {
+            // Fallback below.
+          }
+        }
+        if (!code) {
+          const id = getIdentity();
+          const fromIdentity = id?.connectCode?.trim();
+          if (fromIdentity) code = fromIdentity;
+        }
+        if (!code) {
+          return {
+            ok: false as const,
+            reason: 'not_mapped' as const,
+            message: 'No Slippi connect code found.',
+            startggConnected: isStartGgConnected(),
+          };
+        }
+        const sggToken = await getStartGgUserToken();
+        console.log('[cashbox] token source:', sggToken ? 'oauth (user-linked)' : 'env (START_GG_TOKEN fallback)');
+        const snap = await getCashboxSnapshot(code, sggToken);
+        if (snap.ok) {
+          await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
+        } else {
+          (snap as any).startggConnected = isStartGgConnected();
+        }
+        return snap;
+      } catch (e: any) {
+        console.error('cashbox:getSnapshot', e);
+        return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
+      }
+    })();
+
+    _snapshotInflight = p;
+    try { return await p; } finally { _snapshotInflight = null; }
   });
 
   ipcMain.handle('cashbox:lookupOpponent', async (_e, opponentCode: unknown) => {
@@ -1958,7 +1972,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle('cashbox:getSetUpdatedAt', async (_e, setId: unknown) => {
     if (typeof setId !== 'string') return { ok: false, message: 'Invalid setId' };
-    return fetchSetUpdatedAt(setId);
+    const sggToken = await getStartGgUserToken();
+    return fetchSetUpdatedAt(setId, sggToken);
   });
 
   ipcMain.handle('cashbox:taskComplete', async (_e, taskId: unknown, body: unknown) => {

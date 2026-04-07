@@ -71,13 +71,13 @@ function parseUserSlugFromMapValue(rest: string): string {
   return t.replace(/^user\//i, '').trim();
 }
 
-async function resolveStartGgUserId(slug: string): Promise<string | null> {
+async function resolveStartGgUserId(slug: string, userToken?: string | null): Promise<string | null> {
   const q = `
 query CashboxUserBySlug($slug: String!) {
   user(slug: $slug) { id }
 }`.trim();
   for (const s of [slug.startsWith('user/') ? slug : `user/${slug}`, slug]) {
-    const r = await startGgGraphql<{ user: { id: string } | null }>(q, { slug: s }, 'CashboxUserBySlug');
+    const r = await startGgGraphql<{ user: { id: string } | null }>(q, { slug: s }, 'CashboxUserBySlug', userToken);
     if (r.errors?.length) continue;
     const id = r.data?.user?.id;
     if (id) return id;
@@ -101,15 +101,18 @@ query CashboxParticipantPage($slug: String!, $page: Int!, $perPage: Int!) {
 const _entrantCache = new Map<string, { entrantId: string; ts: number }>();
 const ENTRANT_CACHE_TTL = 120_000;
 
+type EntrantLookupResult = { found: true; id: string } | { found: false; rateLimited: boolean };
+
 async function entrantIdForUserInEvent(
   userId: string,
   tournamentSlug: string,
   eventId: string,
-): Promise<string | null> {
+  userToken?: string | null,
+): Promise<EntrantLookupResult> {
   const cacheKey = `${userId}:${tournamentSlug}:${eventId}`;
   const cached = _entrantCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < ENTRANT_CACHE_TTL) {
-    return cached.entrantId;
+    return { found: true, id: cached.entrantId };
   }
 
   let page = 1;
@@ -118,12 +121,14 @@ async function entrantIdForUserInEvent(
   while (page <= totalPages && page <= 40) {
     const r = await startGgGraphql<{ tournament: any }>(
       PARTICIPANTS_PAGE_Q,
-      { slug: tournamentSlug, page, perPage: 512 },
+      { slug: tournamentSlug, page, perPage: 200 },
       'CashboxParticipantPage',
+      userToken,
     );
     if (r.errors?.length || !r.data?.tournament?.participants) {
-      console.warn('[cashbox] entrantIdForUserInEvent failed at page', page, 'errors:', r.errors);
-      return null;
+      const isRateLimit = r.errors?.some((e) => /rate.?limit/i.test(e.message)) ?? false;
+      console.warn('[cashbox] entrantIdForUserInEvent failed at page', page, isRateLimit ? '(RATE LIMITED)' : '', 'errors:', r.errors);
+      return { found: false, rateLimited: isRateLimit };
     }
     const pg = r.data.tournament.participants;
     totalPages = pg.pageInfo?.totalPages ?? 1;
@@ -133,14 +138,14 @@ async function entrantIdForUserInEvent(
         if (String(ent?.event?.id) === targetEvent && ent?.id) {
           const id = String(ent.id);
           _entrantCache.set(cacheKey, { entrantId: id, ts: Date.now() });
-          return id;
+          return { found: true, id };
         }
       }
     }
     page++;
   }
   console.warn('[cashbox] entrantIdForUserInEvent: user', userId, 'not found in', tournamentSlug, 'event', eventId, '(scanned', page - 1, 'pages)');
-  return null;
+  return { found: false, rateLimited: false };
 }
 
 const PARTICIPANT_ENTRANTS_Q = `
@@ -151,11 +156,12 @@ query CashboxParticipantEntrants($id: ID!) {
   }
 }`.trim();
 
-async function entrantIdFromParticipantMap(participantId: string, eventId: string): Promise<string | null> {
+async function entrantIdFromParticipantMap(participantId: string, eventId: string, userToken?: string | null): Promise<string | null> {
   const r = await startGgGraphql<{ participant: any }>(
     PARTICIPANT_ENTRANTS_Q,
     { id: participantId.trim() },
     'CashboxParticipantEntrants',
+    userToken,
   );
   if (r.errors?.length || !r.data?.participant) return null;
   const targetEvent = String(eventId);
@@ -175,6 +181,7 @@ async function resolveMapValueToEntrantId(
   raw: string,
   tournamentSlug: string,
   eventId: string,
+  userToken?: string | null,
 ): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const trimmed = raw.trim();
   const lower = trimmed.toLowerCase();
@@ -184,23 +191,25 @@ async function resolveMapValueToEntrantId(
     if (!slug) {
       return { ok: false, message: 'Invalid user: value in entrant map.' };
     }
-    const userId = await resolveStartGgUserId(slug);
+    const userId = await resolveStartGgUserId(slug, userToken);
     if (!userId) {
       return { ok: false, message: `No start.gg user found for slug "${slug}".` };
     }
-    const eid = await entrantIdForUserInEvent(userId, tournamentSlug, eventId);
-    if (!eid) {
+    const result = await entrantIdForUserInEvent(userId, tournamentSlug, eventId, userToken);
+    if (!result.found) {
       return {
         ok: false,
-        message: `User is not registered in "${tournamentSlug}" for this event (or bracket not created yet).`,
+        message: result.rateLimited
+          ? 'start.gg rate limit — try again in a minute.'
+          : `User is not registered in "${tournamentSlug}" for this event (or bracket not created yet).`,
       };
     }
-    return { ok: true, id: eid };
+    return { ok: true, id: result.id };
   }
 
   if (lower.startsWith('participant:')) {
     const pid = trimmed.slice('participant:'.length).trim();
-    const eid = await entrantIdFromParticipantMap(pid, eventId);
+    const eid = await entrantIdFromParticipantMap(pid, eventId, userToken);
     if (!eid) {
       return {
         ok: false,
@@ -311,7 +320,7 @@ type ResolvedEvent = {
 
 let cachedResolved: ResolvedEvent | null = null;
 
-async function resolveCashboxEvent(): Promise<{ ok: true; meta: ResolvedEvent } | { ok: false; message: string }> {
+async function resolveCashboxEvent(userToken?: string | null): Promise<{ ok: true; meta: ResolvedEvent } | { ok: false; message: string }> {
   const eventIdOverride = process.env.START_GG_CASHBOX_EVENT_ID?.trim();
   if (eventIdOverride) {
     const q = `
@@ -323,7 +332,7 @@ query CashboxEventById($id: ID!) {
     tournament { id name slug }
   }
 }`.trim();
-    const r = await startGgGraphql<{ event: any }>(q, { id: eventIdOverride }, 'CashboxEventById');
+    const r = await startGgGraphql<{ event: any }>(q, { id: eventIdOverride }, 'CashboxEventById', userToken);
     if (r.errors?.length) {
       return { ok: false, message: r.errors.map((e) => e.message).join('; ') };
     }
@@ -355,7 +364,7 @@ query CashboxEventByDevSlug($slug: String!) {
     tournament { id name slug }
   }
 }`.trim();
-    const r = await startGgGraphql<{ event: any }>(q, { slug: devSlug }, 'CashboxEventByDevSlug');
+    const r = await startGgGraphql<{ event: any }>(q, { slug: devSlug }, 'CashboxEventByDevSlug', userToken);
     if (r.errors?.length) {
       return { ok: false, message: r.errors.map((e) => e.message).join('; ') };
     }
@@ -387,7 +396,7 @@ query CashboxEventBySlug($slug: String!) {
     tournament { id name slug }
   }
 }`.trim();
-    const r = await startGgGraphql<{ event: any }>(q, { slug: slugOverride }, 'CashboxEventBySlug');
+    const r = await startGgGraphql<{ event: any }>(q, { slug: slugOverride }, 'CashboxEventBySlug', userToken);
     if (r.errors?.length) {
       return { ok: false, message: r.errors.map((e) => e.message).join('; ') };
     }
@@ -426,7 +435,7 @@ query CashboxTournamentEvents($slug: String!) {
     }
   }
 }`.trim();
-  const r = await startGgGraphql<{ tournament: any }>(q, { slug: CASHBOX_TOURNAMENT_SLUG }, 'CashboxTournamentEvents');
+  const r = await startGgGraphql<{ tournament: any }>(q, { slug: CASHBOX_TOURNAMENT_SLUG }, 'CashboxTournamentEvents', userToken);
   if (r.errors?.length) {
     return { ok: false, message: r.errors.map((e) => e.message).join('; ') };
   }
@@ -486,6 +495,7 @@ query CashboxEntrantSets($entrantId: ID!, $eventId: ID!, $page: Int!, $perPage: 
 async function fetchEntrantSets(
   entrantId: string,
   eventId: string,
+  userToken?: string | null,
 ): Promise<{ ok: true; nodes: any[]; entrantName: string } | { ok: false; message: string }> {
   const nodes: any[] = [];
   let page = 1;
@@ -497,6 +507,7 @@ async function fetchEntrantSets(
       SETS_QUERY,
       { entrantId, eventId, page, perPage: 25 },
       'CashboxEntrantSets',
+      userToken,
     );
     if (r.errors?.length) {
       return { ok: false, message: r.errors.map((e) => e.message).join('; ') };
@@ -601,7 +612,7 @@ function pickAnchorSetForPhaseGroup(nodes: any[]): any | null {
   return null;
 }
 
-async function fetchPhaseGroupPool(phaseGroupId: string, viewerEntrantId: string): Promise<CashboxPhasePool | null> {
+async function fetchPhaseGroupPool(phaseGroupId: string, viewerEntrantId: string, userToken?: string | null): Promise<CashboxPhasePool | null> {
   const matches: CashboxPoolMatch[] = [];
   let titleParts: { phase?: string; group?: string } | null = null;
   let page = 1;
@@ -612,6 +623,7 @@ async function fetchPhaseGroupPool(phaseGroupId: string, viewerEntrantId: string
       PHASE_GROUP_POOL_Q,
       { pgId: phaseGroupId, page, perPage: 48, viewerEntrantId },
       'CashboxPhaseGroupPool',
+      userToken,
     );
     if (r.errors?.length || !r.data?.phaseGroup) {
       if (matches.length === 0) return null;
@@ -660,11 +672,12 @@ query CashboxSetSlots($setId: ID!) {
   }
 }`.trim();
 
-async function opponentEntrantIdFromSet(setId: string, selfEntrantId: string): Promise<string | null> {
+async function opponentEntrantIdFromSet(setId: string, selfEntrantId: string, userToken?: string | null): Promise<string | null> {
   const r = await startGgGraphql<{ set: { slots: { entrant?: { id: string } | null }[] } | null }>(
     SET_SLOTS_QUERY,
     { setId },
     'CashboxSetSlots',
+    userToken,
   );
   if (r.errors?.length || !r.data?.set?.slots) return null;
   for (const s of r.data.set.slots) {
@@ -763,11 +776,12 @@ export type CashboxMatchModeration = {
   hint: string | null;
 };
 
-async function fetchOpponentStartGgProfile(opponentEntrantId: string): Promise<CashboxStartGgOpponent | null> {
+async function fetchOpponentStartGgProfile(opponentEntrantId: string, userToken?: string | null): Promise<CashboxStartGgOpponent | null> {
   const r = await startGgGraphql<{ entrant: any }>(
     OPPONENT_ENTRANT_QUERY,
     { id: opponentEntrantId },
     'CashboxOpponentEntrant',
+    userToken,
   );
   if (r.errors?.length || !r.data?.entrant) return null;
   const ent = r.data.entrant;
@@ -822,11 +836,11 @@ function resolveSlippiCodeForOpponent(
   return { code: null, missing: hasOpponentHint };
 }
 
-async function hydrateNextMatchOpponent(nm: CashboxNextMatchDetail, selfEntrantId: string): Promise<void> {
-  const oid = await opponentEntrantIdFromSet(nm.setId, selfEntrantId);
+async function hydrateNextMatchOpponent(nm: CashboxNextMatchDetail, selfEntrantId: string, userToken?: string | null): Promise<void> {
+  const oid = await opponentEntrantIdFromSet(nm.setId, selfEntrantId, userToken);
   nm.opponentEntrantId = oid;
   if (oid) {
-    nm.startGg = await fetchOpponentStartGgProfile(oid);
+    nm.startGg = await fetchOpponentStartGgProfile(oid, userToken);
   } else {
     nm.startGg = null;
   }
@@ -906,6 +920,7 @@ function toBracketSetRow(selfEntrantId: string, n: any): CashboxBracketSet {
 async function fetchCashboxPanelExtras(
   tournamentId: string,
   entrantId: string,
+  userToken?: string | null,
 ): Promise<{
   initialSeed: number | null;
   isDisqualified: boolean;
@@ -927,6 +942,7 @@ async function fetchCashboxPanelExtras(
     ENTRANT_EVENT_META_Q,
     { entrantId },
     'CashboxEntrantEventMeta',
+    userToken,
   );
   if (!metaR.errors?.length && metaR.data?.entrant) {
     const e = metaR.data.entrant;
@@ -945,6 +961,7 @@ async function fetchCashboxPanelExtras(
       STREAM_QUEUE_Q,
       { tid: tournamentId },
       'CashboxStreamQueue',
+      userToken,
     );
     if (!sqR.errors?.length && Array.isArray(sqR.data?.streamQueue)) {
       const rows: CashboxStreamQueueRow[] = [];
@@ -983,6 +1000,10 @@ export type CashboxSnapshot =
       bracketUrl: string;
       bracketEmbedUrl: string;
       giveawayRegisterUrl: string;
+      /** True when this snapshot is served from cache after a rate-limit / API error. */
+      stale?: boolean;
+      /** ISO timestamp of when the cached snapshot was originally fetched. */
+      staleSince?: string;
       extras: {
         initialSeed: number | null;
         isDisqualified: boolean;
@@ -1008,20 +1029,46 @@ export type CashboxSnapshot =
       record: { wins: number; losses: number };
     };
 
-export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSnapshot> {
+const _snapshotCache = new Map<string, { snap: Extract<CashboxSnapshot, { ok: true }>; ts: number }>();
+const SNAPSHOT_CACHE_MAX_AGE = 5 * 60_000;
+
+function cacheSnapshot(code: string, snap: Extract<CashboxSnapshot, { ok: true }>): void {
+  _snapshotCache.set(code.toUpperCase(), { snap, ts: Date.now() });
+}
+
+function getCachedSnapshot(code: string): Extract<CashboxSnapshot, { ok: true }> | null {
+  const entry = _snapshotCache.get(code.toUpperCase());
+  if (!entry) return null;
+  if (Date.now() - entry.ts > SNAPSHOT_CACHE_MAX_AGE) {
+    _snapshotCache.delete(code.toUpperCase());
+    return null;
+  }
+  return { ...entry.snap, stale: true, staleSince: new Date(entry.ts).toISOString() };
+}
+
+function isRateLimitError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return lower.includes('rate limit') || lower.includes('rate_limit') || lower.includes('throttl');
+}
+
+export async function getCashboxSnapshot(connectCode: string, userToken?: string | null): Promise<CashboxSnapshot> {
   const giveawayRegisterUrl = cashboxGiveawayRegisterUrl();
 
-  if (!getStartGgToken()) {
+  if (!userToken && !getStartGgToken()) {
     return {
       ok: false,
       reason: 'no_token',
-      message: 'Set START_GG_TOKEN in apps/agent/.env (never commit this file).',
+      message: 'Link your start.gg account, or set START_GG_TOKEN in apps/agent/.env.',
       giveawayRegisterUrl,
     };
   }
 
-  const resolved = await resolveCashboxEvent();
+  const resolved = await resolveCashboxEvent(userToken);
   if (!resolved.ok) {
+    if (isRateLimitError(resolved.message)) {
+      const cached = getCachedSnapshot(connectCode);
+      if (cached) { console.log('[cashbox] serving cached snapshot (event resolve rate-limited)'); return cached; }
+    }
     return { ok: false, reason: 'config', message: resolved.message, giveawayRegisterUrl };
   }
   const { meta } = resolved;
@@ -1030,32 +1077,44 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
 
   const mapRaw = mapValueForConnectCode(connectCode);
   if (mapRaw) {
-    const resolvedEntrant = await resolveMapValueToEntrantId(mapRaw, meta.tournamentSlug, meta.eventId);
+    const resolvedEntrant = await resolveMapValueToEntrantId(mapRaw, meta.tournamentSlug, meta.eventId, userToken);
     if (resolvedEntrant.ok) {
       entrantId = resolvedEntrant.id;
     }
   }
 
-  if (!entrantId) {
-    const startggUserId = await resolveStartGgUserIdFromProfile();
-    if (startggUserId) {
-      console.log('[cashbox] resolved startgg_user_id from Supabase profile:', startggUserId);
-      const eid = await entrantIdForUserInEvent(startggUserId, meta.tournamentSlug, meta.eventId);
-      if (eid) entrantId = eid;
-      else console.warn('[cashbox] entrantIdForUserInEvent returned null for Supabase userId', startggUserId);
-    }
+  let wasRateLimited = false;
+  const profileUserId = !entrantId ? await resolveStartGgUserIdFromProfile() : null;
+
+  if (!entrantId && profileUserId) {
+    console.log('[cashbox] resolved startgg_user_id from Supabase profile:', profileUserId);
+    const result = await entrantIdForUserInEvent(profileUserId, meta.tournamentSlug, meta.eventId, userToken);
+    if (result.found) entrantId = result.id;
+    else if (result.rateLimited) wasRateLimited = true;
   }
 
-  if (!entrantId) {
+  if (!entrantId && !wasRateLimited) {
     const localInfo = getStartGgUserInfo();
-    if (localInfo.userId) {
-      console.log('[cashbox] Supabase profile had no startgg_user_id; trying local store:', localInfo.userId);
-      const eid = await entrantIdForUserInEvent(localInfo.userId, meta.tournamentSlug, meta.eventId);
-      if (eid) entrantId = eid;
+    if (localInfo.userId && localInfo.userId !== profileUserId) {
+      console.log('[cashbox] trying local store userId:', localInfo.userId);
+      const result = await entrantIdForUserInEvent(localInfo.userId, meta.tournamentSlug, meta.eventId, userToken);
+      if (result.found) entrantId = result.id;
+      else if (result.rateLimited) wasRateLimited = true;
     }
   }
 
   if (!entrantId) {
+    if (wasRateLimited) {
+      const cached = getCachedSnapshot(connectCode);
+      if (cached) { console.log('[cashbox] serving cached snapshot (entrant resolve rate-limited)'); return cached; }
+      return {
+        ok: false,
+        reason: 'api',
+        message: 'start.gg rate limit — your registration will show up shortly. Try refreshing in a minute.',
+        giveawayRegisterUrl,
+        startggConnected: true,
+      };
+    }
     return {
       ok: false,
       reason: 'not_mapped',
@@ -1068,10 +1127,14 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
 
   // Batch 1: fetch entrant sets and panel extras in parallel
   const [pack, extras] = await Promise.all([
-    fetchEntrantSets(entrantId, meta.eventId),
-    fetchCashboxPanelExtras(meta.tournamentId, entrantId),
+    fetchEntrantSets(entrantId, meta.eventId, userToken),
+    fetchCashboxPanelExtras(meta.tournamentId, entrantId, userToken),
   ]);
   if (!pack.ok) {
+    if (isRateLimitError(pack.message)) {
+      const cached = getCachedSnapshot(connectCode);
+      if (cached) { console.log('[cashbox] serving cached snapshot (sets fetch rate-limited)'); return cached; }
+    }
     return { ok: false, reason: 'api', message: pack.message, giveawayRegisterUrl };
   }
 
@@ -1136,10 +1199,10 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
   // Batch 2: hydrate opponent, fetch pool, and fetch moderation data in parallel
   const [, currentPhasePool, moderationPayload] = await Promise.all([
     nextMatch
-      ? hydrateNextMatchOpponent(nextMatch, entrantId)
+      ? hydrateNextMatchOpponent(nextMatch, entrantId, userToken)
       : Promise.resolve(),
     pgId
-      ? fetchPhaseGroupPool(String(pgId), String(entrantId)).catch((e) => { console.error('[cashbox] fetchPhaseGroupPool', e); return null; })
+      ? fetchPhaseGroupPool(String(pgId), String(entrantId), userToken).catch((e) => { console.error('[cashbox] fetchPhaseGroupPool', e); return null; })
       : Promise.resolve(null),
     nextMatch?.phaseGroupId
       ? fetchPhaseGroupRestJson(nextMatch.phaseGroupId).catch(() => null)
@@ -1177,7 +1240,7 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
     }
   }
 
-  return {
+  const result: Extract<CashboxSnapshot, { ok: true }> = {
     ok: true,
     entrantName: entrantName || 'Player',
     entrantId: String(entrantId),
@@ -1196,6 +1259,8 @@ export async function getCashboxSnapshot(connectCode: string): Promise<CashboxSn
     matchModeration,
     record: { wins, losses },
   };
+  cacheSnapshot(connectCode, result);
+  return result;
 }
 
 // ---------------------------------------------------------------------------

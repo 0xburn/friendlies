@@ -488,10 +488,11 @@ type SetUpdatedAtCache = {
 
 const _setUpdatedAtCache = new Map<string, SetUpdatedAtCache>();
 const _setUpdatedAtInflight = new Map<string, Promise<{ ok: true; state: number; updatedAt: number } | { ok: false; message: string }>>();
-const SET_UPDATED_AT_TTL_MS = 1200;
+const SET_UPDATED_AT_TTL_MS = 5000;
 
 export async function fetchSetUpdatedAt(
   setId: string,
+  userToken?: string | null,
 ): Promise<{ ok: true; state: number; updatedAt: number } | { ok: false; message: string }> {
   const now = Date.now();
   const cached = _setUpdatedAtCache.get(setId);
@@ -507,6 +508,7 @@ export async function fetchSetUpdatedAt(
       SET_UPDATED_AT_QUERY,
       { setId },
       'SetUpdatedAt',
+      userToken,
     );
     if (r.errors?.length) {
       const result = { ok: false as const, message: r.errors[0].message };

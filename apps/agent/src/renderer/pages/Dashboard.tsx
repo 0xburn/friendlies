@@ -281,6 +281,7 @@ export function Dashboard() {
           View Full Profile on slippi.gg →
         </button>
       )}
+
     </div>
   );
 }

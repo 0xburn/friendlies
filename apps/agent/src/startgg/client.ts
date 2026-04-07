@@ -11,14 +11,20 @@ export function getStartGgToken(): string | null {
   return t || null;
 }
 
+let _lastTokenSource: 'oauth' | 'env' | 'none' = 'none';
+export function getLastTokenSource() { return _lastTokenSource; }
+
 export async function startGgGraphql<T>(
   query: string,
   variables?: Record<string, unknown>,
   operationName?: string,
+  userToken?: string | null,
 ): Promise<StartGgGraphqlResult<T>> {
-  const token = getStartGgToken();
+  const token = userToken || getStartGgToken();
+  _lastTokenSource = userToken ? 'oauth' : token ? 'env' : 'none';
   if (!token) {
-    return { data: null, errors: [{ message: 'START_GG_TOKEN is not set' }] };
+    console.warn(`[startgg-gql] ${operationName ?? 'query'}: NO TOKEN AVAILABLE`);
+    return { data: null, errors: [{ message: 'No start.gg token available (link your start.gg account or set START_GG_TOKEN)' }] };
   }
 
   try {

@@ -11,6 +11,7 @@ import { getRankLabel, getRankTier } from '../lib/ranks';
 
 type CashboxStartGgSocial = { type: string; handle: string; url: string | null };
 type LuckyStatsOpponent = {
+  profileId: string | null;
   elo: number | null;
   wins: number | null;
   losses: number | null;
@@ -88,6 +89,8 @@ type Snapshot =
       bracketUrl: string;
       bracketEmbedUrl: string;
       giveawayRegisterUrl: string;
+      stale?: boolean;
+      staleSince?: string;
       extras: {
         initialSeed: number | null;
         isDisqualified: boolean;
@@ -165,6 +168,7 @@ function extractLuckyStatsPlayer(raw: any, id: string): LuckyStatsOpponent | nul
   if (!row) return null;
 
   return {
+    profileId: row.id != null ? String(row.id) : null,
     elo: coerceNum(row.elo ?? row.Elo ?? row.rating ?? row.mmr ?? row.points),
     wins: coerceNum(row.wins ?? row.setWins ?? row.win_count),
     losses: coerceNum(row.losses ?? row.setLosses ?? row.loss_count),
@@ -1369,7 +1373,7 @@ function SetTaskFlow({
     async function poll() {
       if (!active) return;
       await fetchTasks();
-      const interval = waitingRef.current ? 700 : 2500;
+      const interval = waitingRef.current ? 3000 : 8000;
       if (active) tid = setTimeout(poll, interval);
     }
     fetchNowRef.current = () => {
@@ -1399,10 +1403,10 @@ function SetTaskFlow({
           lastGqlUpdatedAt.current = r.updatedAt;
           rateLimitBackoff = 0;
         } else if (!r.ok && String(r.message ?? '').toLowerCase().includes('rate limit')) {
-          rateLimitBackoff = Math.min((rateLimitBackoff || 2800) * 2, 20_000);
+          rateLimitBackoff = Math.min((rateLimitBackoff || 15_000) * 2, 60_000);
         }
       } catch {}
-      const baseDelay = waitingRef.current ? 1500 : 3500;
+      const baseDelay = waitingRef.current ? 8000 : 15000;
       const delayMs = rateLimitBackoff || baseDelay;
       if (active) tid = setTimeout(gqlPoll, delayMs);
     }
@@ -1489,7 +1493,7 @@ function SetTaskFlow({
   }
 
   function burstRefresh() {
-    const delays = [0, 250, 500, 1000, 1600];
+    const delays = [0, 1500];
     for (const d of delays) {
       setTimeout(() => fetchNowRef.current(), d);
     }
@@ -2293,6 +2297,7 @@ export function Cashbox() {
   const [luckyStats, setLuckyStats] = useState<LuckyStatsOpponent | null>(null);
   const [luckyStatsLoading, setLuckyStatsLoading] = useState(false);
   const [selfElo, setSelfElo] = useState<number | null>(null);
+  const [selfLuckyStatsId, setSelfLuckyStatsId] = useState<string | null>(null);
   const [liveOpponentConnectCode, setLiveOpponentConnectCodeRaw] = useState<string | null>(null);
   const liveCodeSetIdRef = useRef<string | null>(null);
   const setLiveOpponentConnectCode = (code: string | null) => {
@@ -2312,17 +2317,28 @@ export function Cashbox() {
     try {
       const data = await window.api.getCashboxSnapshot();
       const nextSnap = data as Snapshot;
-      const msg = !nextSnap.ok ? String(nextSnap.message ?? '') : '';
-      const rateLimited = !nextSnap.ok
-        && nextSnap.reason === 'config'
-        && msg.toLowerCase().includes('rate limit');
-      if (rateLimited && lastGoodSnapRef.current?.ok) {
-        setSnapWarning('start.gg API rate-limited; showing last known match state.');
-      } else {
+
+      if (nextSnap.ok && nextSnap.stale) {
         setSnap(nextSnap);
-        if (nextSnap.ok) lastGoodSnapRef.current = nextSnap;
+        setSnapWarning('start.gg rate-limited — showing cached match state.');
+      } else if (nextSnap.ok) {
+        setSnap(nextSnap);
+        lastGoodSnapRef.current = nextSnap;
         setSnapWarning(null);
+      } else {
+        const msg = String(nextSnap.message ?? '').toLowerCase();
+        const isRateLimit = msg.includes('rate limit') || msg.includes('rate_limit') || msg.includes('throttl');
+        const isApiError = nextSnap.reason === 'api' || nextSnap.reason === 'config';
+        if ((isRateLimit || isApiError) && lastGoodSnapRef.current?.ok) {
+          setSnapWarning(isRateLimit
+            ? 'start.gg rate-limited — showing last known match state.'
+            : 'start.gg API error — showing last known match state.');
+        } else {
+          setSnap(nextSnap);
+          setSnapWarning(null);
+        }
       }
+
       if (data && typeof data === 'object' && (data as Snapshot).ok) {
         const ok = data as Extract<Snapshot, { ok: true }>;
         const fs = ok.nextMatch?.friendlies?.friendStatus;
@@ -2333,12 +2349,16 @@ export function Cashbox() {
       }
     } catch (e) {
       console.error('cashbox', e);
-      setSnap({
-        ok: false,
-        reason: 'api',
-        message: 'Failed to load Cashbox data.',
-        giveawayRegisterUrl: FALLBACK_CASHBOX_REGISTER,
-      });
+      if (lastGoodSnapRef.current?.ok) {
+        setSnapWarning('Network error — showing last known match state.');
+      } else {
+        setSnap({
+          ok: false,
+          reason: 'api',
+          message: 'Failed to load Cashbox data.',
+          giveawayRegisterUrl: FALLBACK_CASHBOX_REGISTER,
+        });
+      }
     }
     setLoading(false);
   }, []);
@@ -2363,7 +2383,7 @@ export function Cashbox() {
     let tid: ReturnType<typeof setTimeout> | null = null;
     function scheduleNext() {
       if (!active) return;
-      const interval = betweenSets ? 8_000 : 45_000;
+      const interval = betweenSets ? 30_000 : 60_000;
       tid = setTimeout(() => { void load().then(scheduleNext); }, interval);
     }
     scheduleNext();
@@ -2511,12 +2531,17 @@ export function Cashbox() {
   }, [opponentStartGgUserId]);
 
   useEffect(() => {
-    if (!sggUserId) { setSelfElo(null); return; }
+    if (!sggUserId) { setSelfElo(null); setSelfLuckyStatsId(null); return; }
     let cancelled = false;
     fetch(`https://luckystats.gg/api/stream/players?ids=${encodeURIComponent(sggUserId)}`)
       .then((r) => r.json())
-      .then((json) => { if (!cancelled) setSelfElo(extractLuckyStatsPlayer(json, sggUserId)?.elo ?? null); })
-      .catch(() => { if (!cancelled) setSelfElo(null); });
+      .then((json) => {
+        if (cancelled) return;
+        const p = extractLuckyStatsPlayer(json, sggUserId);
+        setSelfElo(p?.elo ?? null);
+        setSelfLuckyStatsId(p?.profileId ?? null);
+      })
+      .catch(() => { if (!cancelled) { setSelfElo(null); setSelfLuckyStatsId(null); } });
     return () => { cancelled = true; };
   }, [sggUserId]);
 
@@ -2624,8 +2649,20 @@ export function Cashbox() {
               </div>
               <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
                 <p className="text-gray-500">LuckyStats Elo</p>
-                <p className="text-gray-100 font-semibold">
-                  {selfElo != null ? String(Math.round(selfElo)) : 'Unavailable'}
+                <p className="font-semibold">
+                  {selfElo != null && selfLuckyStatsId ? (
+                    <button
+                      type="button"
+                      onClick={() => void window.api.openExternal(`https://luckystats.gg/player/${encodeURIComponent(selfLuckyStatsId)}`)}
+                      className="text-[#57d67b] hover:text-[#7be89a] hover:underline transition-colors"
+                    >
+                      {String(Math.round(selfElo))}
+                    </button>
+                  ) : selfElo != null ? (
+                    <span className="text-gray-100">{String(Math.round(selfElo))}</span>
+                  ) : (
+                    <span className="text-gray-100">Unavailable</span>
+                  )}
                 </p>
               </div>
               {snap.extras.initialSeed != null && (
@@ -2711,12 +2748,20 @@ export function Cashbox() {
                     </div>
                     <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
                       <p className="text-gray-500">LuckyStats Elo</p>
-                      <p className="text-gray-100 font-semibold">
-                        {luckyStatsLoading
-                          ? 'Loading...'
-                          : luckyStats?.elo != null
-                            ? String(Math.round(luckyStats.elo))
-                            : 'Unavailable'}
+                      <p className="font-semibold">
+                        {luckyStatsLoading ? (
+                          <span className="text-gray-100">Loading...</span>
+                        ) : luckyStats?.elo != null && luckyStats.profileId ? (
+                          <button
+                            type="button"
+                            onClick={() => void window.api.openExternal(`https://luckystats.gg/player/${encodeURIComponent(luckyStats.profileId!)}`)}
+                            className="text-[#57d67b] hover:text-[#7be89a] hover:underline transition-colors"
+                          >
+                            {String(Math.round(luckyStats.elo))}
+                          </button>
+                        ) : (
+                          <span className="text-gray-100">Unavailable</span>
+                        )}
                       </p>
                     </div>
                     <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">

@@ -1364,3 +1364,4 @@ export function Friends() {
     </div>
   );
 }
+
