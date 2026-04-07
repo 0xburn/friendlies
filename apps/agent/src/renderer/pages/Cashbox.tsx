@@ -4,8 +4,8 @@ import { CharacterIcon } from '../components/CharacterIcon';
 import {
   CHARACTER_MAP,
   getCharacterShortName,
-  SLIPPI_TO_STARTGG_CHAR,
   LEGAL_STAGES,
+  SLIPPI_TO_STARTGG_CHAR,
 } from '../lib/characters';
 import { getRankLabel, getRankTier } from '../lib/ranks';
 import { normalizeSlippiConnectCode } from '../../connect-code-normalize';
@@ -140,6 +140,9 @@ type Snapshot =
 const FRIENDLIES_URL = 'https://luckystats.gg/friendlies';
 const SIEGE_INFO_URL = 'https://start.gg/fullhouse';
 const FALLBACK_CASHBOX_REGISTER = 'https://www.start.gg/tournament/the-cashbox-21/register';
+
+/** Off for now: match steps are only the embedded start.gg webview (`SetTaskFlow`), not the separate checklist. */
+const SHOW_CASHBOX_MODERATION_CHECKLIST = false;
 
 function coerceNum(v: unknown): number | null {
   const n = Number(v);
@@ -308,6 +311,33 @@ function CashboxMatchModerationPanel({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Task-driven set flow (REST task API — synchronized two-player workflow)
+// ---------------------------------------------------------------------------
+
+type RawSetTask = {
+  id: number;
+  entrantId: number;
+  siblingId: number;
+  setId: number;
+  type: number;
+  taskOrder: number;
+  isCompleted: boolean;
+  active: boolean;
+  metadata: Record<string, any>;
+  updatedAt: number;
+  updatedAtMicro: number;
+  _raw: Record<string, any>;
+};
+
+const TASK_TYPE_LABELS: Record<number, string> = {
+  1: 'Check in',
+  2: 'Game lobby',
+  3: 'Report game',
+  4: 'Result verification',
+  7: 'Game setup',
+};
+
 const CHAR_IDS_SORTED = Object.keys(CHARACTER_MAP).map(Number).sort((a, b) => {
   const na = CHARACTER_MAP[a] ?? '';
   const nb = CHARACTER_MAP[b] ?? '';
@@ -383,33 +413,6 @@ function CharPickerGrid({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Task-driven set flow (REST task API — synchronized two-player workflow)
-// ---------------------------------------------------------------------------
-
-type RawSetTask = {
-  id: number;
-  entrantId: number;
-  siblingId: number;
-  setId: number;
-  type: number;
-  taskOrder: number;
-  isCompleted: boolean;
-  active: boolean;
-  metadata: Record<string, any>;
-  updatedAt: number;
-  updatedAtMicro: number;
-  _raw: Record<string, any>;
-};
-
-const TASK_TYPE_LABELS: Record<number, string> = {
-  1: 'Check in',
-  2: 'Game lobby',
-  3: 'Report game',
-  4: 'Result verification',
-  7: 'Game setup',
-};
-
 function lobbyRoomFromMetadata(metadata: Record<string, any> | undefined): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
   const room = metadata.room ?? metadata.Room;
@@ -468,10 +471,7 @@ function opponentLobbyConnectFromTasks(
   return null;
 }
 
-/**
- * Run inside the embedded start.gg `<webview>` (and same-origin nested iframes).
- * Player REST tasks can list the wrong entrant when viewing as TO/admin; the visible task UI is authoritative.
- */
+/** Run inside the embedded start.gg `<webview>` (same-origin nested iframes included). */
 const WEBVIEW_SLIPPI_SCRAPE_SCRIPT = `(function() {
   try {
     var text = '';
@@ -1382,9 +1382,7 @@ function SetTaskFlow({
   next,
   sggConnected,
   onRefresh,
-  defaultSelfChar,
   opponentConnectCodeFallback,
-  browserOpponentCode,
   viewerConnectCode,
   onOpponentCodeResolved,
   onTaskBrowserOpponentConnect,
@@ -1393,24 +1391,15 @@ function SetTaskFlow({
   next: NextMatch;
   sggConnected: boolean;
   onRefresh: () => void | Promise<void>;
-  defaultSelfChar?: number | null;
   /** Snapshot only (Slippi map / friendlies) — must not include live lobby state (avoids stale self-code loop). */
   opponentConnectCodeFallback?: string | null;
-  /** From parent: code scraped from embedded start.gg task webview (authoritative when set). */
-  browserOpponentCode?: string | null;
   viewerConnectCode?: string | null;
-  /** REST / map fallback for header when webview has not scraped yet. */
   onOpponentCodeResolved?: (code: string | null) => void;
   onTaskBrowserOpponentConnect?: (code: string | null) => void;
   setUrl?: string | null;
 }) {
   const [tasks, setTasks] = useState<RawSetTask[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [submittedReports, setSubmittedReports] = useState<Record<number, number>>({});
-  const [submittedSetups, setSubmittedSetups] = useState<Record<number, { charPicked?: boolean; strikesSent?: number }>>({});
-  const [preSelectedChar, setPreSelectedChar] = useState<number | null>(null);
   const fetchNowRef = useRef<() => void>(() => {});
   const taskWebviewRef = useRef<{ executeJavaScript: (s: string) => Promise<unknown> } | null>(null);
   const onBrowserCbRef = useRef(onTaskBrowserOpponentConnect);
@@ -1418,32 +1407,16 @@ function SetTaskFlow({
   const viewerCodeRef = useRef(viewerConnectCode ?? null);
   viewerCodeRef.current = viewerConnectCode ?? null;
 
-  const [webTaskView, setWebTaskView] = useState(true);
-  useEffect(() => {
-    window.api.getSettings().then((s: any) => {
-      if (s?.useWebTaskView === false) setWebTaskView(false);
-    });
-  }, []);
-
   const selfId = Number(next.selfEntrantId);
   const oppId = next.opponentEntrantId ? Number(next.opponentEntrantId) : null;
-  const selfLabel = next.selfEntrantName || 'You';
-  const oppLabel = next.opponentName || 'Opponent';
   const pgId = next.phaseGroupId;
   const lobbyRoomCode = opponentLobbyConnectFromTasks(tasks, selfId, oppId, viewerConnectCode ?? null);
   const oppCodeFromRest =
     lobbyRoomCode ?? opponentConnectCodeFallback ?? next.slippiConnectCode ?? next.friendlies?.connectCode ?? null;
-  const oppCode = browserOpponentCode ?? oppCodeFromRest;
 
   useEffect(() => {
     onOpponentCodeResolved?.(oppCodeFromRest);
   }, [oppCodeFromRest, onOpponentCodeResolved]);
-
-  useEffect(() => {
-    if (!webTaskView) {
-      onTaskBrowserOpponentConnect?.(null);
-    }
-  }, [webTaskView, onTaskBrowserOpponentConnect]);
 
   const scrapeOpponentFromTaskWebview = useCallback(
     async (wv: { executeJavaScript: (s: string) => Promise<unknown> }) => {
@@ -1453,20 +1426,20 @@ function SetTaskFlow({
         const picked = pickOpponentCodeFromWebviewScrape(raw, viewerCodeRef.current);
         if (picked != null) onBrowserCbRef.current(picked);
       } catch {
-        /* SPA mid-navigation — keep last good code */
+        /* SPA mid-navigation */
       }
     },
     [],
   );
 
   useEffect(() => {
-    if (!webTaskView || !setUrl) return;
+    if (!setUrl) return;
     const id = setInterval(() => {
       const wv = taskWebviewRef.current;
       if (wv) void scrapeOpponentFromTaskWebview(wv);
     }, 2000);
     return () => clearInterval(id);
-  }, [webTaskView, setUrl, next.setId, scrapeOpponentFromTaskWebview]);
+  }, [setUrl, next.setId, scrapeOpponentFromTaskWebview]);
 
   const fetchTasks = useCallback(async () => {
     if (!pgId) { setLoadError('No phase group — cannot load tasks.'); return; }
@@ -1584,563 +1557,62 @@ function SetTaskFlow({
     return () => { active = false; if (tid) clearTimeout(tid); };
   }, [next.setId]);
 
-  const [dcStatus, setDcStatus] = useState<{ status: string; message: string } | null>(null);
-  const [launching, setLaunching] = useState(false);
-  const prevCurrentRef = useRef<string>('');
-
-  useEffect(() => {
-    const unsub = window.api.onDirectConnectStatus((evt: any) => {
-      setDcStatus(evt);
-      if (evt.status === 'ready' || evt.status === 'error') setLaunching(false);
-    });
-    return unsub;
-  }, []);
-
   if (!sggConnected) return null;
   if (!pgId) return null;
-
-  const myTasks = tasks.filter((t) => t.entrantId === selfId);
-  const activeTask = myTasks.find((t) => !t.isCompleted && t.active);
-  const fallbackTask = !activeTask
-    ? [...myTasks].filter((t) => !t.isCompleted).sort((a, b) => a.taskOrder - b.taskOrder || a.id - b.id)[0] ?? null
-    : null;
-  const currentTask = activeTask ?? fallbackTask ?? null;
-  const usingFallbackTask = !activeTask && !!fallbackTask;
-  const siblingOf = (t: RawSetTask) => tasks.find((x) => x.id === t.siblingId) ?? null;
-  const taskKey = currentTask ? `${currentTask.id}:${currentTask.type}:${currentTask.isCompleted}` : 'none';
-  if (taskKey !== prevCurrentRef.current) {
-    console.log(`[cashbox ui] currentTask → ${currentTask ? `id=${currentTask.id} type=${TASK_TYPE_LABELS[currentTask.type] ?? currentTask.type} action=${(currentTask._raw as any)?.action ?? '?'} completed=${currentTask.isCompleted} micro=${currentTask.updatedAtMicro}` : '(none)'}`);
-    prevCurrentRef.current = taskKey;
-  }
-
-  function applyResponseTasks(newTasks?: RawSetTask[]) {
-    if (newTasks && newTasks.length > 0) {
-      setTasks((prev) => {
-        const map = new Map(prev.map((t) => [t.id, t]));
-        for (const t of newTasks) {
-          const existing = map.get(t.id);
-          if (existing) {
-            if (existing.isCompleted && !t.isCompleted) continue;
-            const existingTs = existing.updatedAtMicro ?? existing.updatedAt ?? 0;
-            const incomingTs = t.updatedAtMicro ?? t.updatedAt ?? 0;
-            if (existingTs > incomingTs) continue;
-          }
-          map.set(t.id, t);
-        }
-        return [...map.values()].sort((a, b) => a.taskOrder - b.taskOrder || a.id - b.id);
-      });
-    }
-  }
-
-  function markTaskDoneLocally(taskId: number) {
-    const optimisticMicro = Date.now() / 1000 + 9999999;
-    setTasks((prev) => {
-      const completedOrder = prev.find((x) => x.id === taskId)?.taskOrder ?? 0;
-      const nextPending = prev
-        .filter((x) => x.entrantId === selfId && !x.isCompleted && x.id !== taskId && x.taskOrder > completedOrder)
-        .sort((a, b) => a.taskOrder - b.taskOrder)[0];
-      const updated = prev.map((t) => {
-        if (t.id === taskId) return { ...t, isCompleted: true, active: false, updatedAtMicro: optimisticMicro };
-        if (nextPending && t.id === nextPending.id) return { ...t, active: true, updatedAtMicro: optimisticMicro };
-        return t;
-      });
-      return updated;
-    });
-  }
-
-  function isStaleStateError(message?: string): boolean {
-    if (!message) return false;
-    const m = message.toLowerCase();
-    return m.includes('already complete')
-      || m.includes('already been striked')
-      || m.includes('already been struck')
-      || m.includes('out of date')
-      || m.includes('not your turn');
-  }
-
-  function scheduleRefresh(delayMs = 500) {
-    setTimeout(() => fetchNowRef.current(), delayMs);
-  }
-
-  function burstRefresh() {
-    const delays = [0, 1500];
-    for (const d of delays) {
-      setTimeout(() => fetchNowRef.current(), d);
-    }
-  }
-
-  function sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async function waitForTaskConvergence(taskId: number): Promise<void> {
-    for (let i = 0; i < 8; i++) {
-      if (i > 0) await sleep(180 + i * 120);
-      try {
-        const freshResult = await window.api.getSetTasks(pgId!, next.setId, true);
-        if (!freshResult.ok || !freshResult.tasks) continue;
-        applyResponseTasks(freshResult.tasks);
-        const task = freshResult.tasks.find((t: RawSetTask) => t.id === taskId);
-        const activeMine = freshResult.tasks
-          .filter((t: RawSetTask) => t.entrantId === selfId && !t.isCompleted && t.active)
-          .sort((a: RawSetTask, b: RawSetTask) => a.taskOrder - b.taskOrder)[0];
-        if (!task || task.isCompleted || (activeMine && activeMine.id !== taskId)) return;
-      } catch {
-        // Best-effort convergence probe; keep trying.
-      }
-    }
-  }
-
-  const AUTO_ADVANCE_TYPES = new Set([2]);
-
-  function tryAutoAdvance(completedTask: RawSetTask, responseTasks?: RawSetTask[]) {
-    const allTasks = responseTasks && responseTasks.length > 0 ? responseTasks : tasks;
-    const nextPending = allTasks
-      .filter((t: RawSetTask) => t.entrantId === selfId && !t.isCompleted && t.id !== completedTask.id && t.taskOrder > completedTask.taskOrder)
-      .sort((a: RawSetTask, b: RawSetTask) => a.taskOrder - b.taskOrder)[0];
-    if (nextPending && AUTO_ADVANCE_TYPES.has(nextPending.type)) {
-      console.log(`[cashbox] auto-advancing past ${TASK_TYPE_LABELS[nextPending.type] ?? nextPending.type}`, nextPending.id);
-      markTaskDoneLocally(nextPending.id);
-      setTimeout(() => void handleComplete(nextPending), 150);
-      return true;
-    }
-    return false;
-  }
-
-  async function handleComplete(task: RawSetTask) {
-    setBusy(true);
-    setActionError(null);
-    try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        let raw = task._raw;
-        if (attempt > 0) {
-          try {
-            const freshResult = await window.api.getSetTasks(pgId!, next.setId, true);
-            if (freshResult.ok && freshResult.tasks) {
-              applyResponseTasks(freshResult.tasks);
-              const freshTask = freshResult.tasks.find((t: RawSetTask) => t.id === task.id);
-              if (freshTask) raw = freshTask._raw;
-            }
-          } catch {}
-        }
-        const r = await window.api.taskComplete(String(task.id), raw);
-        if (!r.ok) {
-          const stale = isStaleStateError(r.message);
-          if (stale && attempt < 2) {
-            await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
-            continue;
-          }
-          if (stale) {
-            markTaskDoneLocally(task.id);
-            scheduleRefresh(300);
-          } else {
-            setActionError(r.message || 'Failed');
-          }
-          return;
-        }
-        markTaskDoneLocally(task.id);
-        applyResponseTasks(r.tasks);
-        if (task.type === 4) {
-          scheduleRefresh();
-          setTimeout(() => void onRefresh(), 2000);
-        } else {
-          tryAutoAdvance(task, r.tasks);
-          burstRefresh();
-        }
-        await waitForTaskConvergence(task.id);
-        return;
-      }
-    } catch (e: any) {
-      setActionError(e?.message || 'Request failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleUpdate(body: Record<string, any>) {
-    const taskId = body.id;
-    if (taskId == null) return;
-    const selection = body.metadata?.selection;
-    console.log(`[cashbox action] handleUpdate task=${taskId} selection=${JSON.stringify(selection)}`);
-    setBusy(true);
-    setActionError(null);
-    try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        let mergedBody = body;
-        try {
-          const freshResult = await window.api.getSetTasks(pgId!, next.setId, true);
-          if (freshResult.ok && freshResult.tasks) {
-            applyResponseTasks(freshResult.tasks);
-            const freshTask = freshResult.tasks.find((t: RawSetTask) => t.id === Number(taskId));
-            if (freshTask) {
-              mergedBody = { ...freshTask._raw };
-              if (selection !== undefined) {
-                mergedBody.metadata = { ...(mergedBody.metadata as Record<string, any> ?? {}), selection };
-              }
-            }
-          }
-        } catch {}
-
-        const microSent = mergedBody.updatedAtMicro ?? mergedBody.updatedAt ?? '?';
-        console.log(`[cashbox action] PUT update task=${taskId} attempt=${attempt} micro=${microSent}`);
-        const r = await window.api.taskUpdate(String(taskId), mergedBody);
-        console.log(`[cashbox action] update result ok=${r.ok} msg=${r.message ?? ''} tasks=${r.tasks?.length ?? 0}`);
-        if (!r.ok) {
-          const stale = isStaleStateError(r.message);
-          if (stale && attempt < 2) {
-            await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
-            continue;
-          }
-          if (stale) {
-            if (selection && typeof selection === 'object' && !Array.isArray(selection)) {
-              setSubmittedSetups((prev) => ({ ...prev, [taskId]: { ...prev[taskId], charPicked: true } }));
-            }
-            scheduleRefresh(300);
-          } else {
-            setActionError(r.message || 'Failed');
-          }
-          return;
-        }
-        if (selection && typeof selection === 'object' && !Array.isArray(selection)) {
-          setSubmittedSetups((prev) => ({ ...prev, [taskId]: { ...prev[taskId], charPicked: true } }));
-        } else if (Array.isArray(selection)) {
-          setSubmittedSetups((prev) => ({
-            ...prev,
-            [taskId]: { ...prev[taskId], strikesSent: (prev[taskId]?.strikesSent ?? 0) + selection.length },
-          }));
-        }
-        applyResponseTasks(r.tasks);
-        const returnedTask = r.tasks?.find((t: RawSetTask) => t.id === Number(taskId));
-        if (returnedTask?.isCompleted) {
-          markTaskDoneLocally(Number(taskId));
-          tryAutoAdvance(returnedTask, r.tasks);
-        }
-        burstRefresh();
-        await waitForTaskConvergence(Number(taskId));
-        return;
-      }
-    } catch (e: any) {
-      setActionError(e?.message || 'Request failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleReportWinner(task: RawSetTask, winnerId: number) {
-    setBusy(true);
-    setActionError(null);
-    try {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        let freshRaw = task._raw;
-        try {
-          const freshResult = await window.api.getSetTasks(pgId!, next.setId, true);
-          if (freshResult.ok && freshResult.tasks) {
-            applyResponseTasks(freshResult.tasks);
-            const freshTask = freshResult.tasks.find((t: RawSetTask) => t.id === task.id);
-            if (freshTask) freshRaw = freshTask._raw;
-          }
-        } catch {}
-
-        const body = { ...freshRaw };
-        const meta = { ...(body.metadata as Record<string, any> ?? {}) };
-        const report = { ...(meta.report ?? {}) };
-        report.winnerId = winnerId;
-        meta.report = report;
-        body.metadata = meta;
-        const r = await window.api.taskComplete(String(task.id), body);
-        if (!r.ok) {
-          const stale = isStaleStateError(r.message);
-          if (stale && attempt < 2) {
-            await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
-            continue;
-          }
-          if (stale) {
-            setActionError('Result changed on start.gg. Please pick winner again or verify/dispute below.');
-            scheduleRefresh(300);
-          } else {
-            setActionError(r.message || 'Failed');
-          }
-          return;
-        }
-        setSubmittedReports((prev) => ({ ...prev, [task.id]: winnerId }));
-        const returnedTask = r.tasks?.find((t: RawSetTask) => t.id === task.id);
-        if (returnedTask?.isCompleted) {
-          markTaskDoneLocally(task.id);
-          tryAutoAdvance(task, r.tasks);
-        }
-        applyResponseTasks(r.tasks);
-        burstRefresh();
-        await waitForTaskConvergence(task.id);
-        return;
-      }
-    } catch (e: any) {
-      setActionError(e?.message || 'Request failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (loadError && tasks.length === 0 && !webTaskView) {
-    return (
-      <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3 space-y-2">
-        <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
-        <p className="text-xs text-red-400/90">{loadError}</p>
-        <button
-          type="button"
-          onClick={() => void fetchTasks()}
-          className="text-[11px] text-gray-500 hover:text-gray-300"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (!webTaskView && tasks.length === 0) {
-    return (
-      <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3">
-        <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
-        <p className="text-xs text-gray-500 mt-1">Loading tasks…</p>
-      </div>
-    );
-  }
-
-  const allMyDone = myTasks.length > 0 && myTasks.every((t) => t.isCompleted);
-  const checkInDone = myTasks.some((t) => t.type === 1 && t.isCompleted);
-  const latestReportTask = [...myTasks]
-    .filter((t) => t.type === 3)
-    .sort((a, b) => b.taskOrder - a.taskOrder)[0] ?? null;
-
-  async function handleLaunchMelee() {
-    if (!oppCode) return;
-    setLaunching(true);
-    setDcStatus({ status: 'configuring', message: `Launching Melee → ${oppCode}…` });
-    const result = await window.api.startDirectConnect(oppCode, 'cashbox');
-    if (result.error) {
-      setDcStatus({ status: 'error', message: result.error });
-      setLaunching(false);
-    }
-  }
-
-  function toggleWebTaskView() {
-    const next = !webTaskView;
-    setWebTaskView(next);
-    window.api.updateSettings({ useWebTaskView: next });
-  }
 
   return (
     <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] px-3 py-3 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] uppercase tracking-wider text-gray-600">Match tasks</p>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={toggleWebTaskView}
-            className={`text-[11px] transition-colors ${webTaskView ? 'text-[#21BA45]' : 'text-gray-600 hover:text-gray-400'}`}
-            title={webTaskView ? 'Switch to native task view' : 'Switch to start.gg browser view'}
-          >
-            {webTaskView ? 'Native view' : 'Browser view'}
-          </button>
-          {!webTaskView && (
-            <button
-              type="button"
-              onClick={() => fetchNowRef.current()}
-              disabled={busy}
-              className="text-[11px] text-gray-600 hover:text-gray-400 disabled:opacity-50"
-            >
-              Refresh
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => fetchNowRef.current()}
+          className="text-[11px] text-gray-600 hover:text-gray-400"
+        >
+          Refresh
+        </button>
       </div>
-
-      {webTaskView ? (
-        setUrl ? (
-          <div className="space-y-2">
-            {loadError && tasks.length === 0 && (
-              <p className="text-[11px] text-amber-300/90">
-                Task API: {loadError} — connect code below is read from the embedded start.gg page.
-              </p>
-            )}
-            <webview
-              key={next.setId}
-              src={setUrl}
-              partition="persist:startgg"
-              style={{ width: '100%', height: '520px', borderRadius: '6px', border: '1px solid #252525' }}
-              ref={(el: any) => {
-                taskWebviewRef.current = el ?? null;
-                if (!el) return;
-                if (el._cashboxScrollBound) return;
-                el._cashboxScrollBound = true;
-                const scrollTasks = () => {
-                  el.executeJavaScript(`
-                    (function() {
-                      var el = document.querySelector('[class*="tasks"], [class*="moderation"], [class*="SetModeration"]');
-                      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-                      else { window.scrollBy(0, 450); }
-                    })();
-                  `).catch(() => {});
-                };
-                const onLoad = () => {
-                  scrollTasks();
-                  void scrapeOpponentFromTaskWebview(el);
-                };
-                el.addEventListener('did-finish-load', onLoad);
-                el.addEventListener('did-navigate', onLoad);
-                el.addEventListener('did-navigate-in-page', onLoad);
-              }}
-            />
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">Waiting for set URL to load…</p>
-        )
-      ) : (
-        <>
-
-      {setUrl && (
-        <p className="text-[11px] text-gray-500 leading-relaxed">
-          Having issues with native-view? You can manage your set tasks directly in the Browser view!
-        </p>
-      )}
-
-      <TaskStepIndicator tasks={tasks} myEntrantId={selfId} />
-
-      {actionError && <p className="text-xs text-red-400/90">{actionError}</p>}
-      {loadError && <p className="text-xs text-amber-200/80">{loadError}</p>}
-      {usingFallbackTask && (
-        <p className="text-[11px] text-amber-300/90">
-          Task state was stale; showing next pending step to avoid lock.
-        </p>
-      )}
-
-      {allMyDone ? (
-        <p className="text-sm text-[#21BA45]">All tasks complete for this set.</p>
-      ) : currentTask ? (
-        <div className="rounded-md border border-[#252525] bg-black/30 px-2.5 py-2.5">
-          {currentTask.type === 1 && (
-            <CheckInStep
-              task={currentTask}
-              siblingTask={siblingOf(currentTask)}
-              selfLabel={selfLabel}
-              oppLabel={oppLabel}
-              onAction={() => void handleComplete(currentTask)}
-              busy={busy}
-            />
+      {setUrl ? (
+        <div className="space-y-2">
+          {loadError && tasks.length === 0 && (
+            <p className="text-[11px] text-amber-300/90">
+              Task API: {loadError} — opponent code is read from the embedded page when possible.
+            </p>
           )}
-          {currentTask.type === 2 && (
-            <LobbyStep
-              task={currentTask}
-              siblingTask={siblingOf(currentTask)}
-              oppLabel={oppLabel}
-              opponentConnectCode={oppCode}
-              onAction={() => void handleComplete(currentTask)}
-              busy={busy}
-            />
-          )}
-          {currentTask.type === 7 && (
-            <GameSetupStep
-              key={currentTask.id}
-              task={currentTask}
-              siblingTask={siblingOf(currentTask)}
-              selfEntrantId={selfId}
-              selfLabel={selfLabel}
-              oppLabel={oppLabel}
-              oppEntrantId={oppId}
-              onUpdate={handleUpdate}
-              busy={busy}
-              defaultSelfChar={preSelectedChar ?? defaultSelfChar}
-              localCharPicked={!!submittedSetups[currentTask.id]?.charPicked}
-              onCharPreSelect={setPreSelectedChar}
-              actionError={actionError}
-            />
-          )}
-          {currentTask.type === 3 && (
-            <ReportGameStep
-              task={currentTask}
-              siblingTask={siblingOf(currentTask)}
-              selfEntrantId={selfId}
-              selfLabel={selfLabel}
-              oppLabel={oppLabel}
-              oppEntrantId={oppId}
-              onAction={(winnerId) => void handleReportWinner(currentTask, winnerId)}
-              onClearReport={() => setSubmittedReports((prev) => {
-                const next = { ...prev };
-                delete next[currentTask.id];
-                return next;
-              })}
-              busy={busy}
-              submittedWinnerId={submittedReports[currentTask.id] ?? null}
-            />
-          )}
-          {currentTask.type === 4 && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-300">Result verification</p>
-              <button
-                type="button"
-                onClick={() => void handleComplete(currentTask)}
-                disabled={busy}
-                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 transition-colors"
-              >
-                {busy ? '…' : 'Confirm result'}
-              </button>
-              {latestReportTask && oppId != null && (
-                <div className="rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2 space-y-2">
-                  <p className="text-[11px] text-amber-300">Wrong winner selected? Re-submit before confirming.</p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleReportWinner(latestReportTask, selfId)}
-                      disabled={busy}
-                      className="flex-1 rounded-md bg-[#21BA45]/20 border border-[#21BA45]/40 px-2 py-1.5 text-[11px] font-medium text-[#21BA45] hover:bg-[#21BA45]/30 disabled:opacity-50"
-                    >
-                      {selfLabel} won
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleReportWinner(latestReportTask, oppId)}
-                      disabled={busy}
-                      className="flex-1 rounded-md bg-white/10 border border-white/20 px-2 py-1.5 text-[11px] font-medium text-gray-200 hover:bg-white/15 disabled:opacity-50"
-                    >
-                      {oppLabel} won
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {![1, 2, 3, 4, 7].includes(currentTask.type) && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-300">
-                {TASK_TYPE_LABELS[currentTask.type] ?? `Task type ${currentTask.type}`}
-              </p>
-              <button
-                type="button"
-                onClick={() => void handleComplete(currentTask)}
-                disabled={busy}
-                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 transition-colors"
-              >
-                {busy ? '…' : 'Mark done'}
-              </button>
-            </div>
-          )}
+          <webview
+            key={next.setId}
+            src={setUrl}
+            partition="persist:startgg"
+            style={{ width: '100%', height: '520px', borderRadius: '6px', border: '1px solid #252525' }}
+            ref={(el: any) => {
+              taskWebviewRef.current = el ?? null;
+              if (!el) return;
+              if (el._cashboxScrollBound) return;
+              el._cashboxScrollBound = true;
+              const scrollTasks = () => {
+                el.executeJavaScript(`
+                  (function() {
+                    var el = document.querySelector('[class*="tasks"], [class*="moderation"], [class*="SetModeration"]');
+                    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                    else { window.scrollBy(0, 450); }
+                  })();
+                `).catch(() => {});
+              };
+              const onLoad = () => {
+                scrollTasks();
+                void scrapeOpponentFromTaskWebview(el);
+              };
+              el.addEventListener('did-finish-load', onLoad);
+              el.addEventListener('did-navigate', onLoad);
+              el.addEventListener('did-navigate-in-page', onLoad);
+            }}
+          />
         </div>
       ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-amber-400">Waiting for {oppLabel} to complete their step…</p>
-          {myTasks.some((t) => t.type === 7 && !t.isCompleted) && (
-            <div className="rounded-md border border-[#252525] bg-black/20 px-2.5 py-2.5 space-y-2">
-              <p className="text-[11px] text-gray-500">Pre-select your character while waiting</p>
-              <CharPickerGrid
-                selected={preSelectedChar}
-                onSelect={setPreSelectedChar}
-                label="Your character"
-              />
-            </div>
-          )}
-        </div>
+        <p className="text-xs text-gray-500">Waiting for set URL to load…</p>
       )}
-
-        </>
+      {loadError && tasks.length > 0 && (
+        <p className="text-xs text-amber-200/80">{loadError}</p>
       )}
     </div>
   );
@@ -2483,7 +1955,6 @@ export function Cashbox() {
   const [selfElo, setSelfElo] = useState<number | null>(null);
   const [selfLuckyStatsId, setSelfLuckyStatsId] = useState<string | null>(null);
   const [liveOpponentConnectCode, setLiveOpponentConnectCodeRaw] = useState<string | null>(null);
-  /** Opponent Slippi code scraped from embedded start.gg task webview (same UI you see in Native view). */
   const [taskBrowserOpponentCode, setTaskBrowserOpponentCode] = useState<string | null>(null);
   const liveCodeSetIdRef = useRef<string | null>(null);
   const setLiveOpponentConnectCode = useCallback((code: string | null) => {
@@ -2982,7 +2453,7 @@ export function Cashbox() {
 
                 </div>
 
-                {snap.matchModeration && snap.matchModeration.tasks.length > 0 && (
+                {SHOW_CASHBOX_MODERATION_CHECKLIST && snap.matchModeration && snap.matchModeration.tasks.length > 0 && (
                   <CashboxMatchModerationPanel
                     mod={snap.matchModeration}
                     onRefresh={load}
@@ -2995,7 +2466,6 @@ export function Cashbox() {
                   sggConnected={sggConnected}
                   onRefresh={load}
                   opponentConnectCodeFallback={snapshotOpponentConnectCode}
-                  browserOpponentCode={taskBrowserOpponentCode}
                   viewerConnectCode={connectCode}
                   onOpponentCodeResolved={setLiveOpponentConnectCode}
                   onTaskBrowserOpponentConnect={setTaskBrowserOpponentCode}

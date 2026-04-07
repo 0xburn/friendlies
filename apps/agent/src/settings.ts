@@ -17,7 +17,6 @@ export type AgentSettings = {
   notificationVolume: number;
   disableNudges: boolean;
   disableStatuses: boolean;
-  useWebTaskView: boolean;
 };
 
 const store = new Store({ name: 'slippi-friends-settings' });
@@ -41,10 +40,9 @@ export function getSettings(): AgentSettings {
       notificationVolume: typeof store.get('notificationVolume') === 'number' ? store.get('notificationVolume') as number : 0.35,
       disableNudges: Boolean(store.get('disableNudges')),
       disableStatuses: Boolean(store.get('disableStatuses')),
-      useWebTaskView: store.get('useWebTaskView') !== false,
     };
   } catch {
-    return { replayDir: getDefaultReplayDir(), autoLaunch: false, closeToTray: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, notificationSound: true, setupComplete: false, reduceBackgroundActivity: true, notificationVolume: 0.35, disableNudges: false, disableStatuses: false, useWebTaskView: true };
+    return { replayDir: getDefaultReplayDir(), autoLaunch: false, closeToTray: false, showNotifications: true, notifyFriendOnline: true, notifyPlayInvite: true, notificationSound: true, setupComplete: false, reduceBackgroundActivity: true, notificationVolume: 0.35, disableNudges: false, disableStatuses: false };
   }
 }
 
@@ -67,7 +65,6 @@ export function updateSettings(partial: Partial<AgentSettings>): AgentSettings {
     if (partial.notificationVolume !== undefined) store.set('notificationVolume', next.notificationVolume);
     if (partial.disableNudges !== undefined) store.set('disableNudges', next.disableNudges);
     if (partial.disableStatuses !== undefined) store.set('disableStatuses', next.disableStatuses);
-    if (partial.useWebTaskView !== undefined) store.set('useWebTaskView', next.useWebTaskView);
     return next;
   } catch {
     return getSettings();
