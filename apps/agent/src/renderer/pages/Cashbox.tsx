@@ -99,6 +99,7 @@ type Snapshot =
         eventStartAt: number | null;
         eventState: string | null;
         streamQueues: { streamLabel: string; setLabel: string }[];
+        placement: number | null;
       };
       nextMatch: NextMatch | null;
       recentMatches: {
@@ -221,6 +222,16 @@ function formatStartGgTimestamp(t: number | null): string | null {
   } catch {
     return null;
   }
+}
+
+function ordinalPlacement(n: number): string {
+  const abs = Math.abs(n) % 100;
+  const j = abs % 10;
+  if (abs > 3 && abs < 21) return `${n}th`;
+  if (j === 1) return `${n}st`;
+  if (j === 2) return `${n}nd`;
+  if (j === 3) return `${n}rd`;
+  return `${n}th`;
 }
 
 function CashboxMatchModerationPanel({
@@ -2027,7 +2038,16 @@ export function Cashbox() {
   const eventNotStarted = snap?.ok && (
     snap.extras.eventState === '1'
     || snap.extras.eventState === null
-    || (!snap.nextMatch && snap.bracketSets.every((s) => s.state !== 'completed'))
+    || (!snap.nextMatch && snap.bracketSets.length > 0 && snap.bracketSets.every((s) => s.state !== 'complete'))
+  );
+  const playerRunComplete = snap?.ok
+    && !snap.nextMatch
+    && snap.bracketSets.length > 0
+    && snap.bracketSets.every((s) => s.state === 'complete');
+  const showTournamentResults = snap?.ok && (
+    eventCompleted
+    || playerRunComplete
+    || !!snap.extras.isDisqualified
   );
   const hasPendingSets = snap?.ok
     ? snap.bracketSets.some((s) => s.state === 'pending')
@@ -2347,6 +2367,121 @@ export function Cashbox() {
                   Starts: {formatStartGgTimestamp(snap.extras.eventStartAt)}
                 </p>
               )}
+            </div>
+          </div>
+
+          <StartGgLinkCard
+            connected={sggConnected}
+            displayName={sggDisplayName}
+            onConnect={handleStartGgConnect}
+            onDisconnect={handleStartGgDisconnect}
+            busy={sggBusy}
+          />
+        </div>
+      ) : snap?.ok && showTournamentResults ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-500/25 bg-gradient-to-b from-emerald-500/10 to-[#111] px-4 py-5 space-y-4">
+            <div className="text-center space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                {snap.extras.isDisqualified
+                  ? 'Disqualified'
+                  : eventCompleted
+                    ? 'Tournament complete'
+                    : 'Run complete'}
+              </p>
+              <p className="text-lg font-display font-bold text-white">{snap.tournamentName}</p>
+              <p className="text-sm text-gray-300">{snap.eventName}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Placement</p>
+                <p className="text-gray-100 font-semibold">
+                  {snap.extras.placement != null
+                    ? `${ordinalPlacement(snap.extras.placement)} place`
+                    : eventCompleted || playerRunComplete
+                      ? '—'
+                      : 'Pending'}
+                </p>
+              </div>
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Record</p>
+                <p className="text-gray-100 font-semibold">
+                  {snap.record.wins}W — {snap.record.losses}L
+                </p>
+              </div>
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Playing as</p>
+                <p className="text-gray-100 font-medium">{snap.entrantName}</p>
+              </div>
+              <div className="rounded-md border border-[#2a2a2a] bg-black/25 px-2.5 py-2">
+                <p className="text-gray-500">Seed</p>
+                <p className="text-gray-100 font-semibold">
+                  {snap.extras.initialSeed != null ? snap.extras.initialSeed : '—'}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Match history</p>
+              {snap.bracketSets.filter((s) => s.state === 'complete').length === 0 ? (
+                <p className="text-xs text-gray-500">No completed sets on file yet.</p>
+              ) : (
+                <ul className="space-y-2 max-h-[min(320px,45vh)] overflow-y-auto pr-1">
+                  {snap.bracketSets
+                    .filter((s) => s.state === 'complete')
+                    .map((s) => (
+                      <li
+                        key={s.setId}
+                        className="rounded-md border border-[#2a2a2a] bg-black/20 px-2.5 py-2 text-[11px]"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-gray-200 font-medium">{s.roundText}</p>
+                            <p className="text-gray-500 mt-0.5">
+                              vs <span className="text-gray-300">{s.opponentName ?? '—'}</span>
+                            </p>
+                            {s.scoreDisplay && (
+                              <p className="text-gray-500 font-mono mt-0.5">{s.scoreDisplay}</p>
+                            )}
+                          </div>
+                          {s.won === true && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[#21BA45]/20 text-[#21BA45]">
+                              W
+                            </span>
+                          )}
+                          {s.won === false && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-500/15 text-red-400">
+                              L
+                            </span>
+                          )}
+                          {s.won == null && (
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-white/10 text-gray-500">
+                              —
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => void window.api.openExternal(snap.bracketUrl)}
+                className="text-xs text-[#21BA45] hover:underline font-medium"
+              >
+                Open bracket on start.gg
+              </button>
+              <button
+                type="button"
+                onClick={() => void window.api.openExternal(snap.bracketEmbedUrl)}
+                className="text-xs text-gray-500 hover:text-gray-300"
+              >
+                Bracket embed
+              </button>
             </div>
           </div>
 

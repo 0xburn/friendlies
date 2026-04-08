@@ -854,6 +854,10 @@ query CashboxEntrantEventMeta($entrantId: ID!) {
   entrant(id: $entrantId) {
     initialSeedNum
     isDisqualified
+    standing {
+      placement
+      isFinal
+    }
     event {
       numEntrants
       startAt
@@ -928,6 +932,8 @@ async function fetchCashboxPanelExtras(
   eventStartAt: number | null;
   eventState: string | null;
   streamQueues: CashboxStreamQueueRow[];
+  /** Official placement when standings exist (eliminated or event complete). */
+  placement: number | null;
 }> {
   const out = {
     initialSeed: null as number | null,
@@ -936,6 +942,7 @@ async function fetchCashboxPanelExtras(
     eventStartAt: null as number | null,
     eventState: null as string | null,
     streamQueues: [] as CashboxStreamQueueRow[],
+    placement: null as number | null,
   };
 
   const metaR = await startGgGraphql<{ entrant: any }>(
@@ -948,6 +955,10 @@ async function fetchCashboxPanelExtras(
     const e = metaR.data.entrant;
     out.initialSeed = e.initialSeedNum ?? null;
     out.isDisqualified = !!e.isDisqualified;
+    const st = e.standing;
+    if (st?.placement != null && Number.isFinite(Number(st.placement))) {
+      out.placement = Number(st.placement);
+    }
     const ev = e.event;
     if (ev) {
       out.eventEntrantCount = ev.numEntrants ?? null;
@@ -1011,6 +1022,7 @@ export type CashboxSnapshot =
         eventStartAt: number | null;
         eventState: string | null;
         streamQueues: CashboxStreamQueueRow[];
+        placement: number | null;
       };
       nextMatch: CashboxNextMatchDetail | null;
       recentMatches: {
