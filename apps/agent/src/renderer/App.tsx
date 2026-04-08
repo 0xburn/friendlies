@@ -8,6 +8,7 @@ import { Opponents } from './pages/Opponents';
 import { Settings } from './pages/Settings';
 import { Discover } from './pages/Discover';
 import { Leaderboard } from './pages/Leaderboard';
+import { Chat } from './pages/Chat';
 import { UpdateBanner } from './components/UpdateBanner';
 
 function DocumentVisibilityReporter() {
@@ -513,6 +514,7 @@ export function App() {
         <Route element={<Navigation />}>
           <Route path="/" element={<Friends />} />
           <Route path="/discover" element={<Discover />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/ggs" element={<GGs />} />
           <Route path="/opponents" element={<Opponents />} />
           <Route path="/leaderboard" element={<Leaderboard />} />

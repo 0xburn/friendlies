@@ -112,6 +112,29 @@ const api = {
   getUnreadNudgeCount: () => ipcRenderer.invoke('nudge:unreadCount') as Promise<number>,
   onUnreadNudgeCount: (cb: (count: number) => void): Unsubscribe => onEvent('nudge:unreadCount', cb),
 
+  chatEnabled: () => ipcRenderer.invoke('chat:enabled') as Promise<boolean>,
+  chatSubscribe: (room?: string) =>
+    ipcRenderer.invoke('chat:subscribe', room) as Promise<{ ok: boolean; error?: string }>,
+  chatUnsubscribe: () => ipcRenderer.invoke('chat:unsubscribe') as Promise<void>,
+  chatHistory: (opts?: { room?: string; before?: string; limit?: number }) =>
+    ipcRenderer.invoke('chat:history', opts) as Promise<any[]>,
+  chatSend: (content: string, room?: string) =>
+    ipcRenderer.invoke('chat:send', content, room) as Promise<{ error?: string }>,
+  chatDelete: (messageId: string) =>
+    ipcRenderer.invoke('chat:delete', messageId) as Promise<{ error?: string }>,
+  chatReport: (messageId: string, reason?: string) =>
+    ipcRenderer.invoke('chat:report', messageId, reason) as Promise<{ error?: string }>,
+  chatIsMuted: () => ipcRenderer.invoke('chat:isMuted') as Promise<boolean>,
+  chatProfile: (connectCode: string) =>
+    ipcRenderer.invoke('chat:profile', connectCode) as Promise<{ connect_code: string; avatar_url: string | null; main_character: number | null; hide_avatar: boolean } | null>,
+  chatAdminDelete: (messageId: string) =>
+    ipcRenderer.invoke('chat:adminDelete', messageId) as Promise<{ ok?: boolean; error?: string }>,
+  chatAdminMute: (connectCode: string, durationMinutes?: number) =>
+    ipcRenderer.invoke('chat:adminMute', connectCode, durationMinutes) as Promise<{ ok?: boolean; error?: string }>,
+  onChatMessage: (cb: (msg: any) => void): Unsubscribe => onEvent('chat:newMessage', cb),
+  onChatMessageDeleted: (cb: (data: { id: string }) => void): Unsubscribe => onEvent('chat:messageDeleted', cb),
+  onChatOnlineCount: (cb: (count: number) => void): Unsubscribe => onEvent('chat:onlineCount', cb),
+
   trackBannerClick: (banner: string) => ipcRenderer.invoke('banner:click', banner),
   getCashboxSnapshot: () => ipcRenderer.invoke('cashbox:getSnapshot'),
   lookupCashboxOpponent: (code: string) =>

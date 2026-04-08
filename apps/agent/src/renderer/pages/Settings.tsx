@@ -618,7 +618,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v1.0.26
+      friendlies v1.0.27
       </p>
     </div>
   );

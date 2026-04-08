@@ -4,6 +4,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 const baseLinks = [
   { to: '/', label: 'Friends', icon: '♟' },
   { to: '/discover', label: 'Discover', icon: '◎' },
+  { to: '/chat', label: 'Chat (BETA)', icon: '◇' },
   { to: '/ggs', label: 'GGs', icon: '✦' },
   { to: '/opponents', label: 'Opponents', icon: '⚔' },
   { to: '/leaderboard', label: 'Leaderboard', icon: '▲' },
@@ -102,7 +103,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.26</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.27</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

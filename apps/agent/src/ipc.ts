@@ -16,6 +16,18 @@ import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
 import { backfillRecentReplays } from './watcher';
 import { enrichCashboxFriendliesOpponent, lookupFriendliesOpponent } from './cashbox-enrich';
 
+import {
+  checkMuted,
+  deleteChatMessage,
+  getChatHistory,
+  isChatEnabled,
+  joinChatPresence,
+  lookupChatProfile,
+  reportChatMessage,
+  sendChatMessage,
+  subscribeChatRoom,
+  unsubscribeChatRoom,
+} from './chat';
 import { getCashboxSnapshot, reportBracketSet } from './startgg/cashbox';
 import {
   completeStartGgModerationTask,
@@ -2007,6 +2019,91 @@ export function registerIpcHandlers(
     }
     const b = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
     return updateStartGgTask(taskId, b);
+  });
+
+  // --- Chat ---
+
+  ipcMain.handle('chat:enabled', () => isChatEnabled());
+
+  ipcMain.handle('chat:subscribe', async (_e, room?: string) => {
+    const r = room || 'general';
+    const enabled = await isChatEnabled();
+    if (!enabled) return { ok: false, error: 'Chat is currently disabled' };
+    const ok = await subscribeChatRoom(r);
+    if (ok) await joinChatPresence(r);
+    return { ok };
+  });
+
+  ipcMain.handle('chat:unsubscribe', () => unsubscribeChatRoom());
+
+  ipcMain.handle('chat:history', async (_e, opts?: { room?: string; before?: string; limit?: number }) => {
+    return getChatHistory(opts?.room, opts?.before, opts?.limit);
+  });
+
+  ipcMain.handle('chat:send', async (_e, content: string, room?: string) => {
+    return sendChatMessage(content, room);
+  });
+
+  ipcMain.handle('chat:delete', async (_e, messageId: string) => {
+    return deleteChatMessage(messageId);
+  });
+
+  ipcMain.handle('chat:report', async (_e, messageId: string, reason?: string) => {
+    return reportChatMessage(messageId, reason);
+  });
+
+  ipcMain.handle('chat:isMuted', () => checkMuted());
+
+  ipcMain.handle('chat:profile', async (_e, connectCode: string) => {
+    return lookupChatProfile(connectCode);
+  });
+
+  ipcMain.handle('chat:adminDelete', async (_e, messageId: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+      const identity = getIdentity();
+      const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
+      if (!identity?.connectCode || !ADMIN_CODES.includes(identity.connectCode)) {
+        return { error: 'Not authorized' };
+      }
+      const { error } = await supabase.from('chat_messages')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id })
+        .eq('id', messageId);
+      if (error) return { error: error.message };
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
+  });
+
+  ipcMain.handle('chat:adminMute', async (_e, connectCode: string, durationMinutes?: number) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return { error: 'Not authenticated' };
+      const identity = getIdentity();
+      const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
+      if (!identity?.connectCode || !ADMIN_CODES.includes(identity.connectCode)) {
+        return { error: 'Not authorized' };
+      }
+      const { data: target } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('connect_code', connectCode)
+        .single();
+      if (!target) return { error: 'User not found' };
+
+      const expires = durationMinutes
+        ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+        : null;
+
+      const { error } = await supabase.from('chat_mutes').insert({
+        user_id: target.id,
+        muted_by: user.id,
+        expires_at: expires,
+        reason: `Muted by admin ${identity.connectCode}`,
+      });
+      if (error) return { error: error.message };
+      return { ok: true };
+    } catch (e: any) { return { error: e.message }; }
   });
 
   // --- start.gg OAuth ---
