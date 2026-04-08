@@ -22,6 +22,10 @@ let chatEnabled: boolean | null = null;
 let chatEnabledAt = 0;
 const CHAT_ENABLED_TTL = 30_000;
 
+let blockedCodesCache: Set<string> | null = null;
+let blockedCodesCacheAt = 0;
+const BLOCKED_CODES_TTL = 15_000;
+
 export async function isChatEnabled(): Promise<boolean> {
   if (chatEnabled !== null && Date.now() - chatEnabledAt < CHAT_ENABLED_TTL) {
     return chatEnabled;
@@ -35,6 +39,41 @@ export async function isChatEnabled(): Promise<boolean> {
     chatEnabled = data?.value === 'true';
     chatEnabledAt = Date.now();
     return chatEnabled;
+  } catch {
+    return false;
+  }
+}
+
+async function getBlockedCodes(): Promise<Set<string>> {
+  if (blockedCodesCache && Date.now() - blockedCodesCacheAt < BLOCKED_CODES_TTL) {
+    return blockedCodesCache;
+  }
+  try {
+    const user = await getCurrentUser();
+    if (!user) return new Set();
+    const { data } = await supabase
+      .from('blocked_users')
+      .select('blocked_connect_code')
+      .eq('user_id', user.id);
+    blockedCodesCache = new Set((data ?? []).map((r: any) => r.blocked_connect_code));
+    blockedCodesCacheAt = Date.now();
+    return blockedCodesCache;
+  } catch {
+    return blockedCodesCache ?? new Set();
+  }
+}
+
+export function invalidateBlockCache(): void {
+  blockedCodesCache = null;
+  blockedCodesCacheAt = 0;
+}
+
+export async function checkChatBanned(): Promise<boolean> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return false;
+    const { data } = await supabase.rpc('get_blocked_by_count', { target_user_id: user.id });
+    return typeof data === 'number' && data >= 5;
   } catch {
     return false;
   }
@@ -56,8 +95,11 @@ export async function subscribeChatRoom(room: string): Promise<boolean> {
         table: 'chat_messages',
         filter: `room=eq.${room}`,
       },
-      (payload) => {
-        sendToRenderer('chat:newMessage', payload.new);
+      async (payload) => {
+        const msg = payload.new as any;
+        const blocked = await getBlockedCodes();
+        if (msg?.connect_code && blocked.has(msg.connect_code)) return;
+        sendToRenderer('chat:newMessage', msg);
       },
     )
     .on(
@@ -182,7 +224,13 @@ export async function sendChatMessage(content: string, room = 'general'): Promis
   if (error) {
     if (error.message.includes('rate limit')) return { error: 'Slow down! Wait a few seconds.' };
     if (error.message.includes('muted')) return { error: 'You are muted from chat' };
+    if (error.message.includes('disabled for your account')) return { error: 'Chat is disabled for your account' };
     if (error.message.includes('disabled')) return { error: 'Chat is currently disabled' };
+    if (error.message.includes('inappropriate')) return { error: 'Message contains inappropriate content' };
+    if (error.message.includes('character spam')) return { error: 'Message rejected: too much character repetition' };
+    if (error.message.includes('shout')) return { error: 'Message rejected: please turn off caps lock' };
+    if (error.message.includes('Links')) return { error: 'Links are not allowed in chat' };
+    if (error.message.includes('Duplicate')) return { error: 'You already sent that message' };
     return { error: error.message };
   }
 
@@ -219,7 +267,10 @@ export async function getChatHistory(
   const { data, error } = await query;
   if (error) { console.error('[chat] history error:', error.message); return { messages: [], profiles: {} }; }
 
-  const messages = (data ?? []).reverse() as ChatMessage[];
+  const blocked = await getBlockedCodes();
+  const messages = (data ?? [])
+    .reverse()
+    .filter((m: any) => !blocked.has(m.connect_code)) as ChatMessage[];
   const profiles = await fetchProfilesForMessages(messages);
   return { messages, profiles };
 }
@@ -253,13 +304,9 @@ export async function deleteChatMessage(messageId: string): Promise<{ error?: st
   const user = await getCurrentUser();
   if (!user) return { error: 'Not authenticated' };
 
-  const { error } = await supabase
-    .from('chat_messages')
-    .update({ deleted_at: new Date().toISOString(), deleted_by: user.id })
-    .eq('id', messageId)
-    .eq('user_id', user.id);
-
+  const { data, error } = await supabase.rpc('owner_delete_chat_message', { msg_id: messageId });
   if (error) return { error: error.message };
+  if (data === false) return { error: 'Could not delete message' };
   return {};
 }
 

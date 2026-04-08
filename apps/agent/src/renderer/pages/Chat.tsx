@@ -52,6 +52,7 @@ export function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [chatDisabled, setChatDisabled] = useState(false);
   const [disabledByUser, setDisabledByUser] = useState(false);
+  const [chatBanned, setChatBanned] = useState(false);
   const [muted, setMuted] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -134,9 +135,19 @@ export function Chat() {
 
       setBlockedCodes(new Set((blocked || []).map((b: any) => b.connectCode)));
 
-      const isMuted = await window.api.chatIsMuted();
+      const [isMuted, isBanned] = await Promise.all([
+        window.api.chatIsMuted(),
+        window.api.chatIsBanned(),
+      ]);
       if (!mounted) return;
       setMuted(isMuted);
+
+      if (isBanned) {
+        setChatBanned(true);
+        setChatDisabled(true);
+        setLoading(false);
+        return;
+      }
 
       const subResult = await window.api.chatSubscribe('general');
       if (!mounted) return;
@@ -273,12 +284,24 @@ export function Chat() {
   }
 
   async function handleDelete(messageId: string) {
-    await window.api.chatDelete(messageId);
+    const result = await window.api.chatDelete(messageId);
+    if (result.error) {
+      setError(result.error);
+      setTimeout(() => setError(null), 3000);
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    }
     setContextMenu(null);
   }
 
   async function handleAdminDelete(messageId: string) {
-    await window.api.chatAdminDelete(messageId);
+    const result = await window.api.chatAdminDelete(messageId);
+    if (result.error) {
+      setError(result.error);
+      setTimeout(() => setError(null), 3000);
+    } else {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    }
     setContextMenu(null);
   }
 
@@ -286,8 +309,10 @@ export function Chat() {
     const result = await window.api.chatReport(messageId);
     if (result.error) {
       setError(result.error);
-      setTimeout(() => setError(null), 3000);
+    } else {
+      setError('Report submitted');
     }
+    setTimeout(() => setError(null), 3000);
     setContextMenu(null);
   }
 
@@ -318,7 +343,11 @@ export function Chat() {
         </div>
         <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-8 text-center">
           <p className="text-gray-400">
-            {disabledByUser ? 'Chat is disabled. You can re-enable it in Settings → Social Features.' : 'Chat is currently disabled.'}
+            {chatBanned
+              ? 'Chat is disabled for your account.'
+              : disabledByUser
+                ? 'Chat is disabled. You can re-enable it in Settings → Social Features.'
+                : 'Chat is currently disabled.'}
           </p>
         </div>
       </div>
@@ -452,6 +481,17 @@ export function Chat() {
                       {formatTimestamp(msg.created_at)}
                     </span>
                   )}
+
+                  {/* Three-dot menu button on hover */}
+                  <button
+                    className="hidden group-hover:flex shrink-0 self-center w-6 h-6 items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setContextMenu({ x: e.currentTarget.getBoundingClientRect().left - 140, y: e.currentTarget.getBoundingClientRect().bottom + 4, msg });
+                    }}
+                  >
+                    ⋯
+                  </button>
                 </div>
               );
             })}

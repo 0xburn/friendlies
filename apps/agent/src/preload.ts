@@ -125,6 +125,7 @@ const api = {
   chatReport: (messageId: string, reason?: string) =>
     ipcRenderer.invoke('chat:report', messageId, reason) as Promise<{ error?: string }>,
   chatIsMuted: () => ipcRenderer.invoke('chat:isMuted') as Promise<boolean>,
+  chatIsBanned: () => ipcRenderer.invoke('chat:isBanned') as Promise<boolean>,
   chatProfile: (connectCode: string) =>
     ipcRenderer.invoke('chat:profile', connectCode) as Promise<{ connect_code: string; avatar_url: string | null; main_character: number | null; hide_avatar: boolean } | null>,
   chatAdminDelete: (messageId: string) =>

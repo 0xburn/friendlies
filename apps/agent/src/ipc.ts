@@ -17,9 +17,11 @@ import { backfillRecentReplays } from './watcher';
 import { enrichCashboxFriendliesOpponent, lookupFriendliesOpponent } from './cashbox-enrich';
 
 import {
+  checkChatBanned,
   checkMuted,
   deleteChatMessage,
   getChatHistory,
+  invalidateBlockCache,
   isChatEnabled,
   joinChatPresence,
   lookupChatProfile,
@@ -1658,6 +1660,7 @@ export function registerIpcHandlers(
         await supabase.from('friends').delete().eq('user_id', target.id).eq('friend_connect_code', myCode);
       }
 
+      invalidateBlockCache();
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -1672,6 +1675,7 @@ export function registerIpcHandlers(
         .eq('user_id', user.id)
         .eq('blocked_connect_code', connectCode);
       if (error) return { error: error.message };
+      invalidateBlockCache();
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -2053,6 +2057,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('chat:isMuted', () => checkMuted());
+  ipcMain.handle('chat:isBanned', () => checkChatBanned());
 
   ipcMain.handle('chat:profile', async (_e, connectCode: string) => {
     return lookupChatProfile(connectCode);
@@ -2067,10 +2072,9 @@ export function registerIpcHandlers(
       if (!identity?.connectCode || !ADMIN_CODES.includes(identity.connectCode)) {
         return { error: 'Not authorized' };
       }
-      const { error } = await supabase.from('chat_messages')
-        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id })
-        .eq('id', messageId);
+      const { data, error } = await supabase.rpc('admin_delete_chat_message', { msg_id: messageId });
       if (error) return { error: error.message };
+      if (data === false) return { error: 'Message not found or already deleted' };
       return { ok: true };
     } catch (e: any) { return { error: e.message }; }
   });
