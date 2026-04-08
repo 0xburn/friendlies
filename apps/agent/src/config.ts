@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { getEffectiveLauncherDir } from './launcher-path';
 
 export const SLIPPI_LAUNCHER_PROCESS_NAMES = [
   'Slippi Launcher',
@@ -29,12 +30,7 @@ export const APP_PROTOCOL = 'slippi-friends';
 
 function readLauncherVariant(): { isMainline: boolean; betaSuffix: string } {
   try {
-    const home = os.homedir();
-    const launcherDir = process.platform === 'win32'
-      ? path.join(home, 'AppData', 'Roaming', 'Slippi Launcher')
-      : process.platform === 'darwin'
-        ? path.join(home, 'Library', 'Application Support', 'Slippi Launcher')
-        : path.join(home, '.config', 'Slippi Launcher');
+    const launcherDir = getEffectiveLauncherDir();
     const settingsPath = path.join(launcherDir, 'Settings');
     if (!fs.existsSync(settingsPath)) return { isMainline: false, betaSuffix: '' };
     const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -52,14 +48,13 @@ export function getSlippiUserJsonPaths(): string[] {
   const { isMainline, betaSuffix } = readLauncherVariant();
   const candidates: string[] = [];
 
+  const launcherDir = getEffectiveLauncherDir();
+
   if (process.platform === 'win32') {
     const appData = path.join(home, 'AppData');
-    const launcherDir = path.join(appData, 'Roaming', 'Slippi Launcher');
-    // Prioritize the folder matching the Launcher's configured variant
     candidates.push(
       path.join(launcherDir, `netplay${betaSuffix}`, 'User', 'Slippi', 'user.json'),
     );
-    // Other Launcher-managed locations
     for (const suffix of ['', '-beta']) {
       const p = path.join(launcherDir, `netplay${suffix}`, 'User', 'Slippi', 'user.json');
       if (!candidates.includes(p)) candidates.push(p);
@@ -173,14 +168,8 @@ function findUserJsonInDir(dir: string, maxDepth: number): string | null {
 export function getDefaultReplayDir(): string {
   const home = os.homedir();
 
-  // Try reading from Slippi Launcher settings
   try {
-    const launcherSettingsPaths = process.platform === 'win32'
-      ? [path.join(home, 'AppData', 'Roaming', 'Slippi Launcher', 'Settings')]
-      : process.platform === 'darwin'
-        ? [path.join(home, 'Library', 'Application Support', 'Slippi Launcher', 'Settings')]
-        : [path.join(home, '.config', 'Slippi Launcher', 'Settings')];
-
+    const launcherSettingsPaths = [path.join(getEffectiveLauncherDir(), 'Settings')];
     for (const p of launcherSettingsPaths) {
       if (fs.existsSync(p)) {
         const data = JSON.parse(fs.readFileSync(p, 'utf8'));

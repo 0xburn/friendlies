@@ -5,6 +5,7 @@ import * as path from 'path';
 const Store = require('electron-store');
 
 import { getSlippiUserJsonPaths } from './config';
+import { getEffectiveLauncherDir } from './launcher-path';
 import { supabase } from './supabase';
 
 const identityStore = new Store({ name: 'slippi-friends-identity' });
@@ -29,13 +30,7 @@ function normalizeConnectCode(code: string): string {
 
 function getLauncherActiveUid(): string | null {
   try {
-    const home = os.homedir();
-    const settingsPaths = process.platform === 'win32'
-      ? [path.join(home, 'AppData', 'Roaming', 'Slippi Launcher', 'Settings')]
-      : process.platform === 'darwin'
-        ? [path.join(home, 'Library', 'Application Support', 'Slippi Launcher', 'Settings')]
-        : [path.join(home, '.config', 'Slippi Launcher', 'Settings')];
-
+    const settingsPaths = [path.join(getEffectiveLauncherDir(), 'Settings')];
     for (const p of settingsPaths) {
       if (!fs.existsSync(p)) continue;
       const data = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -126,6 +121,11 @@ export async function verifyIdentity(
     console.error('verifyIdentity failed', e);
     return false;
   }
+}
+
+export function invalidateIdentityCache(): void {
+  identityCache = null;
+  lastLoggedUserJsonPath = null;
 }
 
 export function getIdentity(): SlippiIdentity | null {

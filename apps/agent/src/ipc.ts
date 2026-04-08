@@ -3,7 +3,8 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron'
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getDirectConnectService } from './direct-connect';
-import { getIdentity, verifyIdentity } from './identity';
+import { getIdentity, invalidateIdentityCache, verifyIdentity } from './identity';
+import { getCustomLauncherDir, setCustomLauncherDir } from './launcher-path';
 import { getCachedGeo } from './geo-cache';
 import { resolvePresenceRow } from './presence-logic';
 import { getConnectionType, getLfgExpiry, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setHideConnectionType, setHideOnlineStatus, setLfgExpiry, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
@@ -1526,6 +1527,22 @@ export function registerIpcHandlers(
   });
   ipcMain.handle('setup:isComplete', () => isSetupComplete());
   ipcMain.handle('notifications:test', () => { showTestNotification(); });
+
+  ipcMain.handle('settings:getSlippiDir', () => getCustomLauncherDir());
+  ipcMain.handle('settings:setSlippiDir', (_e, dir: string | null) => {
+    setCustomLauncherDir(dir);
+    invalidateIdentityCache();
+    return dir;
+  });
+  ipcMain.handle('settings:browseSlippiDir', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Slippi Launcher Data Folder',
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return result.filePaths[0];
+  });
 
   ipcMain.handle('privacy:get', async () => {
     try {

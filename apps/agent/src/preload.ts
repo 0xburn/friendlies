@@ -78,6 +78,9 @@ const api = {
   setRegion: (chosenRegion: string | null) => ipcRenderer.invoke('profile:setRegion', chosenRegion) as Promise<{ ok?: boolean; error?: string }>,
   updateCharacters: (data: { mainCharacter?: number | null; secondaryCharacter?: number | null }) => ipcRenderer.invoke('profile:updateCharacters', data) as Promise<{ ok?: boolean; error?: string }>,
   browseDirectory: () => ipcRenderer.invoke('settings:browse'),
+  getSlippiDir: () => ipcRenderer.invoke('settings:getSlippiDir') as Promise<string | null>,
+  setSlippiDir: (dir: string | null) => ipcRenderer.invoke('settings:setSlippiDir', dir),
+  browseSlippiDir: () => ipcRenderer.invoke('settings:browseSlippiDir') as Promise<string | null>,
   isSetupComplete: () => ipcRenderer.invoke('setup:isComplete'),
   refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),
 

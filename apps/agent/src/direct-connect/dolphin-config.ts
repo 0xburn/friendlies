@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getSlippiUserJsonPaths } from '../config';
+import { getEffectiveLauncherDir } from '../launcher-path';
 
 // ---------------------------------------------------------------------------
 // Slippi Launcher Settings — shared by dolphin-config and dolphin-launcher
@@ -28,12 +29,7 @@ export interface LauncherSettings {
 export type DolphinVariant = 'mainline' | 'ishiiruka';
 
 export function getLauncherDir(): string {
-  const home = os.homedir();
-  return process.platform === 'win32'
-    ? path.join(home, 'AppData', 'Roaming', 'Slippi Launcher')
-    : process.platform === 'darwin'
-      ? path.join(home, 'Library', 'Application Support', 'Slippi Launcher')
-      : path.join(home, '.config', 'Slippi Launcher');
+  return getEffectiveLauncherDir();
 }
 
 export function readLauncherSettings(): LauncherSettings | null {

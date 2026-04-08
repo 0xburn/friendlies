@@ -31,12 +31,32 @@ type BootState =
 
 function SlippiNotFound() {
   const [checking, setChecking] = useState(false);
+  const [customDir, setCustomDir] = useState<string | null>(null);
+  const [showCustomPath, setShowCustomPath] = useState(false);
+
+  useEffect(() => {
+    window.api.getSlippiDir().then(setCustomDir);
+  }, []);
 
   async function retry() {
     setChecking(true);
     const id = await window.api.getIdentity();
     if (id) window.location.reload();
     setChecking(false);
+  }
+
+  async function handleBrowseSlippiDir() {
+    const dir = await window.api.browseSlippiDir();
+    if (dir) {
+      await window.api.setSlippiDir(dir);
+      setCustomDir(dir);
+      retry();
+    }
+  }
+
+  async function handleClearSlippiDir() {
+    await window.api.setSlippiDir(null);
+    setCustomDir(null);
   }
 
   return (
@@ -75,6 +95,40 @@ function SlippiNotFound() {
           >
             {checking ? 'Checking...' : 'I\'ve Logged In — Retry'}
           </button>
+          {!showCustomPath ? (
+            <button
+              onClick={() => setShowCustomPath(true)}
+              className="text-xs text-gray-600 hover:text-gray-400"
+            >
+              Installed on a different drive? Set custom path
+            </button>
+          ) : (
+            <div className="rounded-xl border border-[#2a2a2a] bg-[#111] p-4 text-left space-y-3">
+              <p className="text-xs text-gray-400">
+                If Slippi Launcher's data is on a different drive, point to the{' '}
+                <strong className="text-white">Slippi Launcher</strong> folder
+                (the one containing a <code className="text-gray-300">Settings</code> file
+                and <code className="text-gray-300">netplay</code> subfolder).
+              </p>
+              {customDir && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-300 truncate flex-1">{customDir}</span>
+                  <button
+                    onClick={handleClearSlippiDir}
+                    className="text-xs text-red-400 hover:text-red-300 shrink-0"
+                  >
+                    Reset
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={handleBrowseSlippiDir}
+                className="w-full rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+              >
+                Browse...
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

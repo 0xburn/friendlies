@@ -53,6 +53,7 @@ export function Settings() {
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null as string | null });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [slippiDir, setSlippiDir] = useState<string | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<{ connectCode: string; displayName: string | null; avatarUrl: string | null; blockedAt: string }[]>([]);
   const [unblocking, setUnblocking] = useState<string | null>(null);
 
@@ -73,6 +74,7 @@ export function Settings() {
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
+    window.api.getSlippiDir().then(setSlippiDir).catch(() => {});
     loadBlockedUsers();
     window.api.getIdentity().then((id) => {
       if (id?.connectCode) setMyCode(id.connectCode);
@@ -162,7 +164,7 @@ export function Settings() {
         className="w-full rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#21BA45]/50"
       />
 
-      {show('replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray') && (
+      {show('replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom') && (
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
         {show('replay', 'directory') && (
         <div className="p-5">
@@ -180,6 +182,47 @@ export function Settings() {
             >
               Change
             </button>
+          </div>
+        </div>
+        )}
+
+        {show('slippi', 'launcher', 'install', 'path', 'custom') && (
+        <div className="p-5">
+          <label className="text-sm font-medium text-gray-300">Slippi Launcher Path</label>
+          <p className="text-xs text-gray-500 mt-0.5 mb-2">Override if Slippi Launcher data is on a different drive</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={slippiDir || ''}
+              readOnly
+              placeholder="Default (auto-detect)"
+              className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white placeholder-gray-600"
+            />
+            <button
+              onClick={async () => {
+                const dir = await window.api.browseSlippiDir();
+                if (dir) {
+                  await window.api.setSlippiDir(dir);
+                  setSlippiDir(dir);
+                  flash();
+                }
+              }}
+              className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+            >
+              Change
+            </button>
+            {slippiDir && (
+              <button
+                onClick={async () => {
+                  await window.api.setSlippiDir(null);
+                  setSlippiDir(null);
+                  flash();
+                }}
+                className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+              >
+                Reset
+              </button>
+            )}
           </div>
         </div>
         )}
@@ -494,7 +537,7 @@ export function Settings() {
       </div>
       )}
 
-      {sq && !['replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'notification', 'friend online', 'play invite', 'sound', 'volume', 'test', 'reduce', 'background', 'performance', 'polling', 'game', 'privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type', 'social', 'status preset', 'nudge', 'ggs', 'friendlies', 'block', 'unblock', 'blocked users', 'account', 'log out', 'logout', 'update', 'version'].some(t => t.includes(sq)) && (
+      {sq && !['replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom', 'notification', 'friend online', 'play invite', 'sound', 'volume', 'test', 'reduce', 'background', 'performance', 'polling', 'game', 'privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type', 'social', 'status preset', 'nudge', 'ggs', 'friendlies', 'block', 'unblock', 'blocked users', 'account', 'log out', 'logout', 'update', 'version'].some(t => t.includes(sq)) && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
           <p className="text-gray-500 text-sm">No settings match "{searchQuery}"</p>
         </div>
@@ -575,7 +618,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v1.0.25
+      friendlies v1.0.26
       </p>
     </div>
   );
