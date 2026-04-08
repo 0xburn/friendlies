@@ -12,6 +12,7 @@ interface SettingsState {
   reduceBackgroundActivity: boolean;
   disableNudges: boolean;
   disableStatuses: boolean;
+  disableChat: boolean;
 }
 
 interface AppMetric {
@@ -48,6 +49,7 @@ export function Settings() {
     reduceBackgroundActivity: true,
     disableNudges: false,
     disableStatuses: false,
+    disableChat: false,
   });
   const [metrics, setMetrics] = useState<AppMetric[] | null>(null);
   const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null as string | null });
@@ -71,6 +73,7 @@ export function Settings() {
         reduceBackgroundActivity: s.reduceBackgroundActivity !== false,
         disableNudges: !!s.disableNudges,
         disableStatuses: !!s.disableStatuses,
+        disableChat: !!s.disableChat,
       });
     });
     window.api.getPrivacy().then(setPrivacy).catch(() => {});
@@ -448,7 +451,7 @@ export function Settings() {
       </div>
       )}
 
-      {show('social', 'status preset', 'nudge', 'ggs', 'friendlies') && (
+      {show('social', 'status preset', 'nudge', 'ggs', 'friendlies', 'chat') && (
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
         <div className="p-5">
           <p className="text-sm font-medium text-gray-300">Social Features</p>
@@ -469,6 +472,15 @@ export function Settings() {
           description="Receive and send quick messages like 'GGs' to other players"
           checked={!settings.disableNudges}
           onChange={() => toggle('disableNudges')}
+          indent
+        />
+        )}
+        {show('chat', 'chatroom', 'disable chat') && (
+        <ToggleRow
+          label="Chat"
+          description="Show the public chatroom tab"
+          checked={!settings.disableChat}
+          onChange={() => toggle('disableChat')}
           indent
         />
         )}
@@ -537,7 +549,7 @@ export function Settings() {
       </div>
       )}
 
-      {sq && !['replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom', 'notification', 'friend online', 'play invite', 'sound', 'volume', 'test', 'reduce', 'background', 'performance', 'polling', 'game', 'privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type', 'social', 'status preset', 'nudge', 'ggs', 'friendlies', 'block', 'unblock', 'blocked users', 'account', 'log out', 'logout', 'update', 'version'].some(t => t.includes(sq)) && (
+      {sq && !['replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom', 'notification', 'friend online', 'play invite', 'sound', 'volume', 'test', 'reduce', 'background', 'performance', 'polling', 'game', 'privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type', 'social', 'status preset', 'nudge', 'ggs', 'friendlies', 'chat', 'chatroom', 'disable chat', 'block', 'unblock', 'blocked users', 'account', 'log out', 'logout', 'update', 'version'].some(t => t.includes(sq)) && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
           <p className="text-gray-500 text-sm">No settings match "{searchQuery}"</p>
         </div>
@@ -618,7 +630,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v1.0.27
+      friendlies v1.0.28
       </p>
     </div>
   );

@@ -51,6 +51,7 @@ export function Chat() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatDisabled, setChatDisabled] = useState(false);
+  const [disabledByUser, setDisabledByUser] = useState(false);
   const [muted, setMuted] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -65,6 +66,7 @@ export function Chat() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(true);
 
   const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
@@ -85,8 +87,10 @@ export function Chat() {
     });
   }, [profileCache]);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((smooth = false) => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
   }, []);
 
   // Track whether user is scrolled to bottom
@@ -101,13 +105,21 @@ export function Chat() {
     let mounted = true;
 
     async function init() {
-      const [enabled, identity, blocked] = await Promise.all([
+      const [enabled, identity, blocked, userSettings] = await Promise.all([
         window.api.chatEnabled(),
         window.api.getIdentity(),
         window.api.getBlockedUsers(),
+        window.api.getSettings(),
       ]);
 
       if (!mounted) return;
+
+      if (userSettings?.disableChat) {
+        setChatDisabled(true);
+        setDisabledByUser(true);
+        setLoading(false);
+        return;
+      }
 
       if (!enabled) {
         setChatDisabled(true);
@@ -152,9 +164,6 @@ export function Chat() {
       }
 
       setLoading(false);
-
-      // Auto-scroll on initial load
-      setTimeout(scrollToBottom, 50);
     }
 
     init();
@@ -165,14 +174,22 @@ export function Chat() {
     };
   }, [scrollToBottom]);
 
+  // Auto-scroll when messages change (initial load + new messages)
+  const prevMsgCountRef = useRef(0);
+  useEffect(() => {
+    if (loading) return;
+    const isInitial = prevMsgCountRef.current === 0 && messages.length > 0;
+    if (isInitial || autoScrollRef.current) {
+      requestAnimationFrame(() => scrollToBottom());
+    }
+    prevMsgCountRef.current = messages.length;
+  }, [messages, loading, scrollToBottom]);
+
   // Real-time message listener — dedup + sort on every insert
   useEffect(() => {
     const unsubMsg = window.api.onChatMessage((msg: ChatMessage) => {
       setMessages((prev) => mergeMessages(prev, [msg]));
       ensureProfile(msg.connect_code);
-      if (autoScrollRef.current) {
-        setTimeout(scrollToBottom, 20);
-      }
     });
 
     const unsubDel = window.api.onChatMessageDeleted(({ id }: { id: string }) => {
@@ -252,6 +269,7 @@ export function Chat() {
       setInput('');
     }
     setSending(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function handleDelete(messageId: string) {
@@ -299,7 +317,9 @@ export function Chat() {
           <p className="text-xs text-gray-500 mt-0.5">Be respectful for the love of God. Let's see if we can last more than 14 minutes...enjoy :)</p>
         </div>
         <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-8 text-center">
-          <p className="text-gray-400">Chat is currently disabled.</p>
+          <p className="text-gray-400">
+            {disabledByUser ? 'Chat is disabled. You can re-enable it in Settings → Social Features.' : 'Chat is currently disabled.'}
+          </p>
         </div>
       </div>
     );
@@ -457,6 +477,7 @@ export function Chat() {
       {/* Input */}
       <div className="mt-2 flex gap-2">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value.slice(0, 500))}
