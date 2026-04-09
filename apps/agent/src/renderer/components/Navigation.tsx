@@ -105,7 +105,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.30</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.31</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">
@@ -124,7 +124,7 @@ export function Navigation() {
             )}
             {playerCount != null && (
               <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full animate-pulse bg-[#21BA45]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] shadow-[0_0_4px_rgba(33,186,69,0.5)]" />
                 <span className="text-[10px] text-gray-500">{playerCount} players on friendlies</span>
               </div>
             )}

@@ -573,7 +573,7 @@ app.whenReady().then(async () => {
       updateTrayStatus();
     });
     mainWindow.on('show', syncFocusFromWindow);
-    setInterval(syncFocusFromWindow, 5000);
+    setInterval(syncFocusFromWindow, 60_000);
 
     ipcMain.handle('agent:refresh', async () => {
       await refreshAgentState();

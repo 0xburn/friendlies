@@ -167,6 +167,17 @@ async function upsertPlayerRating(connectCode: string, entry: RatingCacheEntry):
   }
 }
 
+function getCachedRatings(codes: string[]): Map<string, RatingCacheEntry> {
+  const result = new Map<string, RatingCacheEntry>();
+  for (const code of codes) {
+    const cached = slippiRatingCache.get(code);
+    if (cached) result.set(code, cached);
+  }
+  return result;
+}
+
+let batchFetchInFlight = false;
+
 async function batchFetchRatings(codes: string[]): Promise<Map<string, RatingCacheEntry>> {
   const result = new Map<string, RatingCacheEntry>();
   const toFetch: string[] = [];
@@ -181,17 +192,24 @@ async function batchFetchRatings(codes: string[]): Promise<Map<string, RatingCac
     }
   }
 
-  const CONCURRENCY = 5;
-  for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
-    const batch = toFetch.slice(i, i + CONCURRENCY);
-    const entries = await Promise.all(batch.map(fetchSlippiRating));
-    for (let j = 0; j < batch.length; j++) {
-      if (entries[j]) {
-        slippiRatingCache.set(batch[j], entries[j]!);
-        result.set(batch[j], entries[j]!);
-        void upsertPlayerRating(batch[j], entries[j]!);
+  if (toFetch.length === 0 || batchFetchInFlight) return result;
+  batchFetchInFlight = true;
+
+  try {
+    const CONCURRENCY = 5;
+    for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+      const batch = toFetch.slice(i, i + CONCURRENCY);
+      const entries = await Promise.all(batch.map(fetchSlippiRating));
+      for (let j = 0; j < batch.length; j++) {
+        if (entries[j]) {
+          slippiRatingCache.set(batch[j], entries[j]!);
+          result.set(batch[j], entries[j]!);
+          void upsertPlayerRating(batch[j], entries[j]!);
+        }
       }
     }
+  } finally {
+    batchFetchInFlight = false;
   }
 
   return result;
@@ -451,7 +469,8 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
-      const liveRatings = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
+      const liveRatings = getCachedRatings(codes);
+      if (codes.length > 0) void batchFetchRatings(codes);
       const t3 = performance.now();
 
       const result = data.map((f: any) => {
@@ -520,7 +539,8 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
-      const liveRatingsIncoming = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
+      const liveRatingsIncoming = getCachedRatings(codes);
+      if (codes.length > 0) void batchFetchRatings(codes);
       if (senderIds.length > 0) {
         const { data: presRows } = await supabase.from('presence_log').select('user_id, connection_type').in('user_id', senderIds);
         if (presRows) presRows.forEach((r: any) => { presenceMap[r.user_id] = r; });
@@ -833,7 +853,8 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
-      const liveRatingsPending = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
+      const liveRatingsPending = getCachedRatings(codes);
+      if (codes.length > 0) void batchFetchRatings(codes);
 
       const result = data.map((d: any) => {
         const p = profileMap[d.sender_id] || {};
@@ -966,7 +987,8 @@ export function registerIpcHandlers(
         const { data: ratings } = await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes);
         if (ratings) ratings.forEach((r: any) => { ratingsMap[r.connect_code] = r; });
       }
-      const liveRatingsSent = codes.length > 0 ? await batchFetchRatings(codes) : new Map<string, RatingCacheEntry>();
+      const liveRatingsSent = getCachedRatings(codes);
+      if (codes.length > 0) void batchFetchRatings(codes);
 
       const result = data.map((d: any) => {
         const p = profileMap[d.receiver_id] || {};

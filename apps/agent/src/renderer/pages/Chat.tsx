@@ -63,6 +63,8 @@ export function Chat() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: ChatMessage } | null>(null);
   const [muteTarget, setMuteTarget] = useState<string | null>(null);
   const [profileCache, setProfileCache] = useState<Map<string, ChatProfile>>(new Map());
+  const profileCacheRef = useRef<Map<string, ChatProfile>>(profileCache);
+  profileCacheRef.current = profileCache;
   const profileFetchingRef = useRef<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -90,7 +92,7 @@ export function Chat() {
   }, [loading, chatDisabled]);
 
   const ensureProfile = useCallback((connectCode: string) => {
-    if (profileCache.has(connectCode) || profileFetchingRef.current.has(connectCode)) return;
+    if (profileCacheRef.current.has(connectCode) || profileFetchingRef.current.has(connectCode)) return;
     profileFetchingRef.current.add(connectCode);
     window.api.chatProfile(connectCode).then((p) => {
       profileFetchingRef.current.delete(connectCode);
@@ -102,7 +104,7 @@ export function Chat() {
         });
       }
     });
-  }, [profileCache]);
+  }, []);
 
   const scrollToBottom = useCallback((smooth = false) => {
     if (containerRef.current) {
@@ -236,7 +238,7 @@ export function Chat() {
     });
 
     return () => { unsubMsg(); unsubDel(); unsubOnline(); };
-  }, [scrollToBottom]);
+  }, [ensureProfile]);
 
   // Catch-up on visibility: fetch messages since last known timestamp to fill gaps
   useEffect(() => {
@@ -388,7 +390,7 @@ export function Chat() {
         </div>
         {onlineCount > 0 && (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#141414] border border-[#2a2a2a]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45] shadow-[0_0_4px_rgba(33,186,69,0.5)]" />
             <span className="text-xs text-gray-400">{onlineCount} in chat</span>
           </div>
         )}
@@ -483,7 +485,7 @@ export function Chat() {
                     {!grouped && (
                       <div className="flex items-baseline gap-2 mb-0.5">
                         <span
-                          className={`text-xs font-semibold truncate ${isOwn ? 'text-[#21BA45]' : 'text-gray-300'}`}
+                          className={`text-xs font-semibold truncate ${ADMIN_CODES.includes(msg.connect_code) ? 'text-[#21BA45]' : 'text-gray-300'}`}
                           title={msg.connect_code}
                         >
                           {msg.display_name || msg.connect_code}

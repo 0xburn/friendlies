@@ -48,7 +48,7 @@ export function OnlineIndicator({
         <span
           className={`inline-block rounded-full ${dotSizes[size]} ${
             status === 'online'
-              ? 'bg-[#21BA45] animate-pulse'
+              ? 'bg-[#21BA45] shadow-[0_0_6px_rgba(33,186,69,0.5)]'
               : status === 'idle'
                 ? 'bg-amber-500/90'
                 : 'bg-gray-500'

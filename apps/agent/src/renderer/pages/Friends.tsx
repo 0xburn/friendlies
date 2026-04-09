@@ -596,7 +596,7 @@ export function Friends() {
       if (document.hidden || isGameActive()) return;
       loadPlayInvites();
       loadSentInvites();
-    }, 3_000);
+    }, 5_000);
     return () => clearInterval(fastPoll);
   }, [hasActiveInvites]);
 
