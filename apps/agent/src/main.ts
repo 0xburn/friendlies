@@ -18,7 +18,7 @@ import {
   addRecentOpponent, createTray, destroyTray, updateTrayStatus,
 } from './tray';
 import { checkForUpdates, initAutoUpdater } from './updater';
-import { setIdentityMismatchHandler, startWatcher, stopWatcher } from './watcher';
+import { setIdentityMismatchHandler, setWatcherGameActive, startWatcher, stopWatcher } from './watcher';
 import { setCachedGeo } from './geo-cache';
 
 let mainWindow: BrowserWindow | null = null;
@@ -28,6 +28,7 @@ let firstPollDone = false;
 let refreshLock = false;
 let activeServiceKey: string | null = null;
 let unsubGameActive: (() => void) | null = null;
+let gameIsActive = false;
 const previousFriendStatuses = new Map<string, string>();
 const knownIncomingRequestIds = new Set<string>();
 const knownPlayInviteIds = new Set<string>();
@@ -143,6 +144,7 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: false,
       webviewTag: true,
+      backgroundThrottling: true,
     },
   });
 
@@ -398,10 +400,14 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
   void pollAllNotifications(userId);
 
   const NOTIF_POLL_NORMAL = 30_000;
-  const NOTIF_POLL_IN_GAME = 120_000;
+  const NOTIF_POLL_IN_GAME = 300_000;
 
   if (unsubGameActive) unsubGameActive();
   unsubGameActive = onGameActiveChange((inGame) => {
+    gameIsActive = inGame;
+    setWatcherGameActive(inGame);
+    sendToRenderer('game:active', inGame);
+
     if (!getSettings().reduceBackgroundActivity) return;
     if (friendPollTimer) { clearInterval(friendPollTimer); friendPollTimer = null; }
     const interval = inGame ? NOTIF_POLL_IN_GAME : NOTIF_POLL_NORMAL;
@@ -551,12 +557,14 @@ app.whenReady().then(async () => {
     registerIpcHandlers(mainWindow, { onLogout: stopAgentServices });
 
     const syncFocusFromWindow = () => {
+      if (gameIsActive) return;
       if (mainWindow && !mainWindow.isDestroyed()) {
         setMainWindowFocused(mainWindow.isFocused());
         updateTrayStatus();
       }
     };
     mainWindow.on('blur', () => {
+      if (gameIsActive) return;
       setMainWindowFocused(false);
       updateTrayStatus();
     });
@@ -565,8 +573,7 @@ app.whenReady().then(async () => {
       updateTrayStatus();
     });
     mainWindow.on('show', syncFocusFromWindow);
-    // macOS / Electron: blur can be flaky; poll actual focus so away state stays correct.
-    setInterval(syncFocusFromWindow, 2000);
+    setInterval(syncFocusFromWindow, 5000);
 
     ipcMain.handle('agent:refresh', async () => {
       await refreshAgentState();
@@ -607,13 +614,13 @@ app.whenReady().then(async () => {
     let lastTrayUpdate = 0;
     setInterval(() => {
       try {
+        if (gameIsActive && getSettings().reduceBackgroundActivity) return;
         const now = Date.now();
-        const inGame = getCurrentStatus() === 'in-game';
-        if (inGame && getSettings().reduceBackgroundActivity && now - lastTrayUpdate < 30_000) return;
+        if (now - lastTrayUpdate < 10_000) return;
         lastTrayUpdate = now;
         updateTrayStatus();
       } catch {}
-    }, 5000);
+    }, 10_000);
   } catch (e) { console.error('app.whenReady', e); }
 });
 

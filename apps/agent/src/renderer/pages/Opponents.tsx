@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isGameActive } from '../App';
 import { CharacterIcon } from '../components/CharacterIcon';
 import { PlayerStatsPanel } from '../components/PlayerStatsPanel';
 import { RankBadge } from '../components/RankBadge';
@@ -295,7 +296,7 @@ export function Opponents() {
     });
 
     pollRef.current = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || isGameActive()) return;
       loadFriendCodes();
     }, POLL_INTERVAL);
 

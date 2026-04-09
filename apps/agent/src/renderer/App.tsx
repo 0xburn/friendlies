@@ -21,6 +21,23 @@ function DocumentVisibilityReporter() {
   return null;
 }
 
+/** Global flag set by main process when Dolphin is running. Renderer intervals check this to avoid work during gameplay. */
+(window as any).__gameActive = false;
+
+function GameActiveListener() {
+  useEffect(() => {
+    const unsub = window.api.onGameActive((active: boolean) => {
+      (window as any).__gameActive = active;
+    });
+    return unsub;
+  }, []);
+  return null;
+}
+
+export function isGameActive(): boolean {
+  return (window as any).__gameActive === true;
+}
+
 type BootState =
   | { phase: 'loading' }
   | { phase: 'no-slippi' }
@@ -510,6 +527,7 @@ export function App() {
   return (
     <HashRouter>
       <DocumentVisibilityReporter />
+      <GameActiveListener />
       <Routes>
         <Route element={<Navigation />}>
           <Route path="/" element={<Friends />} />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isGameActive } from '../App';
 
 interface SettingsState {
   replayDir: string;
@@ -84,10 +85,10 @@ export function Settings() {
     });
     const fetchStats = () => (window.api as any).getPresenceStats?.().then((s: PresenceStats) => setPStats(s)).catch(() => {});
     fetchStats();
-    const statsInterval = setInterval(() => { if (!document.hidden) fetchStats(); }, 10_000);
+    const statsInterval = setInterval(() => { if (!document.hidden && !isGameActive()) fetchStats(); }, 30_000);
     const fetchMetrics = () => window.api.getAppMetrics().then(setMetrics).catch(() => {});
     fetchMetrics();
-    const metricsInterval = setInterval(() => { if (!document.hidden) fetchMetrics(); }, 5_000);
+    const metricsInterval = setInterval(() => { if (!document.hidden && !isGameActive()) fetchMetrics(); }, 30_000);
     const unsub = window.api.onUpdateStatus((s: any) => {
       if (s.state === 'not-available') setUpdateMsg('Up to date');
       else if (s.state === 'available') setUpdateMsg(null);
@@ -630,7 +631,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v1.0.29
+      friendlies v1.0.30
       </p>
     </div>
   );

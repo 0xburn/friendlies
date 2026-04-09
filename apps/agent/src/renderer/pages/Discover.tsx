@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isGameActive } from '../App';
 import { PlayerCard } from '../components/PlayerCard';
 import { CharacterIcon } from '../components/CharacterIcon';
 import { ConnectionTypeIcon } from '../components/ConnectionTypeIcon';
@@ -370,7 +371,7 @@ export function Discover() {
     loadSentInvites();
     loadPlayInvites();
     window.api.getIdentity().then((id) => { if (id) setMyCode(id.connectCode); });
-    const interval = setInterval(() => { if (!document.hidden) { load(undefined, undefined, false); loadSentInvites(); loadPlayInvites(); } }, 30_000);
+    const interval = setInterval(() => { if (!document.hidden && !isGameActive()) { load(undefined, undefined, false); loadSentInvites(); loadPlayInvites(); } }, 30_000);
     const onVisible = () => { if (!document.hidden) { load(undefined, undefined, false); loadSentInvites(); loadPlayInvites(); } };
     document.addEventListener('visibilitychange', onVisible);
     const unsubInvRefresh = window.api.onInvitesRefresh(() => { loadSentInvites(); loadPlayInvites(); });
@@ -389,7 +390,7 @@ export function Discover() {
   useEffect(() => {
     if (!hasActiveInvites) return;
     const fastPoll = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || isGameActive()) return;
       loadPlayInvites();
       loadSentInvites();
     }, 3_000);

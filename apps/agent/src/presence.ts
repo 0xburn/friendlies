@@ -763,7 +763,7 @@ export async function startPresenceLoop(
         }
 
         const now = Date.now();
-        if (now - lastStaleCleanup >= STALE_CLEANUP_INTERVAL) {
+        if (currentStatus !== 'in-game' && now - lastStaleCleanup >= STALE_CLEANUP_INTERVAL) {
           lastStaleCleanup = now;
           const cutoff = new Date(now - PRESENCE_STALE_THRESHOLD).toISOString();
           supabase.from('presence_log')
@@ -776,7 +776,9 @@ export async function startPresenceLoop(
             });
         }
 
-        currentConnectionType = detectConnectionType();
+        if (currentStatus !== 'in-game') {
+          currentConnectionType = detectConnectionType();
+        }
 
         const t0 = performance.now();
         const snapshot = await getProcessSnapshot();

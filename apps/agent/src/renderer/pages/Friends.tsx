@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { isGameActive } from '../App';
 import { ConnectionTypeIcon } from '../components/ConnectionTypeIcon';
 import { OnlineIndicator } from '../components/OnlineIndicator';
 import { PlayerCard } from '../components/PlayerCard';
@@ -221,7 +222,7 @@ export function Friends() {
     });
 
     const dbPoll = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || isGameActive()) return;
       pollFriendStatuses();
       loadFriends();
       loadIncoming();
@@ -592,7 +593,7 @@ export function Friends() {
   useEffect(() => {
     if (!hasActiveInvites) return;
     const fastPoll = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || isGameActive()) return;
       loadPlayInvites();
       loadSentInvites();
     }, 3_000);

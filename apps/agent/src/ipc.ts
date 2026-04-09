@@ -7,7 +7,7 @@ import { getIdentity, invalidateIdentityCache, verifyIdentity } from './identity
 import { getCustomLauncherDir, setCustomLauncherDir } from './launcher-path';
 import { getCachedGeo } from './geo-cache';
 import { resolvePresenceRow } from './presence-logic';
-import { getConnectionType, getLfgExpiry, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setHideConnectionType, setHideOnlineStatus, setLfgExpiry, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
+import { getConnectionType, getLfgExpiry, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setGameThrottling, setHideConnectionType, setHideOnlineStatus, setLfgExpiry, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
 import { showTestNotification } from './notifications';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { updateTrayStatus } from './tray';
@@ -1528,7 +1528,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle('settings:get', () => getSettings());
   ipcMain.handle('settings:update', (_e, partial: Partial<AgentSettings>) => {
-    return updateSettings(partial);
+    const result = updateSettings(partial);
+    if (partial.reduceBackgroundActivity !== undefined) {
+      setGameThrottling(result.reduceBackgroundActivity);
+    }
+    return result;
   });
   ipcMain.handle('settings:browse', async () => {
     if (!mainWindow) return null;

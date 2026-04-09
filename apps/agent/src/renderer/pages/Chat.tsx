@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 
 interface ChatMessage {
@@ -70,8 +70,24 @@ export function Chat() {
   const inputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(true);
 
+  const outerRef = useRef<HTMLDivElement>(null);
+
   const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
   const PAGE_SIZE = 50;
+
+  useLayoutEffect(() => {
+    function setHeight() {
+      const el = outerRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      el.style.height = `${window.innerHeight - top - 24}px`;
+    }
+    setHeight();
+    window.addEventListener('resize', setHeight);
+    const ro = new ResizeObserver(setHeight);
+    if (outerRef.current?.parentElement) ro.observe(outerRef.current.parentElement);
+    return () => { window.removeEventListener('resize', setHeight); ro.disconnect(); };
+  }, [loading, chatDisabled]);
 
   const ensureProfile = useCallback((connectCode: string) => {
     if (profileCache.has(connectCode) || profileFetchingRef.current.has(connectCode)) return;
@@ -106,75 +122,83 @@ export function Chat() {
     let mounted = true;
 
     async function init() {
-      const [enabled, identity, blocked, userSettings] = await Promise.all([
-        window.api.chatEnabled(),
-        window.api.getIdentity(),
-        window.api.getBlockedUsers(),
-        window.api.getSettings(),
-      ]);
+      try {
+        const [enabled, identity, blocked, userSettings] = await Promise.all([
+          window.api.chatEnabled(),
+          window.api.getIdentity(),
+          window.api.getBlockedUsers().catch(() => []),
+          window.api.getSettings(),
+        ]);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (userSettings?.disableChat) {
-        setChatDisabled(true);
-        setDisabledByUser(true);
+        if (userSettings?.disableChat) {
+          setChatDisabled(true);
+          setDisabledByUser(true);
+          setLoading(false);
+          return;
+        }
+
+        if (!enabled) {
+          setChatDisabled(true);
+          setLoading(false);
+          return;
+        }
+
+        if (identity?.connectCode) {
+          setMyConnectCode(identity.connectCode);
+          if (ADMIN_CODES.includes(identity.connectCode)) setIsAdmin(true);
+        }
+
+        setBlockedCodes(new Set((blocked || []).map((b: any) => b.connectCode)));
+
+        const [isMuted, isBanned] = await Promise.all([
+          window.api.chatIsMuted().catch(() => false),
+          window.api.chatIsBanned().catch(() => false),
+        ]);
+        if (!mounted) return;
+        setMuted(isMuted);
+
+        if (isBanned) {
+          setChatBanned(true);
+          setChatDisabled(true);
+          setLoading(false);
+          return;
+        }
+
+        const subResult = await window.api.chatSubscribe('general');
+        if (!mounted) return;
+
+        if (!subResult.ok) {
+          setChatDisabled(true);
+          setLoading(false);
+          return;
+        }
+
+        const result = await window.api.chatHistory({ room: 'general', limit: PAGE_SIZE });
+        if (!mounted) return;
+
+        const history = result?.messages || result || [];
+        const profiles = result?.profiles || {};
+        setMessages(history);
+        setHasMore(history.length >= PAGE_SIZE);
+
+        if (Object.keys(profiles).length > 0) {
+          setProfileCache((prev) => {
+            const next = new Map(prev);
+            for (const [code, p] of Object.entries(profiles)) next.set(code, p as ChatProfile);
+            return next;
+          });
+        }
+
         setLoading(false);
-        return;
+      } catch (e) {
+        console.error('[chat] init failed:', e);
+        if (mounted) {
+          setError('Chat failed to load. Try switching tabs and coming back.');
+          setLoading(false);
+        }
       }
-
-      if (!enabled) {
-        setChatDisabled(true);
-        setLoading(false);
-        return;
-      }
-
-      if (identity?.connectCode) {
-        setMyConnectCode(identity.connectCode);
-        if (ADMIN_CODES.includes(identity.connectCode)) setIsAdmin(true);
-      }
-
-      setBlockedCodes(new Set((blocked || []).map((b: any) => b.connectCode)));
-
-      const [isMuted, isBanned] = await Promise.all([
-        window.api.chatIsMuted(),
-        window.api.chatIsBanned(),
-      ]);
-      if (!mounted) return;
-      setMuted(isMuted);
-
-      if (isBanned) {
-        setChatBanned(true);
-        setChatDisabled(true);
-        setLoading(false);
-        return;
-      }
-
-      const subResult = await window.api.chatSubscribe('general');
-      if (!mounted) return;
-
-      if (!subResult.ok) {
-        setChatDisabled(true);
-        setLoading(false);
-        return;
-      }
-
-      const result = await window.api.chatHistory({ room: 'general', limit: PAGE_SIZE });
-      if (!mounted) return;
-
-      const history = result?.messages || result || [];
-      const profiles = result?.profiles || {};
-      setMessages(history);
-      setHasMore(history.length >= PAGE_SIZE);
-
-      if (Object.keys(profiles).length > 0) {
-        setProfileCache((prev) => {
-          const next = new Map(prev);
-          for (const [code, p] of Object.entries(profiles)) next.set(code, p as ChatProfile);
-          return next;
-        });
-      }
-
-      setLoading(false);
     }
 
     init();
@@ -355,7 +379,7 @@ export function Chat() {
   }
 
   return (
-    <div className="flex flex-col max-w-4xl" style={{ height: 'calc(100vh - 128px)' }}>
+    <div ref={outerRef} className="flex flex-col max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>

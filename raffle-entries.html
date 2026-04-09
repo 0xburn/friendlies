@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Friendlies Raffle Entries</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117;
+    color: #e1e4e8;
+    padding: 2rem;
+  }
+  .container { max-width: 640px; margin: 0 auto; }
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: #fff;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+  .stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    flex: 1;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .stat-card .num {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #58a6ff;
+  }
+  .stat-card .label {
+    font-size: 0.75rem;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.2rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #161b22;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #30363d;
+  }
+  thead th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8b949e;
+    background: #1c2129;
+    border-bottom: 1px solid #30363d;
+  }
+  thead th:last-child { text-align: right; }
+  tbody tr { border-bottom: 1px solid #21262d; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #1c2129; }
+  tbody td {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+  }
+  .rank {
+    color: #8b949e;
+    font-size: 0.8rem;
+    width: 2.5rem;
+  }
+  .code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-weight: 600;
+    color: #f0f6fc;
+  }
+  .entries {
+    text-align: right;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .bar-cell { width: 40%; }
+  .bar-bg {
+    background: #21262d;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #388bfd, #58a6ff);
+  }
+  .top3 .code { color: #ffd700; }
+  .top3 .bar-fill { background: linear-gradient(90deg, #d4a017, #ffd700); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Friendlies Raffle Entries</h1>
+  <p class="subtitle">April 7, 2026 (UTC/EST/PST) — Cashbox opens (x3, deduped by opponent) + invite_both_opened + invite_opened_melee + invite_sent + nudge_sent</p>
+  <div class="stats" id="stats"></div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Connect Code</th>
+        <th class="bar-cell"></th>
+        <th>Entries</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+<script>
+const data = [
+["FREE#195",41],["CHUM#828",29],["VMAN#920",17],["XRXZ#614",15],["SUICID#3",13],
+["DAWN#777",12],["SSL#398",12],["SPAP#1",12],["DUCK#291",10],["MAJ#114",10],
+["ZIM#0",9],["HI#659",9],["GRAMS#2",9],["STIC#839",9],["DEWG#944",9],
+["BROD#343",9],["MAR#10",8],["MOLL#928",7],["AUTM#525",7],["SALZ#312",7],
+["SMON#199",6],["NEED#292",6],["SALT#747",6],["RATP#874",6],["IDK#543",6],
+["SSBM#351",6],["ATHENA#0",6],["SOON#122",6],["DAWSON#0",6],["HBOX#305",6],
+["GIO#965",6],["BLAR#513",5],["ADO#542",5],["PAST#981",5],["BREN#657",5],
+["BONES#0",5],["CHAM#826",5],["KATZ#433",4],["RAUL#132",4],["REV#443",4],
+["MATW#444",4],["APOLLO#6",4],["GHOST#3",4],["ALEX#154",4],["RASH#342",4],
+["SAVE#362",3],["SORR#607",3],["BUEN#652",3],["SALT#348",3],["JEZO#378",3],
+["AFK#637",3],["ZACH#739",3],["BLOB#273",3],["SAL#574",3],["TREE#521",3],
+["SFLD#692",3],["DAFT#455",3],["NDOC#204",3],["ICE#574",3],["ANT#0",3],
+["ROB#610",3],["SOUL#563",3],["NOM#319",3],["ZARO#666",3],["BROOKE#0",2],
+["TBGG#818",2],["KINS#0",2],["CEG#837",2],["VINT#527",2],["PIAN#258",2],
+["JAX#124",2],["UWU#444",2],["SANC#210",2],["KEYS#498",2],["SUMP#892",2],
+["SOSO#236",2],["FROO#585",2],["LEBR#818",2],["PORC#252",2],["UNDR#723",2],
+["YURI#69",2],["BOTY#571",2],["STRW#531",2],["VII#777",2],["SHME#636",2],
+["CAM#107",2],["CHAR#257",1],["SYNN#583",1],["IBDW#0",1],["KIYU#573",1],
+["JADE#0",1],["REN#609",1],["ALOP#685",1],["PORO#642",1],["HODS#185",1],
+["DODO#308",1],["SSRB#611",1],["OASI#364",1],["PRAX#530",1],["LEON#873",1],
+["JAYDES#0",1],["LOP#1312",1],["ROSE#460",1],["XANAX#42",1],["TJ#0",1],
+["NUTZ#820",1],["GALPAL#9",1],["EGGZ#827",1],["ENVY#3",1],["INK#871",1],
+["FROG#338",1],["BRTL#477",1],["SAMUS#0",1],["WALL#710",1],["COCO#498",1],
+["KWEE#704",1],["LOAN#0",1],["MORS#762",1],["CPAPA#3",1],["KUMA#214",1],
+["SWAG#716",1],["WOLF#341",1],["KBZZ#875",1],["WAAK#455",1],["THONK#0",1],
+["CHEK#318",1],["KOTA#192",1],["SPGT#255",1],["GAY#420",1],["CODA#754",1]
+];
+
+const max = data[0][1];
+const totalEntries = data.reduce((s, r) => s + r[1], 0);
+const totalPlayers = data.length;
+
+document.getElementById('stats').innerHTML = `
+  <div class="stat-card"><div class="num">${totalPlayers}</div><div class="label">Players</div></div>
+  <div class="stat-card"><div class="num">${totalEntries}</div><div class="label">Total Entries</div></div>
+  <div class="stat-card"><div class="num">${max}</div><div class="label">Most Entries</div></div>
+`;
+
+const tbody = document.getElementById('tbody');
+data.forEach(([code, entries], i) => {
+  const pct = (entries / max * 100).toFixed(1);
+  const top3 = i < 3 ? ' top3' : '';
+  tbody.innerHTML += `<tr class="${top3}">
+    <td class="rank">${i + 1}</td>
+    <td class="code">${code}</td>
+    <td class="bar-cell"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div></td>
+    <td class="entries">${entries}</td>
+  </tr>`;
+});
+</script>
+</body>
+</html>

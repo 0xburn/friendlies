@@ -48,6 +48,30 @@ let watcher: ReturnType<typeof chokidar.watch> | null = null;
 
 let onIdentityMismatch: ((info: IdentityMismatch) => void) | null = null;
 
+let _gameActive = false;
+const _pendingReplays: Array<{ filePath: string; localConnectCode: string; onOpponent: (info: OpponentInfo) => void }> = [];
+
+export function setWatcherGameActive(active: boolean): void {
+  _gameActive = active;
+  if (!active) drainPendingReplays();
+}
+
+function drainPendingReplays(): void {
+  const batch = _pendingReplays.splice(0);
+  if (batch.length === 0) return;
+  console.log(`[watcher] Draining ${batch.length} deferred replay(s)`);
+  for (const item of batch) {
+    void (async () => {
+      try {
+        const info = await processNewReplay(item.filePath, item.localConnectCode, true);
+        if (info) item.onOpponent(info);
+      } catch (e) {
+        console.error('deferred replay processing failed', e);
+      }
+    })();
+  }
+}
+
 const MISMATCH_STRIKE_THRESHOLD = 3;
 let consecutiveMismatches = 0;
 
@@ -264,7 +288,7 @@ export function startWatcher(
       depth: 3,
       awaitWriteFinish: {
         stabilityThreshold: 2000,
-        pollInterval: 500,
+        pollInterval: 1500,
       },
     });
     watcher.on('ready', () => {
@@ -276,6 +300,11 @@ export function startWatcher(
     watcher.on('add', (filePath: string) => {
       if (!filePath.toLowerCase().endsWith('.slp')) return;
       console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
+      if (_gameActive) {
+        console.log(`[watcher] Game active — deferring replay processing`);
+        _pendingReplays.push({ filePath, localConnectCode, onOpponent });
+        return;
+      }
       void (async () => {
         try {
           const info = await processNewReplay(filePath, localConnectCode, true);

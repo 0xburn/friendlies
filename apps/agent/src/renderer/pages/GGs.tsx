@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isGameActive } from '../App';
 
 const NUDGE_OPTIONS = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi'];
 
@@ -44,7 +45,7 @@ export function GGs() {
     });
 
     const poll = setInterval(() => {
-      if (!document.hidden) loadNudges();
+      if (!document.hidden && !isGameActive()) loadNudges();
     }, 30_000);
     const onVisible = () => { if (!document.hidden) loadNudges(); };
     document.addEventListener('visibilitychange', onVisible);

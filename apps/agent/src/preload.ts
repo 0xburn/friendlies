@@ -200,6 +200,7 @@ const api = {
 
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   reportDocumentHidden: (hidden: boolean) => ipcRenderer.send('visibility:document', hidden),
+  onGameActive: (cb: (active: boolean) => void): Unsubscribe => onEvent('game:active', cb),
 };
 
 export type ElectronAPI = typeof api;
