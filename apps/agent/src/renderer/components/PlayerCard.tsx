@@ -4,6 +4,7 @@ import { OnlineIndicator } from './OnlineIndicator';
 import { RankBadge } from './RankBadge';
 import { CharacterIcon } from './CharacterIcon';
 import { PlayerStatsPanel } from './PlayerStatsPanel';
+import { PatronBadge, playerListCardShell } from '../lib/patronCardStyle';
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -50,6 +51,8 @@ interface PlayerCardProps {
   removeLabel?: string;
   onUnsend?: () => void;
   rankOverride?: string;
+  /** Public Patreon thanks-list highlight (gradient frame + badge); visible to everyone who sees the card. */
+  patreonPublicSupporter?: boolean;
 }
 
 function playerCardAreEqual(prev: PlayerCardProps, next: PlayerCardProps): boolean {
@@ -78,10 +81,11 @@ function playerCardAreEqual(prev: PlayerCardProps, next: PlayerCardProps): boole
     !!prev.onBlock === !!next.onBlock &&
     !!prev.onRemove === !!next.onRemove &&
     !!prev.onUnsend === !!next.onUnsend &&
-    prev.rankOverride === next.rankOverride;
+    prev.rankOverride === next.rankOverride &&
+    prev.patreonPublicSupporter === next.patreonPublicSupporter;
 }
 
-export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock, onRemove, onInvite, inviteDisabled, inviteState, nudgeOptions, onNudge, nudgeState, onAdd, addDisabled, addState, removeLabel, onUnsend, rankOverride }: PlayerCardProps) {
+export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock, onRemove, onInvite, inviteDisabled, inviteState, nudgeOptions, onNudge, nudgeState, onAdd, addDisabled, addState, removeLabel, onUnsend, rankOverride, patreonPublicSupporter }: PlayerCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [nudgePickerOpen, setNudgePickerOpen] = useState(false);
   const hasAvatar = !!player.avatarUrl;
@@ -94,13 +98,11 @@ export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, 
   }
 
   const isLfg = !!player.lookingToPlay;
+  const patron = !!patreonPublicSupporter;
+  const shellClass = playerListCardShell(patron, isLfg);
 
   return (
-    <div className={`rounded-xl overflow-hidden transition-all ${
-      isLfg
-        ? 'border-2 border-amber-500/50 bg-[#171411] hover:border-amber-500/70 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]'
-        : 'border border-[#2a2a2a] bg-[#141414] hover:border-[#21BA45]/30 hover:shadow-[0_0_30px_rgba(33,186,69,0.1)]'
-    }`}>
+    <div className={shellClass}>
       <div onClick={handleClick}
         className="group flex items-center gap-4 p-4 cursor-pointer">
         {hasAvatar ? (
@@ -117,8 +119,9 @@ export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, 
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="font-mono font-bold text-white tracking-wide shrink-0">{player.connectCode}</span>
+            {patron && <PatronBadge />}
             {showStatus && player.status && (
               <span className="min-w-0 overflow-hidden">
                 <OnlineIndicator

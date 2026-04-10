@@ -229,6 +229,7 @@ export function Discover() {
   const [charFilter, setCharFilter] = useState<Set<number>>(new Set());
   const [eloFilter, setEloFilter] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
+  const [patreonCodes, setPatreonCodes] = useState<Set<string>>(new Set());
   const charFilterRef = useRef(charFilter);
   charFilterRef.current = charFilter;
   const eloFilterRef = useRef(eloFilter);
@@ -276,6 +277,15 @@ export function Discover() {
     setLastRefresh(Date.now());
     if (resetVisible) setVisibleCount(15);
     loadInFlight.current = false;
+  }
+
+  async function loadPatreonCodes() {
+    try {
+      const codes = await window.api.listPatreonPublicSupporterCodes();
+      setPatreonCodes(new Set(codes));
+    } catch {
+      setPatreonCodes(new Set());
+    }
   }
 
   async function loadSentInvites() {
@@ -370,9 +380,24 @@ export function Discover() {
     load();
     loadSentInvites();
     loadPlayInvites();
+    loadPatreonCodes();
     window.api.getIdentity().then((id) => { if (id) setMyCode(id.connectCode); });
-    const interval = setInterval(() => { if (!document.hidden && !isGameActive()) { load(undefined, undefined, false); loadSentInvites(); loadPlayInvites(); } }, 30_000);
-    const onVisible = () => { if (!document.hidden) { load(undefined, undefined, false); loadSentInvites(); loadPlayInvites(); } };
+    const interval = setInterval(() => {
+      if (!document.hidden && !isGameActive()) {
+        load(undefined, undefined, false);
+        loadSentInvites();
+        loadPlayInvites();
+        loadPatreonCodes();
+      }
+    }, 30_000);
+    const onVisible = () => {
+      if (!document.hidden) {
+        load(undefined, undefined, false);
+        loadSentInvites();
+        loadPlayInvites();
+        loadPatreonCodes();
+      }
+    };
     document.addEventListener('visibilitychange', onVisible);
     const unsubInvRefresh = window.api.onInvitesRefresh(() => { loadSentInvites(); loadPlayInvites(); });
     const unsubDc = window.api.onDirectConnectStatus((evt: any) => {
@@ -758,6 +783,7 @@ export function Discover() {
                 onInvite={() => handleInvite(p.connectCode)}
                 inviteDisabled={inviting === p.connectCode || !!inviteSent[p.connectCode]}
                 inviteState={inviteSent[p.connectCode] ?? null}
+                patreonPublicSupporter={patreonCodes.has(p.connectCode.trim().toUpperCase())}
               />
             </div>
           );

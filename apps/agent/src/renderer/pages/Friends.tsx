@@ -7,6 +7,7 @@ import { RankBadge } from '../components/RankBadge';
 import { CharacterIcon } from '../components/CharacterIcon';
 import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
 import { getRankTier } from '../lib/ranks';
+import { friendsSelfStatusShell, PatronBadge } from '../lib/patronCardStyle';
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -115,6 +116,7 @@ export function Friends() {
   const [disableStatuses, setDisableStatuses] = useState(false);
   const [disableNudges, setDisableNudges] = useState(false);
   const [visibleCount, setVisibleCount] = useState(15);
+  const [patreonCodes, setPatreonCodes] = useState<Set<string>>(new Set());
 
   const [nudgeSent, setNudgeSent] = useState<Record<string, string>>({});
   const [declineModal, setDeclineModal] = useState<{ id: string; connectCode: string } | null>(null);
@@ -177,6 +179,7 @@ export function Friends() {
     window.api.getConnectionType().then(setMyConnectionType).catch(() => {});
 
     const loadStart = performance.now();
+    loadPatreonCodes();
     Promise.all([loadFriends(), loadIncoming(), pollFriendStatuses(), loadPlayInvites(), loadSentInvites()]).finally(() => {
       console.log(`[bench] Friends tab initial load: ${(performance.now() - loadStart).toFixed(0)}ms`);
       setInitialLoading(false);
@@ -228,6 +231,7 @@ export function Friends() {
       loadIncoming();
       loadPlayInvites();
       loadSentInvites();
+      loadPatreonCodes();
       window.api.getConnectionType().then(setMyConnectionType).catch(() => {});
     }, 30_000);
     const onVisible = () => {
@@ -237,6 +241,7 @@ export function Friends() {
         loadIncoming();
         loadPlayInvites();
         loadSentInvites();
+        loadPatreonCodes();
         window.api.getConnectionType().then(setMyConnectionType).catch(() => {});
         window.api.getPrivacy().then((p) => {
           setHideRegion(p.hideRegion);
@@ -300,6 +305,15 @@ export function Friends() {
       }));
       setPlayInvites(invites);
     } catch {}
+  }
+
+  async function loadPatreonCodes() {
+    try {
+      const codes = await window.api.listPatreonPublicSupporterCodes();
+      setPatreonCodes(new Set(codes));
+    } catch {
+      setPatreonCodes(new Set());
+    }
   }
 
   async function loadSentInvites() {
@@ -604,11 +618,14 @@ export function Friends() {
   const losses = myProfile?.losses ?? 0;
   const total = wins + losses;
 
+  const imPatron =
+    !!myIdentity && patreonCodes.has(myIdentity.connectCode.trim().toUpperCase());
+
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Player status card */}
       {myIdentity && (
-        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-4">
+        <div className={`${friendsSelfStatusShell(imPatron)} p-4`}>
           <div className="flex items-center gap-4">
             {hideAvatar === null ? null : hideAvatar ? (
               myMainCharId != null ? (
@@ -624,10 +641,11 @@ export function Friends() {
               <img src={myUser.avatar_url} alt="" className="w-10 h-10 rounded-full border border-[#2a2a2a] shrink-0" />
             ) : null}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="text-lg font-mono font-bold tracking-wider text-white">
                   {myIdentity.connectCode}
                 </span>
+                {imPatron && <PatronBadge />}
                 <OnlineIndicator
                   status={hideOnlineStatus ? 'offline' : myStatus}
                   size="md"
@@ -1145,6 +1163,7 @@ export function Friends() {
                 characterId: f.characterId,
               }}
               showStatus={false}
+              patreonPublicSupporter={patreonCodes.has(f.connectCode.trim().toUpperCase())}
               onClick={() => handleCopy(f.connectCode)}
               onBlock={() => setConfirmBlock({ code: f.connectCode })}
               onUnsend={() => setConfirmRemove({ id: f.id, code: f.connectCode })}
@@ -1349,6 +1368,7 @@ export function Friends() {
               nudgeOptions={disableNudges ? undefined : NUDGE_OPTIONS}
               onNudge={disableNudges ? undefined : (msg) => handleNudge(f.connectCode, msg)}
               nudgeState={nudgeMsg ?? null}
+              patreonPublicSupporter={patreonCodes.has(f.connectCode.trim().toUpperCase())}
             />
           );
         })}

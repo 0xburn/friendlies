@@ -1824,6 +1824,48 @@ export function registerIpcHandlers(
     } catch { return null; }
   });
 
+  /** True when this user's profile connect_code is listed in patreon_public_supporters (RLS-enforced). */
+  ipcMain.handle('patreon:isPublicSupporter', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return false;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('connect_code')
+        .eq('id', user.id)
+        .maybeSingle();
+      const code = profile?.connect_code;
+      if (typeof code !== 'string' || !code.trim()) return false;
+      const normalized = code.trim().toUpperCase();
+      const { data } = await supabase
+        .from('patreon_public_supporters')
+        .select('connect_code')
+        .eq('connect_code', normalized)
+        .maybeSingle();
+      return !!data;
+    } catch {
+      return false;
+    }
+  });
+
+  /** All connect codes on the public Patreon thanks list (for card flair). Empty if not signed in. */
+  ipcMain.handle('patreon:listPublicSupporterCodes', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      const { data, error } = await supabase.from('patreon_public_supporters').select('connect_code');
+      if (error) {
+        console.warn('[patreon] listPublicSupporterCodes:', error.message);
+        return [];
+      }
+      return (data ?? [])
+        .map((r: { connect_code?: string }) => (typeof r.connect_code === 'string' ? r.connect_code.trim().toUpperCase() : ''))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  });
+
   ipcMain.handle('shell:openExternal', async (_e, url: string) => {
     const raw = typeof url === 'string' ? url.trim() : '';
     if (!raw) {

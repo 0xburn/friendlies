@@ -14,6 +14,9 @@ const baseLinks = [
 
 const ADMIN_CODES = ['SMOK#1', 'BF#0', 'BURN#0', 'BURN#1'];
 
+/** Tournament promo; flip to true to show again. */
+const SHOW_FULL_HOUSE_SIEGE_BANNER = false;
+
 export function Navigation() {
   const [copied, setCopied] = useState(false);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
@@ -24,10 +27,12 @@ export function Navigation() {
   const [nudgesDisabled, setNudgesDisabled] = useState(false);
   const [chatDisabled, setChatDisabled] = useState(false);
   const [unreadNudges, setUnreadNudges] = useState(0);
+  const [patreonPublicSupporter, setPatreonPublicSupporter] = useState(false);
 
   useEffect(() => {
     window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
     window.api.getBroadcast().then((msg: string | null) => setBroadcast(msg));
+    window.api.isPatreonPublicSupporter().then(setPatreonPublicSupporter);
     window.api.getLivePresence().then(setLivePresence);
     window.api.getSettings().then((s: any) => { setNudgesDisabled(!!s.disableNudges); setChatDisabled(!!s.disableChat); });
     window.api.getUnreadNudgeCount().then(setUnreadNudges);
@@ -37,16 +42,25 @@ export function Navigation() {
       }
     });
     const unsubNudges = window.api.onUnreadNudgeCount(setUnreadNudges);
+    const unsubAuth = window.api.onAuthChanged(() => {
+      window.api.isPatreonPublicSupporter().then(setPatreonPublicSupporter);
+    });
     function refreshStats() {
       window.api.getPlayerCount().then((c: number) => { if (c > 0) setPlayerCount(c); });
       window.api.getLivePresence().then(setLivePresence);
       window.api.getBroadcast().then((msg: string | null) => setBroadcast(msg));
       window.api.getUnreadNudgeCount().then(setUnreadNudges);
+      window.api.isPatreonPublicSupporter().then(setPatreonPublicSupporter);
     }
     const interval = setInterval(() => { if (!isGameActive()) refreshStats(); }, 300_000);
     const onVisible = () => { if (!document.hidden && !isGameActive()) refreshStats(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => { unsubNudges(); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+    return () => {
+      unsubNudges();
+      unsubAuth();
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   async function handleShare() {
@@ -105,7 +119,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.32</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.33</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">
@@ -132,18 +146,53 @@ export function Navigation() {
         </div>
         <div className="px-6 pb-6">
           <button
-            onClick={() => { window.api.trackBannerClick('fullhouse_siege'); window.api.openExternal('https://start.gg/fullhouse'); }}
-            className="mb-4 w-full rounded-xl overflow-hidden border border-[#2a5a2a]/40 bg-gradient-to-r from-[#0d1f0d] via-[#122212] to-[#0d1f0d] hover:border-[#3a7a3a]/60 transition-all group cursor-pointer"
+            type="button"
+            onClick={() => {
+              window.api.trackBannerClick(patreonPublicSupporter ? 'patreon_public_supporter' : 'patreon_public_promo');
+              window.api.openExternal('https://www.patreon.com/cw/Lucky7smelee/membership');
+            }}
+            className="mb-4 w-full text-left rounded-xl overflow-hidden border border-[#5c4d78]/45 bg-gradient-to-br from-[#151022] via-[#10151c] to-[#0c1016] animate-patreon-glow group cursor-pointer ring-1 ring-inset ring-[#c9a227]/12 hover:border-[#7c6ba8]/55 hover:ring-[#c9a227]/18 transition-all"
           >
-            <div className="flex items-center gap-4 px-5 py-2.5">
-              <img src="./siege.png" alt="Full House: Siege" className="h-10 w-10 object-contain shrink-0" />
-              <div className="flex flex-col items-start">
-                <span className="text-sm font-bold tracking-wide text-[#d4c48a]">FULL HOUSE: SIEGE</span>
-                <span className="text-[11px] text-gray-400">featuring Zain, Hungrybox, Cody Schwab, Jmook, Wizzrobe, Soonsay, RapMonster, and more!</span>
-                <span className="text-xs font-semibold text-[#21BA45]">April 24 – 26, 2026</span>
+            <div className="relative flex items-center gap-4 px-5 py-3">
+              <div className="relative shrink-0 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#6366f1] via-[#5b21b6] to-[#4c1d95] text-lg text-white/95 shadow-lg shadow-[#4338ca]/25">
+                ✦
               </div>
+              <div className="relative flex flex-col items-start min-w-0 gap-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#b4a5d6]">
+                  Lucky 7s Melee on Patreon
+                </span>
+                <span className="text-sm font-display font-bold text-white tracking-tight">
+                  Want to support Lucky 7s?
+                </span>
+                <span className="text-[11px] text-gray-400 leading-snug">
+                  Back us on Patreon to get your profile highlighted on Friendlies and Lucky Stats! <br />Along with other amazing features like Full House BTS content, Lucky Stats upgrades, and content shoutouts!
+                </span>
+                {patreonPublicSupporter && (
+                  <span className="text-[11px] font-medium text-[#e8d5a3]/95 mt-1">
+                    You are on the thanks list. Thank you.
+                  </span>
+                )}
+              </div>
+              <span className="relative ml-auto shrink-0 text-[#d4b87a] text-xs font-semibold opacity-90 group-hover:opacity-100 self-center">
+                →
+              </span>
             </div>
           </button>
+          {SHOW_FULL_HOUSE_SIEGE_BANNER && (
+            <button
+              onClick={() => { window.api.trackBannerClick('fullhouse_siege'); window.api.openExternal('https://start.gg/fullhouse'); }}
+              className="mb-4 w-full rounded-xl overflow-hidden border border-[#2a5a2a]/40 bg-gradient-to-r from-[#0d1f0d] via-[#122212] to-[#0d1f0d] hover:border-[#3a7a3a]/60 transition-all group cursor-pointer"
+            >
+              <div className="flex items-center gap-4 px-5 py-2.5">
+                <img src="./siege.png" alt="Full House: Siege" className="h-10 w-10 object-contain shrink-0" />
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-bold tracking-wide text-[#d4c48a]">FULL HOUSE: SIEGE</span>
+                  <span className="text-[11px] text-gray-400">featuring Zain, Hungrybox, Cody Schwab, Jmook, Wizzrobe, Soonsay, RapMonster, and more!</span>
+                  <span className="text-xs font-semibold text-[#21BA45]">April 24 – 26, 2026</span>
+                </div>
+              </div>
+            </button>
+          )}
           {broadcast && !broadcastDismissed && (
             <div className="mb-4 rounded-xl border border-[#21BA45]/20 bg-[#21BA45]/5 px-4 py-3 flex items-center gap-3">
               <span className="text-sm">📢</span>

@@ -85,6 +85,9 @@ const api = {
   refreshAgentState: () => ipcRenderer.invoke('agent:refresh'),
 
   getBroadcast: () => ipcRenderer.invoke('config:broadcast') as Promise<string | null>,
+  isPatreonPublicSupporter: () => ipcRenderer.invoke('patreon:isPublicSupporter') as Promise<boolean>,
+  listPatreonPublicSupporterCodes: () =>
+    ipcRenderer.invoke('patreon:listPublicSupporterCodes') as Promise<string[]>,
 
   lookupSlippiPlayer: (connectCode: string) => ipcRenderer.invoke('slippi:lookup', connectCode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

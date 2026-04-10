@@ -13,7 +13,22 @@ const config: Config = {
         body: ['DM Sans', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
-      animation: { 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' },
+      keyframes: {
+        'patreon-glow': {
+          '0%, 100%': {
+            boxShadow:
+              '0 0 20px rgba(99, 102, 241, 0.12), 0 0 8px rgba(201, 162, 39, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+          },
+          '50%': {
+            boxShadow:
+              '0 0 30px rgba(139, 92, 246, 0.16), 0 0 14px rgba(212, 175, 55, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+          },
+        },
+      },
+      animation: {
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'patreon-glow': 'patreon-glow 3.5s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
