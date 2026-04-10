@@ -503,18 +503,22 @@ export function Chat() {
 
                   {/* Hover timestamp for grouped messages */}
                   {grouped && (
-                    <span className="hidden group-hover:block text-[10px] text-gray-600 shrink-0 self-center">
+                    <span className="invisible group-hover:visible text-[10px] text-gray-600 shrink-0 self-center">
                       {formatTimestamp(msg.created_at)}
                     </span>
                   )}
 
                   {/* Three-dot menu button on hover */}
                   <button
-                    className="hidden group-hover:flex shrink-0 self-center w-6 h-6 items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Open message menu"
+                    className="flex invisible group-hover:visible shrink-0 self-center w-6 h-6 items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       setContextMenu({ x: e.currentTarget.getBoundingClientRect().left - 140, y: e.currentTarget.getBoundingClientRect().bottom + 4, msg });
                     }}
+                    onMouseLeave={(e) => e.currentTarget.blur()}
                   >
                     ⋯
                   </button>
