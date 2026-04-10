@@ -30,6 +30,10 @@ notes.md
 internal_notes.md
 queries.sql
 
+# Local DB exports (pg_dump)
+friendlies-*.sql
+friendlies-*.dump
+
 # Supabase local dev
 supabase/.temp/
 
