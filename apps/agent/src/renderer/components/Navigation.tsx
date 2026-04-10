@@ -119,7 +119,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.33</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.34</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">
@@ -149,7 +149,7 @@ export function Navigation() {
             type="button"
             onClick={() => {
               window.api.trackBannerClick(patreonPublicSupporter ? 'patreon_public_supporter' : 'patreon_public_promo');
-              window.api.openExternal('https://www.patreon.com/cw/Lucky7smelee/membership');
+              window.api.openExternal('https://www.patreon.com/cw/Lucky7smelee');
             }}
             className="mb-4 w-full text-left rounded-xl overflow-hidden border border-[#5c4d78]/45 bg-gradient-to-br from-[#151022] via-[#10151c] to-[#0c1016] animate-patreon-glow group cursor-pointer ring-1 ring-inset ring-[#c9a227]/12 hover:border-[#7c6ba8]/55 hover:ring-[#c9a227]/18 transition-all"
           >

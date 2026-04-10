@@ -26,7 +26,7 @@ export function Navigation() {
           </a>
           <div className="flex items-center gap-4">
             <a
-              href="https://www.patreon.com/cw/Lucky7smelee/membership"
+              href="https://www.patreon.com/cw/Lucky7smelee"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-500 hover:text-white transition-colors"
