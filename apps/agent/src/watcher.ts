@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import chokidar from 'chokidar';
 
+import { ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT } from './identity-enforcement';
 import { getIdentity } from './identity';
 import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
@@ -122,7 +123,12 @@ export async function processNewReplay(
     // whose game timestamp (from filename) is within the last 5 minutes.
     // This avoids false positives from downloaded/moved replay files.
     const recentEnough = isLive && isReplayFilenameRecent(filePath, 5 * 60 * 1000);
-    if (recentEnough && !localPlayer && humans.length >= 2) {
+    if (
+      ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT &&
+      recentEnough &&
+      !localPlayer &&
+      humans.length >= 2
+    ) {
       if (isSpectateReplay(filePath)) {
         console.log(`[identity] Skipping mismatch check — spectate replay: ${path.basename(filePath)}`);
       } else {

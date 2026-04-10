@@ -3,6 +3,7 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron'
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getDirectConnectService } from './direct-connect';
+import { ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT } from './identity-enforcement';
 import { getIdentity, invalidateIdentityCache, verifyIdentity } from './identity';
 import { getCustomLauncherDir, setCustomLauncherDir } from './launcher-path';
 import { getCachedGeo } from './geo-cache';
@@ -1741,6 +1742,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('auth:checkBlacklist', async () => {
     try {
+      if (!ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT) return null;
       const user = await getCurrentUser();
       if (!user) return null;
       const { data } = await supabase

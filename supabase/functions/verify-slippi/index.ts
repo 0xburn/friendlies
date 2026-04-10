@@ -35,6 +35,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/** Keep in sync with apps/agent/src/identity-enforcement.ts */
+const ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT = false;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -80,12 +83,16 @@ serve(async (req) => {
       );
     }
 
-    const { data: banRecord } = await supabase
-      .from('blacklist')
-      .select('id')
-      .eq('user_id', authUser.id)
-      .limit(1)
-      .maybeSingle();
+    let banRecord: { id: string } | null = null;
+    if (ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT) {
+      const { data } = await supabase
+        .from('blacklist')
+        .select('id')
+        .eq('user_id', authUser.id)
+        .limit(1)
+        .maybeSingle();
+      banRecord = data;
+    }
 
     if (banRecord) {
       return new Response(
