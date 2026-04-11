@@ -500,16 +500,27 @@ export function Discover() {
   const ago = Math.round((Date.now() - lastRefresh) / 1000);
   const refreshLabel = ago < 5 ? 'just now' : `${ago}s ago`;
 
-  const filtered = useMemo(() => search
-    ? players.filter((p) => {
-        const q = search.toLowerCase();
-        return (
-          p.connectCode?.toLowerCase().includes(q) ||
-          p.displayName?.toLowerCase().includes(q) ||
-          p.discordUsername?.toLowerCase().includes(q)
-        );
-      })
-    : players, [players, search]);
+  const filtered = useMemo(() => {
+    const STATUS_ORDER: Record<string, number> = { online: 1, 'in-game': 2, idle: 3, offline: 4 };
+    const list = search
+      ? players.filter((p) => {
+          const q = search.toLowerCase();
+          return (
+            p.connectCode?.toLowerCase().includes(q) ||
+            p.displayName?.toLowerCase().includes(q) ||
+            p.discordUsername?.toLowerCase().includes(q)
+          );
+        })
+      : players;
+    return [...list].sort((a, b) => {
+      const aActive = (a.statusPreset || a.lookingToPlay) ? 1 : 0;
+      const bActive = (b.statusPreset || b.lookingToPlay) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aOrd = STATUS_ORDER[a.status] ?? 5;
+      const bOrd = STATUS_ORDER[b.status] ?? 5;
+      return aOrd - bOrd;
+    });
+  }, [players, search]);
 
   return (
     <div className="space-y-6 max-w-4xl">

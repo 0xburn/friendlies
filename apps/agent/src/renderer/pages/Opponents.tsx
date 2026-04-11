@@ -19,6 +19,8 @@ interface Match {
   stage_id?: number | null;
   did_win?: boolean | null;
   game_mode?: string | null;
+  game_end_method?: number | null;
+  quit_out_by?: string | null;
 }
 
 interface CharCount {
@@ -31,6 +33,8 @@ interface Session {
   opponentName?: string;
   wins: number;
   losses: number;
+  opponentQuits: number;
+  userQuits: number;
   opponentCharacters: CharCount[];
   userCharacters: CharCount[];
   latestPlayedAt: string;
@@ -47,6 +51,12 @@ function bumpChar(arr: CharCount[], id: number): void {
 
 function topChars(arr: CharCount[]): CharCount[] {
   return [...arr].sort((a, b) => b.count - a.count).slice(0, MAX_CHARS_SHOWN);
+}
+
+function countQuits(m: Match): { oppQuit: boolean; userQuit: boolean } {
+  if (!m.quit_out_by) return { oppQuit: false, userQuit: false };
+  const isOppQuit = m.quit_out_by === m.opponent_connect_code;
+  return { oppQuit: isOppQuit, userQuit: !isOppQuit };
 }
 
 function groupIntoSessions(matches: Match[]): Session[] {
@@ -70,10 +80,14 @@ function groupIntoSessions(matches: Match[]): Session[] {
       current.opponentCode === m.opponent_connect_code &&
       currentTs - ts < SESSION_GAP_MS;
 
+    const { oppQuit, userQuit } = countQuits(m);
+
     if (isSameSession && current) {
       current.games.push(m);
       if (m.did_win === true) current.wins++;
       else if (m.did_win === false) current.losses++;
+      if (oppQuit) current.opponentQuits++;
+      if (userQuit) current.userQuits++;
       if (m.opponent_character_id != null) bumpChar(current.opponentCharacters, m.opponent_character_id);
       if (m.user_character_id != null) bumpChar(current.userCharacters, m.user_character_id);
     } else {
@@ -82,6 +96,8 @@ function groupIntoSessions(matches: Match[]): Session[] {
         opponentName: m.opponent_display_name,
         wins: m.did_win === true ? 1 : 0,
         losses: m.did_win === false ? 1 : 0,
+        opponentQuits: oppQuit ? 1 : 0,
+        userQuits: userQuit ? 1 : 0,
         opponentCharacters: m.opponent_character_id != null ? [{ characterId: m.opponent_character_id, count: 1 }] : [],
         userCharacters: m.user_character_id != null ? [{ characterId: m.user_character_id, count: 1 }] : [],
         latestPlayedAt: m.played_at,
@@ -167,6 +183,22 @@ function SessionRow({
             <span className="font-mono font-bold text-white text-sm">
               {session.opponentCode}
             </span>
+            {hasRecord && (
+              <span className={`text-xs font-semibold font-mono ${
+                session.wins > session.losses
+                  ? 'text-[#21BA45]'
+                  : session.wins < session.losses
+                    ? 'text-red-400'
+                    : 'text-gray-400'
+              }`}>
+                {session.wins}W - {session.losses}L
+              </span>
+            )}
+            {session.opponentQuits > 0 && (
+              <span className="text-[10px] font-medium text-amber-400/80" title="Opponent quit out (LRAS)">
+                {session.opponentQuits} quit{session.opponentQuits !== 1 ? 's' : ''}
+              </span>
+            )}
             <span className="text-xs text-gray-600">
               {session.games.length} game{session.games.length !== 1 ? 's' : ''}
             </span>

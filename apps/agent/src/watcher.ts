@@ -8,9 +8,10 @@ import { getIdentity } from './identity';
 import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
 
-const { SlippiGame, GameMode } = require('@slippi/slippi-js/node') as {
+const { SlippiGame, GameMode, GameEndMethod } = require('@slippi/slippi-js/node') as {
   SlippiGame: typeof import('@slippi/slippi-js/node').SlippiGame;
   GameMode: typeof import('@slippi/slippi-js/node').GameMode;
+  GameEndMethod: typeof import('@slippi/slippi-js/node').GameEndMethod;
 };
 
 export type OpponentInfo = {
@@ -242,19 +243,39 @@ export async function processNewReplay(
 
     const gameEnd = game.getGameEnd();
     let didWin: boolean | null = null;
-    if (gameEnd?.placements?.length && localPlayer) {
-      const localPlacement = gameEnd.placements.find(
-        (pl) => pl.playerIndex === localPlayer.playerIndex,
-      );
-      const oppPlacement = gameEnd.placements.find(
-        (pl) => pl.playerIndex === opponent.playerIndex,
-      );
-      if (
-        localPlacement?.position != null &&
-        oppPlacement?.position != null &&
-        humans.length === 2
-      ) {
-        didWin = localPlacement.position < oppPlacement.position;
+    if (gameEnd && localPlayer && humans.length === 2) {
+      const method = gameEnd.gameEndMethod;
+
+      if (method === GameEndMethod.NO_CONTEST || method === GameEndMethod.UNRESOLVED) {
+        // Quit-out (LRAS) or unresolved — use last frame stocks/percent to
+        // award the win to whichever player was ahead. If tied, leave null.
+        const lastFrame = game.getLatestFrame();
+        const localPost = lastFrame?.players?.[localPlayer.playerIndex]?.post;
+        const oppPost = lastFrame?.players?.[opponent.playerIndex]?.post;
+        if (localPost && oppPost) {
+          const localStocks = localPost.stocksRemaining ?? 0;
+          const oppStocks = oppPost.stocksRemaining ?? 0;
+          if (localStocks !== oppStocks) {
+            didWin = localStocks > oppStocks;
+          } else {
+            const localPct = localPost.percent ?? 0;
+            const oppPct = oppPost.percent ?? 0;
+            if (localPct !== oppPct) {
+              didWin = localPct < oppPct;
+            }
+            // stocks and percent both equal → leave null (no result)
+          }
+        }
+      } else if (gameEnd.placements?.length) {
+        const localPlacement = gameEnd.placements.find(
+          (pl) => pl.playerIndex === localPlayer.playerIndex,
+        );
+        const oppPlacement = gameEnd.placements.find(
+          (pl) => pl.playerIndex === opponent.playerIndex,
+        );
+        if (localPlacement?.position != null && oppPlacement?.position != null) {
+          didWin = localPlacement.position < oppPlacement.position;
+        }
       }
     }
 
@@ -264,6 +285,21 @@ export async function processNewReplay(
       playedAt = new Date(fileStat.mtimeMs).toISOString();
     } catch {
       playedAt = new Date().toISOString();
+    }
+
+    const endMethod = gameEnd?.gameEndMethod ?? null;
+    let quitOutBy: string | null = null;
+    if (
+      endMethod === GameEndMethod.NO_CONTEST &&
+      gameEnd?.lrasInitiatorIndex != null &&
+      gameEnd.lrasInitiatorIndex >= 0
+    ) {
+      const quitter = settings.players.find(
+        (p) => p.playerIndex === gameEnd.lrasInitiatorIndex,
+      );
+      quitOutBy = quitter?.connectCode
+        ? normalizeConnectCode(quitter.connectCode)
+        : null;
     }
 
     const row = {
@@ -276,6 +312,8 @@ export async function processNewReplay(
       stage_id: settings.stageId ?? null,
       game_mode: resolvedGameMode,
       did_win: didWin,
+      game_end_method: endMethod,
+      quit_out_by: quitOutBy,
       replay_filename: path.basename(filePath),
       played_at: playedAt,
     };
