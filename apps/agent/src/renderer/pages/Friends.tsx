@@ -204,6 +204,7 @@ export function Friends() {
             opponentCode: u.opponentCode ?? undefined,
             currentCharacter: u.currentCharacter ?? null,
             playingSince: u.playingSince ?? undefined,
+            gameMode: u.gameMode ?? prev[u.connectCode]?.gameMode ?? null,
             lookingToPlay: prev[u.connectCode]?.lookingToPlay,
             statusPreset: prev[u.connectCode]?.statusPreset,
             lfgCharacters: prev[u.connectCode]?.lfgCharacters,
@@ -411,14 +412,11 @@ export function Friends() {
       });
     }
 
+    const STATUS_ORDER: Record<string, number> = { online: 1, 'in-game': 2, idle: 3, offline: 4 };
     function sortScore(f: typeof list[0]): number {
-      if (f.lookingToPlay && !f.opponentCode) return -2;
-      if (f.lookingToPlay && f.opponentCode) return -1;
-      const s = f.status || 'offline';
-      if (s === 'in-game' && f.currentCharacter != null) return 0;
-      if (s === 'in-game') return 1;
-      if (s === 'online' || s === 'idle') return 2;
-      return 3;
+      const hasActive = f.statusPreset || f.lookingToPlay;
+      const base = hasActive ? 0 : STATUS_ORDER[f.status || 'offline'] ?? 5;
+      return base;
     }
     const sorted = [...list].sort((a, b) => sortScore(a) - sortScore(b));
 
