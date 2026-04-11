@@ -1,0 +1,3 @@
+ALTER TABLE presence_log
+  ADD COLUMN IF NOT EXISTS lfg_characters INTEGER[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS lfg_ranks TEXT[] DEFAULT '{}';

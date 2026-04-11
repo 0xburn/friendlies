@@ -64,7 +64,7 @@ function SkeletonCard() {
 export function Friends() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
-  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean; statusPreset?: string | null; connectionType?: 'wifi' | 'ethernet' | null }>>({});
+  const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; gameMode?: string | null; lookingToPlay?: boolean; statusPreset?: string | null; lfgCharacters?: number[]; lfgRanks?: string[]; connectionType?: 'wifi' | 'ethernet' | null }>>({});
   const [search, setSearch] = useState('');
   const [addCode, setAddCode] = useState('');
   const [addError, setAddError] = useState('');
@@ -99,6 +99,7 @@ export function Friends() {
   const [myCharacterId, setMyCharacterId] = useState<number | null>(null);
   const [myOppCharId, setMyOppCharId] = useState<number | null>(null);
   const [myPlayingSince, setMyPlayingSince] = useState<string | null>(null);
+  const [myGameMode, setMyGameMode] = useState<string | null>(null);
   const [hideRegion, setHideRegion] = useState(false);
   const [hideAvatar, setHideAvatar] = useState<boolean | null>(null);
   const [hideConnectionType, setHideConnectionType] = useState(false);
@@ -113,6 +114,9 @@ export function Friends() {
   const [myStatusPreset, setMyStatusPreset] = useState<string | null>(null);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [lfgExpiryMinutes, setLfgExpiryMinutes] = useState<number | null>(60);
+  const [myLfgCharacters, setMyLfgCharacters] = useState<number[]>([]);
+  const [myLfgRanks, setMyLfgRanks] = useState<string[]>([]);
+  const [lfgCharPickerOpen, setLfgCharPickerOpen] = useState(false);
   const [disableStatuses, setDisableStatuses] = useState(false);
   const [disableNudges, setDisableNudges] = useState(false);
   const [visibleCount, setVisibleCount] = useState(15);
@@ -135,6 +139,10 @@ export function Friends() {
   ];
   const NUDGE_OPTIONS = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi'];
   const DECLINE_NUDGE_OPTIONS = ['Down in 5-15 min', 'Sorry, another time', 'Looking for different matchup', 'Message me on Discord'];
+  const LFG_TOP_CHARS = [2, 20, 9, 19, 15, 12, 0];
+  const LFG_TOP_SET = new Set(LFG_TOP_CHARS);
+  const LFG_REST_CHARS = CHAR_OPTIONS.filter((id) => !LFG_TOP_SET.has(id));
+  const LFG_RANK_OPTIONS = ['Master', 'Diamond', 'Platinum', 'Gold', 'Silver', 'Bronze'] as const;
 
   useEffect(() => {
     window.api.getIdentity().then((id) => {
@@ -166,6 +174,8 @@ export function Friends() {
     window.api.isLookingToPlay().then((v: boolean) => setLfg(v));
     window.api.getStatusPreset().then((v: string | null) => setMyStatusPreset(v));
     window.api.getLfgExpiry().then((v: number | null) => setLfgExpiryMinutes(v));
+    window.api.getLfgCharacters().then((v: number[]) => setMyLfgCharacters(v ?? []));
+    window.api.getLfgRanks().then((v: string[]) => setMyLfgRanks(v ?? []));
     window.api.getSettings().then((s: any) => {
       setDisableStatuses(!!s.disableStatuses);
       setDisableNudges(!!s.disableNudges);
@@ -196,6 +206,8 @@ export function Friends() {
             playingSince: u.playingSince ?? undefined,
             lookingToPlay: prev[u.connectCode]?.lookingToPlay,
             statusPreset: prev[u.connectCode]?.statusPreset,
+            lfgCharacters: prev[u.connectCode]?.lfgCharacters,
+            lfgRanks: prev[u.connectCode]?.lfgRanks,
             connectionType: u.connectionType ?? prev[u.connectCode]?.connectionType ?? null,
           };
         });
@@ -209,6 +221,7 @@ export function Friends() {
       setMyOppCharId(info.opponentCharacterId ?? null);
       setMyPlayingSince(info.playingSince ?? null);
       setMyCharacterId(info.characterId ?? null);
+      setMyGameMode(info.gameMode ?? null);
     });
 
     const unsubDc = window.api.onDirectConnectStatus((evt: any) => {
@@ -259,15 +272,18 @@ export function Friends() {
     try {
       const statuses = await window.api.getFriendStatuses();
       if (statuses && typeof statuses === 'object') {
-        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; lookingToPlay?: boolean; statusPreset?: string | null; connectionType?: 'wifi' | 'ethernet' | null }> = {};
+        const mapped: Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; gameMode?: string | null; lookingToPlay?: boolean; statusPreset?: string | null; lfgCharacters?: number[]; lfgRanks?: string[]; connectionType?: 'wifi' | 'ethernet' | null }> = {};
         for (const [code, val] of Object.entries(statuses as Record<string, any>)) {
           mapped[code] = {
             status: val.status,
             opponentCode: val.opponentCode ?? undefined,
             currentCharacter: val.currentCharacter ?? null,
             playingSince: val.playingSince ?? undefined,
+            gameMode: val.gameMode ?? null,
             lookingToPlay: val.lookingToPlay ?? false,
             statusPreset: val.statusPreset ?? null,
+            lfgCharacters: val.lfgCharacters ?? [],
+            lfgRanks: val.lfgRanks ?? [],
             connectionType: val.connectionType ?? null,
           };
         }
@@ -354,8 +370,11 @@ export function Friends() {
         currentCharacter: presence?.currentCharacter ?? null,
         opponentCode: presence?.opponentCode ?? null,
         playingSince: presence?.playingSince ?? null,
+        gameMode: presence?.gameMode ?? null,
         lookingToPlay: presence?.lookingToPlay ?? false,
         statusPreset: presence?.statusPreset ?? null,
+        lfgCharacters: presence?.lfgCharacters ?? [],
+        lfgRanks: presence?.lfgRanks ?? [],
         connectionType: presence?.connectionType ?? null,
       };
     });
@@ -507,19 +526,29 @@ export function Friends() {
     try {
       const newState = await window.api.toggleLookingToPlay();
       setLfg(newState);
-      if (!newState) setMyStatusPreset(null);
+      if (!newState) {
+        setMyStatusPreset(null);
+        setMyLfgCharacters([]);
+        setMyLfgRanks([]);
+        window.api.setLfgCharacters([]);
+        window.api.setLfgRanks([]);
+      }
     } catch {}
     setLfgToggling(false);
   }
 
   async function handleSetStatusPreset(preset: string | null) {
-    setStatusPickerOpen(false);
     setLfgToggling(true);
     try {
       if (preset === myStatusPreset) {
         await window.api.setStatusPreset(null);
         setMyStatusPreset(null);
         setLfg(false);
+        setMyLfgCharacters([]);
+        setMyLfgRanks([]);
+        window.api.setLfgCharacters([]);
+        window.api.setLfgRanks([]);
+        setStatusPickerOpen(false);
       } else {
         await window.api.setStatusPreset(preset);
         setMyStatusPreset(preset);
@@ -527,6 +556,22 @@ export function Friends() {
       }
     } catch {}
     setLfgToggling(false);
+  }
+
+  function handleToggleLfgChar(charId: number) {
+    const next = myLfgCharacters.includes(charId)
+      ? myLfgCharacters.filter((c) => c !== charId)
+      : [...myLfgCharacters, charId];
+    setMyLfgCharacters(next);
+    window.api.setLfgCharacters(next);
+  }
+
+  function handleToggleLfgRank(rank: string) {
+    const next = myLfgRanks.includes(rank)
+      ? myLfgRanks.filter((r) => r !== rank)
+      : [...myLfgRanks, rank];
+    setMyLfgRanks(next);
+    window.api.setLfgRanks(next);
   }
 
   async function handleNudge(connectCode: string, message: string) {
@@ -653,6 +698,7 @@ export function Friends() {
                   opponentCharacterId={hideOnlineStatus ? null : myOppCharId}
                   characterId={hideOnlineStatus ? null : myCharacterId}
                   playingSince={hideOnlineStatus ? null : myPlayingSince}
+                  gameMode={hideOnlineStatus ? null : myGameMode}
                 />
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-1">
@@ -692,6 +738,27 @@ export function Friends() {
                   )}
                 </div>
               </div>
+              {lfg && (myLfgCharacters.length > 0 || myLfgRanks.length > 0) && (
+                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                  <span className="text-[10px] text-amber-400/70">Looking for</span>
+                  {myLfgCharacters.length > 0 && myLfgCharacters.map((c) => (
+                    <span key={c} className="shrink-0" title={getCharacterShortName(c)}>
+                      {getCharacterImagePath(c) ? (
+                        <img src={getCharacterImagePath(c)} alt={getCharacterShortName(c)} className="h-4 w-4 object-contain inline-block" />
+                      ) : (
+                        <span className="text-[10px] font-medium text-amber-400">{getCharacterShortName(c)}</span>
+                      )}
+                    </span>
+                  ))}
+                  {myLfgCharacters.length > 0 && myLfgRanks.length > 0 && (
+                    <span className="text-[10px] text-gray-600">·</span>
+                  )}
+                  {myLfgRanks.map((rank) => {
+                    const rc: Record<string, string> = { Master: '#8B008B', Diamond: '#4169E1', Platinum: '#91E8E0', Gold: '#F6A51E', Silver: '#B5A5B7', Bronze: '#E06A36' };
+                    return <span key={rank} className="text-[10px] font-semibold" style={{ color: rc[rank] }}>{rank}</span>;
+                  })}
+                </div>
+              )}
             </div>
             <div className="shrink-0 flex items-center gap-2 relative">
               <div className="relative">
@@ -711,7 +778,7 @@ export function Friends() {
                 {statusPickerOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setStatusPickerOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 min-w-[180px]">
+                    <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border border-[#2a2a2a] bg-[#141414] shadow-2xl py-1 min-w-[280px] max-h-[420px] overflow-y-auto">
                       {!disableStatuses && STATUS_PRESETS.map((preset) => (
                         <button
                           key={preset}
@@ -730,7 +797,7 @@ export function Friends() {
                         <>
                           <div className="border-t border-[#2a2a2a] my-1" />
                           <button
-                            onClick={() => { handleToggleLfg(); setStatusPickerOpen(false); }}
+                            onClick={() => handleToggleLfg()}
                             className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                           >
                             🎮 Just looking to play
@@ -760,6 +827,99 @@ export function Friends() {
                           ))}
                         </div>
                       </div>
+                      {(lfg || myStatusPreset) && (
+                        <>
+                          <div className="border-t border-[#2a2a2a] my-1" />
+                          <div className="px-3 py-2">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] text-gray-500">Looking for characters</span>
+                              {myLfgCharacters.length > 0 && (
+                                <button onClick={(e) => { e.stopPropagation(); setMyLfgCharacters([]); window.api.setLfgCharacters([]); }} className="text-[9px] text-gray-600 hover:text-gray-400 transition-colors">clear</button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {LFG_TOP_CHARS.map((id) => (
+                                <button
+                                  key={id}
+                                  onClick={(e) => { e.stopPropagation(); handleToggleLfgChar(id); }}
+                                  className={`rounded-md px-1 py-0.5 transition-colors flex items-center gap-1 ${
+                                    myLfgCharacters.includes(id)
+                                      ? 'bg-amber-500/20 border border-amber-500/30'
+                                      : 'border border-[#2a2a2a] hover:border-[#3a3a3a]'
+                                  }`}
+                                  title={CHARACTER_MAP[id]}
+                                >
+                                  {getCharacterImagePath(id) ? (
+                                    <img src={getCharacterImagePath(id)} alt="" className="w-5 h-5 object-contain" />
+                                  ) : (
+                                    <span className="text-[10px] text-gray-400">{getCharacterShortName(id)}</span>
+                                  )}
+                                </button>
+                              ))}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setLfgCharPickerOpen(!lfgCharPickerOpen); }}
+                                className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors border ${
+                                  lfgCharPickerOpen || myLfgCharacters.some((c) => !LFG_TOP_SET.has(c))
+                                    ? 'border-amber-500/30 text-amber-400 bg-amber-500/10'
+                                    : 'border-[#2a2a2a] text-gray-500 hover:text-gray-300 hover:border-[#3a3a3a]'
+                                }`}
+                              >
+                                More...
+                              </button>
+                            </div>
+                            {lfgCharPickerOpen && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {LFG_REST_CHARS.map((id) => (
+                                  <button
+                                    key={id}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleLfgChar(id); }}
+                                    className={`rounded-md px-1 py-0.5 transition-colors flex items-center gap-1 ${
+                                      myLfgCharacters.includes(id)
+                                        ? 'bg-amber-500/20 border border-amber-500/30'
+                                        : 'border border-[#2a2a2a] hover:border-[#3a3a3a]'
+                                    }`}
+                                    title={CHARACTER_MAP[id]}
+                                  >
+                                    {getCharacterImagePath(id) ? (
+                                      <img src={getCharacterImagePath(id)} alt="" className="w-5 h-5 object-contain" />
+                                    ) : (
+                                      <span className="text-[10px] text-gray-400">{getCharacterShortName(id)}</span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="px-3 py-2">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] text-gray-500">Looking for ranks</span>
+                              {myLfgRanks.length > 0 && (
+                                <button onClick={(e) => { e.stopPropagation(); setMyLfgRanks([]); window.api.setLfgRanks([]); }} className="text-[9px] text-gray-600 hover:text-gray-400 transition-colors">clear</button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {LFG_RANK_OPTIONS.map((rank) => {
+                                const colors: Record<string, string> = { Master: '#8B008B', Diamond: '#4169E1', Platinum: '#91E8E0', Gold: '#F6A51E', Silver: '#B5A5B7', Bronze: '#E06A36' };
+                                const active = myLfgRanks.includes(rank);
+                                return (
+                                  <button
+                                    key={rank}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleLfgRank(rank); }}
+                                    className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border ${
+                                      active
+                                        ? 'bg-amber-500/20 border-amber-500/30'
+                                        : 'border-[#2a2a2a] hover:border-[#3a3a3a]'
+                                    }`}
+                                    style={{ color: active ? colors[rank] : undefined }}
+                                  >
+                                    {rank}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
                       {(lfg || myStatusPreset) && (
                         <>
                           <div className="border-t border-[#2a2a2a] my-1" />
@@ -1355,8 +1515,11 @@ export function Friends() {
                 currentCharacter: f.currentCharacter,
                 opponentCode: f.opponentCode,
                 playingSince: f.playingSince,
+                gameMode: f.gameMode,
                 lookingToPlay: f.lookingToPlay,
                 statusPreset: disableStatuses ? undefined : (f.statusPreset ?? undefined),
+                lfgCharacters: f.lfgCharacters,
+                lfgRanks: f.lfgRanks,
                 connectionType: f.connectionType ?? undefined,
               }}
               onClick={() => handleCopy(f.connectCode)}

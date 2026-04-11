@@ -5,6 +5,7 @@ import { RankBadge } from './RankBadge';
 import { CharacterIcon } from './CharacterIcon';
 import { PlayerStatsPanel } from './PlayerStatsPanel';
 import { PatronBadge, playerListCardShell } from '../lib/patronCardStyle';
+import { getCharacterShortName, getCharacterImagePath } from '../lib/characters';
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -29,8 +30,11 @@ interface PlayerCardProps {
     currentCharacter?: number | null;
     opponentCode?: string | null;
     playingSince?: string | null;
+    gameMode?: string | null;
     lookingToPlay?: boolean;
     statusPreset?: string | null;
+    lfgCharacters?: number[];
+    lfgRanks?: string[];
     connectionType?: 'wifi' | 'ethernet' | null;
     mutualFriendCount?: number;
   };
@@ -62,10 +66,15 @@ function playerCardAreEqual(prev: PlayerCardProps, next: PlayerCardProps): boole
     pp.currentCharacter === np.currentCharacter &&
     pp.opponentCode === np.opponentCode &&
     pp.playingSince === np.playingSince &&
+    pp.gameMode === np.gameMode &&
     pp.rating === np.rating &&
     pp.lookingToPlay === np.lookingToPlay &&
     pp.statusPreset === np.statusPreset &&
     pp.connectionType === np.connectionType &&
+    pp.lfgCharacters?.length === np.lfgCharacters?.length &&
+    pp.lfgCharacters?.every((c, i) => c === np.lfgCharacters?.[i]) &&
+    pp.lfgRanks?.length === np.lfgRanks?.length &&
+    pp.lfgRanks?.every((r, i) => r === np.lfgRanks?.[i]) &&
     pp.region === np.region &&
     pp.mutualFriendCount === np.mutualFriendCount &&
     pp.displayName === np.displayName &&
@@ -130,6 +139,7 @@ export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, 
                   characterId={player.currentCharacter}
                   opponentCode={player.opponentCode}
                   playingSince={player.playingSince}
+                  gameMode={player.gameMode}
                 />
               </span>
             )}
@@ -168,10 +178,37 @@ export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, 
             )}
           </div>
           {(player.statusPreset || (isLfg && !player.statusPreset)) && (
-            <div className="min-w-0">
-              <span className="inline-block rounded-full border border-amber-500/25 bg-amber-500/8 px-2 py-0.5 text-[10px] font-medium text-amber-400/90">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="inline-block rounded-full border border-amber-500/25 bg-amber-500/8 px-2 py-0.5 text-[10px] font-medium text-amber-400/90 shrink-0">
                 {player.statusPreset || 'Looking to play'}
               </span>
+              {isLfg && ((player.lfgCharacters && player.lfgCharacters.length > 0) || (player.lfgRanks && player.lfgRanks.length > 0)) && (
+                <span className="inline-flex items-center gap-1 flex-wrap text-[10px] text-amber-400/70">
+                  <span>Looking for</span>
+                  {player.lfgCharacters && player.lfgCharacters.length > 0 && (
+                    <span className="inline-flex items-center gap-0.5 flex-wrap">
+                      {player.lfgCharacters.map((id) => (
+                        <span key={id} className="inline-flex items-center gap-0.5 shrink-0" title={getCharacterShortName(id)}>
+                          {getCharacterImagePath(id) ? (
+                            <img src={getCharacterImagePath(id)} alt={getCharacterShortName(id)} className="h-3.5 w-3.5 object-contain" />
+                          ) : (
+                            <span className="font-medium text-amber-400/90">{getCharacterShortName(id)}</span>
+                          )}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {player.lfgRanks && player.lfgRanks.length > 0 && (
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      {player.lfgCharacters && player.lfgCharacters.length > 0 && <span className="text-gray-600">·</span>}
+                      {player.lfgRanks.map((rank) => {
+                        const c: Record<string, string> = { Master: '#8B008B', Diamond: '#4169E1', Platinum: '#91E8E0', Gold: '#F6A51E', Silver: '#B5A5B7', Bronze: '#E06A36' };
+                        return <span key={rank} className="font-semibold text-[10px]" style={{ color: c[rank] ?? '#d4a' }}>{rank}</span>;
+                      })}
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
           )}
         </div>

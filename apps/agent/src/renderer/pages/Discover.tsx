@@ -20,6 +20,7 @@ interface DiscoverPlayer {
   currentCharacter: number | null;
   opponentCode: string | null;
   playingSince: string | null;
+  gameMode: string | null;
   connectionType: 'wifi' | 'ethernet' | null;
   lastPlayedAt: string | null;
   lookingToPlay?: boolean;
@@ -771,9 +772,12 @@ export function Discover() {
                   currentCharacter: p.currentCharacter,
                   opponentCode: p.opponentCode,
                   playingSince: p.playingSince,
+                  gameMode: p.gameMode,
                   connectionType: p.connectionType ?? undefined,
                   lookingToPlay: p.lookingToPlay,
                   statusPreset: p.statusPreset,
+                  lfgCharacters: p.lfgCharacters,
+                  lfgRanks: p.lfgRanks,
                   mutualFriendCount: p.mutualFriendCount,
                 }}
                 onClick={() => handleCopy(p.connectCode)}

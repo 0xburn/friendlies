@@ -17,6 +17,7 @@ export type OpponentInfo = {
   connectCode: string;
   displayName: string;
   characterId: number;
+  gameMode: string | null;
 };
 
 export type IdentityMismatch = {
@@ -24,6 +25,9 @@ export type IdentityMismatch = {
   actualCode: string;
   replayFile: string;
 };
+
+/** When `presenceOnly`, parse opponent for presence/leaderboard but skip auth + `matches` upsert (used while Dolphin is active). */
+export type ProcessReplayOptions = { presenceOnly?: boolean };
 
 function isReplayFilenameRecent(filePath: string, thresholdMs: number): boolean {
   const base = path.basename(filePath, '.slp');
@@ -46,6 +50,8 @@ function mapGameMode(mode: number | null | undefined, matchId?: string | null): 
 }
 
 let watcher: ReturnType<typeof chokidar.watch> | null = null;
+let fastWatcher: ReturnType<typeof chokidar.watch> | null = null;
+const fastPeeked = new Set<string>();
 
 let onIdentityMismatch: ((info: IdentityMismatch) => void) | null = null;
 
@@ -89,7 +95,9 @@ export async function processNewReplay(
   filePath: string,
   localConnectCode: string,
   isLive = false,
+  options?: ProcessReplayOptions,
 ): Promise<OpponentInfo | null> {
+  const presenceOnly = options?.presenceOnly === true;
   try {
     const game = new SlippiGame(filePath);
     const settings = game.getSettings();
@@ -204,6 +212,10 @@ export async function processNewReplay(
     const oppCode = normalizeConnectCode(opponent.connectCode);
     const oppName = opponent.displayName || '';
     const oppChar = opponent.characterId ?? 0;
+    const resolvedGameMode = mapGameMode(
+      settings.gameMode ?? settings.inGameMode,
+      settings.matchInfo?.matchId ?? settings.matchInfo?.sessionId,
+    );
 
     if (localPlayer?.characterId != null) {
       try {
@@ -214,6 +226,15 @@ export async function processNewReplay(
       } catch (e) {
         console.error('presence character notify failed', e);
       }
+    }
+
+    if (presenceOnly) {
+      return {
+        connectCode: oppCode,
+        displayName: oppName,
+        characterId: oppChar,
+        gameMode: resolvedGameMode,
+      };
     }
 
     const { data: userData, error: userErr } = await supabase.auth.getUser();
@@ -253,7 +274,7 @@ export async function processNewReplay(
       user_character_id: localPlayer?.characterId ?? null,
       opponent_character_id: opponent.characterId ?? null,
       stage_id: settings.stageId ?? null,
-      game_mode: mapGameMode(settings.gameMode ?? settings.inGameMode, settings.matchInfo?.matchId ?? settings.matchInfo?.sessionId),
+      game_mode: resolvedGameMode,
       did_win: didWin,
       replay_filename: path.basename(filePath),
       played_at: playedAt,
@@ -270,6 +291,7 @@ export async function processNewReplay(
       connectCode: oppCode,
       displayName: oppName,
       characterId: oppChar,
+      gameMode: resolvedGameMode,
     };
   } catch (e) {
     console.error('processNewReplay failed', e);
@@ -297,6 +319,40 @@ export function startWatcher(
         pollInterval: 1500,
       },
     });
+    fastPeeked.clear();
+    fastWatcher = chokidar.watch(replayDir, {
+      ignoreInitial: true,
+      depth: 3,
+    });
+    fastWatcher.on('add', (filePath: string) => {
+      if (!filePath.toLowerCase().endsWith('.slp')) return;
+      if (fastPeeked.has(filePath)) return;
+      fastPeeked.add(filePath);
+      // Brief delay so the .slp header/settings are flushed to disk
+      setTimeout(() => {
+        void (async () => {
+          try {
+            const info = await processNewReplay(filePath, localConnectCode, true, { presenceOnly: true });
+            if (info) {
+              console.log(`[watcher] Fast peek: ${info.connectCode} mode=${info.gameMode}`);
+              try {
+                const { setLastOpponent, setLastPlayedCharacterId: _setChar } = require('./presence') as {
+                  setLastOpponent: (code: string, characterId?: number, gameMode?: string | null) => void;
+                  setLastPlayedCharacterId: (id: number | null) => void;
+                };
+                setLastOpponent(info.connectCode, info.characterId, info.gameMode);
+              } catch (e) {
+                console.error('setLastOpponent from fast peek failed', e);
+              }
+            }
+          } catch {
+            // File may not be readable yet — that's fine, main watcher handles it later
+          }
+        })();
+      }, 500);
+    });
+    fastWatcher.on('error', () => { /* ignore fast watcher errors */ });
+
     watcher.on('ready', () => {
       console.log('[watcher] Ready and watching for new replays');
     });
@@ -307,8 +363,26 @@ export function startWatcher(
       if (!filePath.toLowerCase().endsWith('.slp')) return;
       console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
       if (_gameActive) {
-        console.log(`[watcher] Game active — deferring replay processing`);
+        console.log('[watcher] Game active — deferring matches upsert; peeking opponent for presence');
         _pendingReplays.push({ filePath, localConnectCode, onOpponent });
+        void (async () => {
+          try {
+            const info = await processNewReplay(filePath, localConnectCode, true, { presenceOnly: true });
+            if (info) {
+              console.log(`[watcher] Live opponent (deferred path): ${info.connectCode} mode=${info.gameMode}`);
+              try {
+                const { setLastOpponent } = require('./presence') as {
+                  setLastOpponent: (code: string, characterId?: number, gameMode?: string | null) => void;
+                };
+                setLastOpponent(info.connectCode, info.characterId, info.gameMode);
+              } catch (e) {
+                console.error('setLastOpponent from deferred peek failed', e);
+              }
+            }
+          } catch (e) {
+            console.error('watcher presence-only replay peek failed', e);
+          }
+        })();
         return;
       }
       void (async () => {
@@ -401,4 +475,9 @@ export function stopWatcher(): void {
     console.error('stopWatcher failed', e);
   }
   watcher = null;
+  try {
+    void fastWatcher?.close();
+  } catch { /* ignore */ }
+  fastWatcher = null;
+  fastPeeked.clear();
 }

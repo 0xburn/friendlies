@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { BrowserWindow, app, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, ipcMain, screen, shell } from 'electron';
 import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   listenForTokenRefresh, logout, restoreSession, startAuthFlow,
@@ -13,7 +13,7 @@ import { supabase } from './supabase';
 import {
   getCurrentStatus, onGameActiveChange, pushOfflineAndStop, setGameThrottling, setLastOpponent, setMainWindowFocused, startPresenceLoop, stopPresenceLoop, updatePresenceReplayDir,
 } from './presence';
-import { getSettings, isSetupComplete, updateSettings } from './settings';
+import { getSettings, getWindowBounds, isSetupComplete, saveWindowBounds, updateSettings } from './settings';
 import {
   addRecentOpponent, createTray, destroyTray, updateTrayStatus,
 } from './tray';
@@ -127,11 +127,25 @@ function findProtocolUrl(argv: string[]): string | null {
   return argv.find((a) => a.startsWith(`${APP_PROTOCOL}://`)) ?? null;
 }
 
+function savedBoundsAreVisible(bounds: { x: number; y: number; width: number; height: number }): boolean {
+  const displays = screen.getAllDisplays();
+  return displays.some((d) => {
+    const { x, y, width, height } = d.workArea;
+    return bounds.x + bounds.width > x && bounds.x < x + width
+      && bounds.y + bounds.height > y && bounds.y < y + height;
+  });
+}
+
 function createMainWindow(): BrowserWindow {
   const preloadPath = path.join(__dirname, 'preload.js');
+
+  const saved = getWindowBounds();
+  const useSaved = saved && savedBoundsAreVisible(saved);
+
   const win = new BrowserWindow({
-    width: 940,
-    height: 680,
+    width: useSaved ? saved!.width : 940,
+    height: useSaved ? saved!.height : 680,
+    ...(useSaved ? { x: saved!.x, y: saved!.y } : {}),
     minWidth: 780,
     minHeight: 520,
     backgroundColor: '#0a0a0a',
@@ -148,6 +162,14 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
+  let boundsTimer: ReturnType<typeof setTimeout> | null = null;
+  const persistBounds = () => {
+    if (boundsTimer) clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(() => { saveWindowBounds(win.getBounds()); }, 500);
+  };
+  win.on('resize', persistBounds);
+  win.on('move', persistBounds);
+
   if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
     win.loadURL('http://localhost:5173');
   } else {
@@ -157,6 +179,7 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show());
   win.on('close', (e) => {
+    saveWindowBounds(win.getBounds());
     if (!(app as any).isQuitting && getSettings().closeToTray) {
       e.preventDefault();
       win.hide();
@@ -387,7 +410,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
   startWatcher(st.replayDir, identity.connectCode, (info) => {
     try {
       addRecentOpponent(info.connectCode, info.displayName);
-      setLastOpponent(info.connectCode, info.characterId);
+      setLastOpponent(info.connectCode, info.characterId, info.gameMode);
       sendToRenderer('opponent:new', info);
       updateTrayStatus();
     } catch (e) { console.error('opponent callback', e); }

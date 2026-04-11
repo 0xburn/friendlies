@@ -7,6 +7,7 @@ interface OnlineIndicatorProps {
   opponentCharacterId?: number | null;
   characterId?: number | null;
   playingSince?: string | null;
+  gameMode?: string | null;
 }
 
 function formatDuration(sinceStr: string): string {
@@ -30,8 +31,14 @@ function InGameIcon({ className }: { className?: string }) {
   );
 }
 
+const GAME_MODE_LABELS: Record<string, { label: string; color: string }> = {
+  ranked: { label: 'Ranked', color: 'text-orange-400/80' },
+  unranked: { label: 'Unranked', color: 'text-[#21BA45]/60' },
+  direct: { label: 'Direct', color: 'text-blue-400/80' },
+};
+
 export function OnlineIndicator({
-  status, size = 'md', opponentCode, opponentCharacterId, characterId, playingSince,
+  status, size = 'md', opponentCode, opponentCharacterId, characterId, playingSince, gameMode,
 }: OnlineIndicatorProps) {
   const dotSizes = { sm: 'w-2.5 h-2.5', md: 'w-4 h-4', lg: 'w-5 h-5' };
   const iconSizes = { sm: 'w-5 h-5', md: 'w-7 h-7', lg: 'w-9 h-9' };
@@ -39,6 +46,7 @@ export function OnlineIndicator({
   const showOpponent = status === 'in-game' && opponentCode;
   const myChar = characterId != null ? getCharacterShortName(characterId) : null;
   const oppChar = opponentCharacterId != null ? getCharacterShortName(opponentCharacterId) : null;
+  const modeInfo = gameMode ? GAME_MODE_LABELS[gameMode] : null;
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -58,6 +66,9 @@ export function OnlineIndicator({
       )}
       {showOpponent && (
         <span className="text-xs text-[#21BA45]/80 font-mono truncate">
+          {modeInfo && (
+            <span className={`${modeInfo.color} mr-1`}>{modeInfo.label}</span>
+          )}
           {myChar && <>{myChar} </>}
           vs {opponentCode}
           {oppChar && <> ({oppChar})</>}
@@ -67,6 +78,9 @@ export function OnlineIndicator({
             </span>
           )}
         </span>
+      )}
+      {status === 'in-game' && !showOpponent && modeInfo && (
+        <span className={`text-xs font-mono ${modeInfo.color}`}>{modeInfo.label}</span>
       )}
     </span>
   );

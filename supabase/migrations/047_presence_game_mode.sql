@@ -1,0 +1,2 @@
+ALTER TABLE presence_log
+  ADD COLUMN IF NOT EXISTS game_mode TEXT DEFAULT NULL;

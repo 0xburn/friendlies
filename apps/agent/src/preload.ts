@@ -68,6 +68,10 @@ const api = {
   getStatusPreset: () => ipcRenderer.invoke('presence:getStatusPreset') as Promise<string | null>,
   setLfgExpiry: (minutes: number | null) => ipcRenderer.invoke('presence:setLfgExpiry', minutes) as Promise<void>,
   getLfgExpiry: () => ipcRenderer.invoke('presence:getLfgExpiry') as Promise<number | null>,
+  setLfgCharacters: (chars: number[]) => ipcRenderer.invoke('presence:setLfgCharacters', chars) as Promise<void>,
+  getLfgCharacters: () => ipcRenderer.invoke('presence:getLfgCharacters') as Promise<number[]>,
+  setLfgRanks: (ranks: string[]) => ipcRenderer.invoke('presence:setLfgRanks', ranks) as Promise<void>,
+  getLfgRanks: () => ipcRenderer.invoke('presence:getLfgRanks') as Promise<string[]>,
   onPresenceUpdate: (cb: (users: any[]) => void): Unsubscribe => onEvent('presence:updated', cb),
   onLocalStatus: (cb: (info: any) => void): Unsubscribe => onEvent('presence:localStatus', cb),
 

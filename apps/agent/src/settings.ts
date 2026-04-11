@@ -79,3 +79,19 @@ export function detectReplayDir(): string {
   try { if (fs.existsSync(dir)) return dir; } catch {}
   return dir;
 }
+
+export type WindowBounds = { x: number; y: number; width: number; height: number };
+
+const BOUNDS_KEY = 'windowBounds';
+
+export function getWindowBounds(): WindowBounds | null {
+  try {
+    const raw = store.get(BOUNDS_KEY) as WindowBounds | undefined;
+    if (raw && typeof raw.width === 'number' && typeof raw.height === 'number') return raw;
+  } catch {}
+  return null;
+}
+
+export function saveWindowBounds(bounds: WindowBounds): void {
+  try { store.set(BOUNDS_KEY, bounds); } catch {}
+}

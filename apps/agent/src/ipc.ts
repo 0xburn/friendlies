@@ -8,7 +8,7 @@ import { getIdentity, invalidateIdentityCache, verifyIdentity } from './identity
 import { getCustomLauncherDir, setCustomLauncherDir } from './launcher-path';
 import { getCachedGeo } from './geo-cache';
 import { resolvePresenceRow } from './presence-logic';
-import { getConnectionType, getLfgExpiry, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setGameThrottling, setHideConnectionType, setHideOnlineStatus, setLfgExpiry, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
+import { getConnectionType, getLfgCharacters, getLfgExpiry, getLfgRanks, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setGameThrottling, setHideConnectionType, setHideOnlineStatus, setLfgCharacters, setLfgExpiry, setLfgRanks, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
 import { showTestNotification } from './notifications';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
 import { updateTrayStatus } from './tray';
@@ -1147,6 +1147,10 @@ export function registerIpcHandlers(
   ipcMain.handle('presence:getStatusPreset', () => getStatusPreset());
   ipcMain.handle('presence:setLfgExpiry', (_e, minutes: number | null) => setLfgExpiry(minutes));
   ipcMain.handle('presence:getLfgExpiry', () => getLfgExpiry());
+  ipcMain.handle('presence:setLfgCharacters', (_e, chars: number[]) => setLfgCharacters(chars));
+  ipcMain.handle('presence:getLfgCharacters', () => getLfgCharacters());
+  ipcMain.handle('presence:setLfgRanks', (_e, ranks: string[]) => setLfgRanks(ranks));
+  ipcMain.handle('presence:getLfgRanks', () => getLfgRanks());
 
   ipcMain.handle('presence:friendStatuses', async () => {
     const t0 = performance.now();
@@ -1166,7 +1170,7 @@ export function registerIpcHandlers(
       if (friendIds.length === 0) return {};
 
       const { data } = await supabase.from('presence_log')
-        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, status_preset, connection_type, app_idle, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, game_mode, looking_to_play, looking_to_play_since, status_preset, lfg_characters, lfg_ranks, connection_type, app_idle, updated_at')
         .in('user_id', friendIds);
       if (!data) return {};
       const t3 = performance.now();
@@ -1224,7 +1228,7 @@ export function registerIpcHandlers(
       const cutoff = new Date(Date.now() - PRESENCE_STALE_THRESHOLD).toISOString();
       const { data: presenceRows } = await supabase
         .from('presence_log')
-        .select('user_id, status, current_character, opponent_code, playing_since, looking_to_play, looking_to_play_since, status_preset, connection_type, app_idle, updated_at')
+        .select('user_id, status, current_character, opponent_code, playing_since, game_mode, looking_to_play, looking_to_play_since, status_preset, lfg_characters, lfg_ranks, connection_type, app_idle, updated_at')
         .in('status', ['online', 'in-game'])
         .gte('updated_at', cutoff);
       if (!presenceRows || presenceRows.length === 0) return [];
@@ -1337,11 +1341,14 @@ export function registerIpcHandlers(
             currentCharacter: resolved.currentCharacter,
             opponentCode: resolved.opponentCode,
             playingSince: resolved.playingSince,
+            gameMode: resolved.gameMode,
             connectionType: p.hide_connection_type ? null : resolved.connectionType,
             updatedAt: r.updated_at,
             lastPlayedAt: matchHistoryMap[p.connect_code] || null,
             lookingToPlay: resolved.lookingToPlay,
             statusPreset: resolved.statusPreset,
+            lfgCharacters: resolved.lfgCharacters,
+            lfgRanks: resolved.lfgRanks,
             distance,
           };
         });

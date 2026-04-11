@@ -50,6 +50,7 @@ export function Dashboard() {
   const [playingSince, setPlayingSince] = useState<string | null>(null);
   const [characterId, setCharacterId] = useState<number | null>(null);
   const [opponentCharacterId, setOpponentCharacterId] = useState<number | null>(null);
+  const [gameMode, setGameMode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [hideAvatar, setHideAvatar] = useState<boolean | null>(null);
@@ -74,6 +75,7 @@ export function Dashboard() {
       setOpponentCharacterId(info.opponentCharacterId ?? null);
       setPlayingSince(info.playingSince ?? null);
       setCharacterId(info.characterId ?? null);
+      setGameMode(info.gameMode ?? null);
     });
 
     const unsubUpdate = window.api.onUpdateStatus((s: any) => {
@@ -140,6 +142,7 @@ export function Dashboard() {
                     opponentCharacterId={opponentCharacterId}
                     characterId={characterId}
                     playingSince={playingSince}
+                    gameMode={gameMode}
                   />
                 </div>
               ) : (
@@ -185,6 +188,7 @@ export function Dashboard() {
           opponentCode={opponentCode}
           opponentCharacterId={opponentCharacterId}
           playingSince={playingSince}
+          gameMode={gameMode}
         />
       )}
 
@@ -293,31 +297,42 @@ function formatDuration(sinceStr: string): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+const GAME_MODE_DISPLAY: Record<string, string> = {
+  ranked: 'Ranked',
+  unranked: 'Unranked',
+  direct: 'Direct',
+};
+
 function InGameBanner({
   characterId,
   opponentCode,
   opponentCharacterId,
   playingSince,
+  gameMode,
 }: {
   characterId: number | null;
   opponentCode: string | null;
   opponentCharacterId: number | null;
   playingSince: string | null;
+  gameMode: string | null;
 }) {
   const myChar = characterId != null ? getCharacterShortName(characterId) : null;
   const oppChar = opponentCharacterId != null ? getCharacterShortName(opponentCharacterId) : null;
+  const modeLabel = gameMode ? GAME_MODE_DISPLAY[gameMode] : null;
 
   let label: string;
   if (opponentCode) {
     const parts: string[] = [];
+    if (modeLabel) parts.push(modeLabel);
     if (myChar) parts.push(`Playing ${myChar}`);
-    else parts.push('In Game');
+    else if (!modeLabel) parts.push('In Game');
     parts.push(`vs ${opponentCode}`);
     if (oppChar) parts.push(`(${oppChar})`);
     if (playingSince) parts.push(`for ${formatDuration(playingSince)}`);
     label = parts.join(' ');
   } else {
-    label = myChar ? `In Game as ${myChar}` : 'In Game';
+    const prefix = modeLabel || 'In Game';
+    label = myChar ? `${prefix} as ${myChar}` : prefix;
   }
 
   return (

@@ -101,6 +101,7 @@ export interface OnlineUser {
   currentCharacter: number | null;
   opponentCode: string | null;
   playingSince: string | null;
+  gameMode: string | null;
   connectionType: ConnectionType;
   updatedAt: string;
 }
@@ -115,6 +116,7 @@ export interface LocalStatus {
   opponentCharacterId: number | null;
   playingSince: string | null;
   characterId: number | null;
+  gameMode: string | null;
 }
 
 type PresenceSyncCallback = (users: OnlineUser[]) => void;
@@ -128,6 +130,7 @@ let lastCharacterId: number | null = null;
 let lastOpponentCode: string | null = null;
 let lastOpponentCharacterId: number | null = null;
 let lastOpponentTimestamp: number = 0;
+let lastGameMode: string | null = null;
 let loopConnectCode = '';
 let loopDisplayName = '';
 let loopUserId = '';
@@ -145,6 +148,7 @@ let subscribeGeneration = 0;
 let lastPushedStatus: PresenceStatus = 'offline';
 let lastPushedCharacter: number | null = null;
 let lastPushedOpponentCode: string | null = null;
+let lastPushedGameMode: string | null = null;
 let lastPushedAppIdle = false;
 let lastDbWriteTime = 0;
 const DB_HEARTBEAT_INTERVAL = 150_000;
@@ -237,6 +241,8 @@ let lookingToPlaySince: string | null = null;
 let statusPreset: string | null = null;
 let statusPresetSince: string | null = null;
 let lfgExpiryMinutes: number | null = 60;
+let lfgCharacters: number[] = [];
+let lfgRanks: string[] = [];
 
 let throttleInGame = true;
 type GameActiveCallback = (inGame: boolean) => void;
@@ -284,10 +290,15 @@ function emitGameActive(inGame: boolean): void {
   }
 }
 
-export function setLastOpponent(connectCode: string, characterId?: number): void {
+export function setLastOpponent(connectCode: string, characterId?: number, gameMode?: string | null): void {
   lastOpponentCode = connectCode;
   lastOpponentCharacterId = characterId ?? null;
   lastOpponentTimestamp = Date.now();
+  lastGameMode = gameMode ?? null;
+  emitLocalStatus();
+  if (loopUserId) {
+    void pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
+  }
 }
 
 export function getCurrentStatus(): PresenceStatus {
@@ -303,6 +314,7 @@ export function getLocalStatusSnapshot(): LocalStatus {
     opponentCharacterId: opponent ? lastOpponentCharacterId : null,
     playingSince: opponent?.since ?? null,
     characterId: lastCharacterId,
+    gameMode: currentStatus === 'in-game' ? lastGameMode : null,
   };
 }
 
@@ -355,6 +367,30 @@ export function setLfgExpiry(minutes: number | null): void {
 
 export function getLfgExpiry(): number | null {
   return lfgExpiryMinutes;
+}
+
+export function setLfgCharacters(chars: number[]): void {
+  lfgCharacters = chars;
+  lastDbWriteTime = 0;
+  if (loopUserId) {
+    void pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
+  }
+}
+
+export function getLfgCharacters(): number[] {
+  return lfgCharacters;
+}
+
+export function setLfgRanks(ranks: string[]): void {
+  lfgRanks = ranks;
+  lastDbWriteTime = 0;
+  if (loopUserId) {
+    void pushPresence(currentStatus, loopConnectCode, loopDisplayName, loopUserId);
+  }
+}
+
+export function getLfgRanks(): string[] {
+  return lfgRanks;
 }
 
 export async function toggleLookingToPlay(): Promise<boolean> {
@@ -427,6 +463,7 @@ function emitLocalStatus(): void {
     opponentCharacterId: opponent ? lastOpponentCharacterId : null,
     playingSince: opponent?.since ?? null,
     characterId: lastCharacterId,
+    gameMode: currentStatus === 'in-game' ? lastGameMode : null,
   };
   for (const cb of localStatusCallbacks) {
     try { cb(info); } catch (e) { console.error('localStatusCallback', e); }
@@ -449,6 +486,7 @@ function extractOnlineUsers(): OnlineUser[] {
           currentCharacter: e.currentCharacter ?? null,
           opponentCode: e.opponentCode ?? null,
           playingSince: e.playingSince ?? null,
+          gameMode: e.gameMode ?? null,
           connectionType: e.connectionType ?? null,
           updatedAt: e.updatedAt || '',
         });
@@ -497,10 +535,11 @@ async function pushPresence(
     const opponent = status === 'in-game' ? getRecentOpponent() : null;
     const character = status === 'in-game' ? lastCharacterId : null;
     const opCode = opponent?.code ?? null;
+    const gameMode = status === 'in-game' ? lastGameMode : null;
 
     const nextAppIdle = computeAppIdleForDb();
     const dirtyPresence = _isDirty(status, character, opCode, lastPushedStatus, lastPushedCharacter, lastPushedOpponentCode);
-    const dirty = dirtyPresence || (nextAppIdle !== lastPushedAppIdle);
+    const dirty = dirtyPresence || (nextAppIdle !== lastPushedAppIdle) || (gameMode !== lastPushedGameMode);
     const now = Date.now();
     const shouldWriteDb = _shouldWriteDb(dirty, lastDbWriteTime, DB_HEARTBEAT_INTERVAL, now);
 
@@ -516,9 +555,12 @@ async function pushPresence(
         current_character: character,
         opponent_code: opCode,
         playing_since: opponent?.since ?? null,
+        game_mode: gameMode,
         looking_to_play: lfgActive,
         looking_to_play_since: lfgActive ? lookingToPlaySince : null,
         status_preset: lfgActive ? statusPreset : null,
+        lfg_characters: lfgActive ? lfgCharacters : [],
+        lfg_ranks: lfgActive ? lfgRanks : [],
         connection_type: hideConnectionType ? null : currentConnectionType,
         app_idle: nextAppIdle,
         updated_at: new Date().toISOString(),
@@ -576,6 +618,7 @@ async function pushPresence(
     lastPushedStatus = status;
     lastPushedCharacter = character;
     lastPushedOpponentCode = opCode;
+    lastPushedGameMode = gameMode;
 
     if (status === 'offline') {
       if (presenceChannel && subscribed) {
@@ -594,6 +637,7 @@ async function pushPresence(
       currentCharacter: character,
       opponentCode: opCode,
       playingSince: opponent?.since ?? null,
+      gameMode,
       connectionType: hideConnectionType ? null : currentConnectionType,
       updatedAt: new Date().toISOString(),
     };
@@ -792,6 +836,7 @@ export async function startPresenceLoop(
           lastOpponentCode = null;
           lastOpponentCharacterId = null;
           lastOpponentTimestamp = 0;
+          lastGameMode = null;
         }
         const prevStatus = currentStatus;
         const opponent = next === 'in-game' ? getRecentOpponent() : null;
@@ -866,6 +911,7 @@ export async function stopPresenceLoop(): Promise<void> {
     lastPushedStatus = 'offline';
     lastPushedCharacter = null;
     lastPushedOpponentCode = null;
+    lastPushedGameMode = null;
     lastPushedAppIdle = false;
     rendererDocumentHidden = false;
     mainWindowFocused = true;
@@ -886,6 +932,7 @@ export async function pushOfflineAndStop(): Promise<void> {
     lastPushedStatus = 'offline';
     lastPushedCharacter = null;
     lastPushedOpponentCode = null;
+    lastPushedGameMode = null;
     lastPushedAppIdle = false;
     rendererDocumentHidden = false;
     mainWindowFocused = true;
@@ -897,6 +944,8 @@ export async function pushOfflineAndStop(): Promise<void> {
     lookingToPlaySince = null;
     statusPreset = null;
     statusPresetSince = null;
+    lfgCharacters = [];
+    lfgRanks = [];
 
     if (loopUserId) {
       await supabase.from('presence_log').upsert(
@@ -906,9 +955,12 @@ export async function pushOfflineAndStop(): Promise<void> {
           current_character: null,
           opponent_code: null,
           playing_since: null,
+          game_mode: null,
           looking_to_play: false,
           looking_to_play_since: null,
           status_preset: null,
+          lfg_characters: [],
+          lfg_ranks: [],
           app_idle: false,
           updated_at: new Date().toISOString(),
         },
