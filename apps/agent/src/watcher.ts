@@ -51,8 +51,7 @@ function mapGameMode(mode: number | null | undefined, matchId?: string | null): 
 }
 
 let watcher: ReturnType<typeof chokidar.watch> | null = null;
-let fastWatcher: ReturnType<typeof chokidar.watch> | null = null;
-const fastPeeked = new Set<string>();
+const peeked = new Set<string>();
 
 let onIdentityMismatch: ((info: IdentityMismatch) => void) | null = null;
 
@@ -349,47 +348,12 @@ export function startWatcher(
       return;
     }
     console.log(`[watcher] Starting — dir="${replayDir}" code="${localConnectCode}"`);
+    peeked.clear();
+
     watcher = chokidar.watch(replayDir, {
       ignoreInitial: true,
       depth: 3,
-      awaitWriteFinish: {
-        stabilityThreshold: 2000,
-        pollInterval: 1500,
-      },
     });
-    fastPeeked.clear();
-    fastWatcher = chokidar.watch(replayDir, {
-      ignoreInitial: true,
-      depth: 3,
-    });
-    fastWatcher.on('add', (filePath: string) => {
-      if (!filePath.toLowerCase().endsWith('.slp')) return;
-      if (fastPeeked.has(filePath)) return;
-      fastPeeked.add(filePath);
-      // Brief delay so the .slp header/settings are flushed to disk
-      setTimeout(() => {
-        void (async () => {
-          try {
-            const info = await processNewReplay(filePath, localConnectCode, true, { presenceOnly: true });
-            if (info) {
-              console.log(`[watcher] Fast peek: ${info.connectCode} mode=${info.gameMode}`);
-              try {
-                const { setLastOpponent, setLastPlayedCharacterId: _setChar } = require('./presence') as {
-                  setLastOpponent: (code: string, characterId?: number, gameMode?: string | null) => void;
-                  setLastPlayedCharacterId: (id: number | null) => void;
-                };
-                setLastOpponent(info.connectCode, info.characterId, info.gameMode);
-              } catch (e) {
-                console.error('setLastOpponent from fast peek failed', e);
-              }
-            }
-          } catch {
-            // File may not be readable yet — that's fine, main watcher handles it later
-          }
-        })();
-      }, 500);
-    });
-    fastWatcher.on('error', () => { /* ignore fast watcher errors */ });
 
     watcher.on('ready', () => {
       console.log('[watcher] Ready and watching for new replays');
@@ -399,38 +363,42 @@ export function startWatcher(
     });
     watcher.on('add', (filePath: string) => {
       if (!filePath.toLowerCase().endsWith('.slp')) return;
+      if (peeked.has(filePath)) return;
+      peeked.add(filePath);
       console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
-      if (_gameActive) {
-        console.log('[watcher] Game active — deferring matches upsert; peeking opponent for presence');
-        _pendingReplays.push({ filePath, localConnectCode, onOpponent });
+
+      // Immediate presence peek after brief delay for .slp header flush
+      setTimeout(() => {
         void (async () => {
           try {
             const info = await processNewReplay(filePath, localConnectCode, true, { presenceOnly: true });
             if (info) {
-              console.log(`[watcher] Live opponent (deferred path): ${info.connectCode} mode=${info.gameMode}`);
+              console.log(`[watcher] Presence peek: ${info.connectCode} mode=${info.gameMode}`);
               try {
                 const { setLastOpponent } = require('./presence') as {
                   setLastOpponent: (code: string, characterId?: number, gameMode?: string | null) => void;
                 };
                 setLastOpponent(info.connectCode, info.characterId, info.gameMode);
               } catch (e) {
-                console.error('setLastOpponent from deferred peek failed', e);
+                console.error('setLastOpponent from peek failed', e);
               }
             }
-          } catch (e) {
-            console.error('watcher presence-only replay peek failed', e);
-          }
+          } catch { /* file not readable yet — full processing will handle it */ }
         })();
+      }, 500);
+
+      if (_gameActive) {
+        _pendingReplays.push({ filePath, localConnectCode, onOpponent });
         return;
       }
+
+      // Not in-game: file is likely already complete, process fully
       void (async () => {
         try {
           const info = await processNewReplay(filePath, localConnectCode, true);
           if (info) {
-            console.log(`[watcher] Opponent: ${info.connectCode} (char ${info.characterId}) name="${info.displayName}"`);
+            console.log(`[watcher] Opponent: ${info.connectCode} (char ${info.characterId})`);
             onOpponent(info);
-          } else {
-            console.log('[watcher] processNewReplay returned null (no opponent found)');
           }
         } catch (e) {
           console.error('watcher add handler failed', e);
@@ -513,9 +481,5 @@ export function stopWatcher(): void {
     console.error('stopWatcher failed', e);
   }
   watcher = null;
-  try {
-    void fastWatcher?.close();
-  } catch { /* ignore */ }
-  fastWatcher = null;
-  fastPeeked.clear();
+  peeked.clear();
 }
