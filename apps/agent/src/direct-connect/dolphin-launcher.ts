@@ -21,6 +21,7 @@ import {
   detectDolphinVariant,
 } from './dolphin-config';
 import { DOLPHIN_PROCESS_NAMES } from '../config';
+import { directLog } from '../logger';
 
 const find = require('find-process') as (
   type: 'name',
@@ -87,6 +88,7 @@ export function getDolphinExePath(): string | null {
   const folder = path.join(launcherDir, `netplay${betaSuffix}`);
 
   console.log(`[dolphin-launcher] Detected variant=${variant}, folder=netplay${betaSuffix}`);
+  directLog.info(`Detected variant=${variant}, folder=netplay${betaSuffix}`);
 
   // Primary: honor the Launcher's configured variant & folder
   const primary = findExeInFolder(folder, variant);
@@ -99,6 +101,7 @@ export function getDolphinExePath(): string | null {
   const secondary = findExeInFolder(folder, otherVariant);
   if (secondary) {
     console.warn(`[dolphin-launcher] Expected ${variant} but found ${otherVariant} exe in ${folder}`);
+    directLog.warn(`Expected ${variant} but found ${otherVariant} exe in ${folder}`);
     return secondary;
   }
 
@@ -109,6 +112,7 @@ export function getDolphinExePath(): string | null {
     const fallback = findExeInFolder(altFolder, v);
     if (fallback) {
       console.warn(`[dolphin-launcher] Fell back to netplay${altSuffix} (${v})`);
+      directLog.warn(`Fell back to netplay${altSuffix} (${v})`);
       return fallback;
     }
   }
@@ -136,6 +140,7 @@ function getSlippiLauncherIsoPath(): string | null {
   const isoPath = settings?.settings?.isoPath;
   if (isoPath && typeof isoPath === 'string' && fs.existsSync(isoPath)) {
     console.log(`[dolphin-launcher] ISO from Slippi Launcher settings: ${isoPath}`);
+    directLog.info(`ISO from Slippi Launcher settings: ${isoPath}`);
     return isoPath;
   }
   return null;
@@ -180,6 +185,7 @@ export function getMeleeIsoPath(): string | null {
   // Last resort: return LastFilename even if it doesn't match, better than nothing
   if (lastFile) {
     console.warn(`[dolphin-launcher] LastFilename doesn't look like Melee: ${lastFile}`);
+    directLog.warn(`LastFilename doesn't look like Melee: ${lastFile}`);
     return lastFile;
   }
 
@@ -216,6 +222,7 @@ export async function killDolphin(): Promise<void> {
   if (pids.length === 0) return;
 
   console.log(`[dolphin-launcher] Killing Dolphin PIDs: ${pids.join(', ')}`);
+  directLog.info(`Killing Dolphin PIDs: ${pids.join(', ')}`);
   for (const pid of pids) {
     try { process.kill(pid, 'SIGTERM'); } catch {}
   }
@@ -226,6 +233,7 @@ export async function killDolphin(): Promise<void> {
     const remaining = await getDolphinPids();
     if (remaining.length === 0) {
       console.log('[dolphin-launcher] Dolphin stopped');
+      directLog.info('Dolphin stopped');
       return;
     }
   }
@@ -237,6 +245,7 @@ export async function killDolphin(): Promise<void> {
   }
   await sleep(500);
   console.log('[dolphin-launcher] Dolphin force-killed');
+  directLog.info('Dolphin force-killed');
 }
 
 export function launchDolphin(overrideUserDir?: string): void {
@@ -255,6 +264,7 @@ export function launchDolphin(overrideUserDir?: string): void {
   }
 
   console.log(`[dolphin-launcher] Launching: "${exePath}" ${args.map(a => `"${a}"`).join(' ')}`);
+  directLog.info(`Launching: "${exePath}" ${args.map(a => `"${a}"`).join(' ')}`);
 
   // macOS: use execFile to avoid spawn deadlocks in Dolphin's rendering
   // (matches how the Slippi Launcher handles this)

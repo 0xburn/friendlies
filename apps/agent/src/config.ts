@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getEffectiveLauncherDir } from './launcher-path';
+import { mainLog } from './logger';
 
 export const SLIPPI_LAUNCHER_PROCESS_NAMES = [
   'Slippi Launcher',
@@ -176,6 +177,7 @@ export function getDefaultReplayDir(): string {
         const rootSlpPath = data?.settings?.rootSlpPath;
         if (rootSlpPath && typeof rootSlpPath === 'string' && fs.existsSync(rootSlpPath)) {
           console.log(`[config] Replay dir from Slippi Launcher: ${rootSlpPath}`);
+          mainLog.info(`Replay dir from Slippi Launcher: ${rootSlpPath}`);
           return rootSlpPath;
         }
       }

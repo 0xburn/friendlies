@@ -208,6 +208,9 @@ const api = {
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   reportDocumentHidden: (hidden: boolean) => ipcRenderer.send('visibility:document', hidden),
   onGameActive: (cb: (active: boolean) => void): Unsubscribe => onEvent('game:active', cb),
+
+  exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export') as Promise<string | null>,
+  openLogsDirectory: () => ipcRenderer.invoke('diagnostics:openLogs'),
 };
 
 export type ElectronAPI = typeof api;

@@ -13,6 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { getSlippiUserJsonPaths } from '../config';
 import { getEffectiveLauncherDir } from '../launcher-path';
+import { directLog } from '../logger';
 
 // ---------------------------------------------------------------------------
 // Slippi Launcher Settings — shared by dolphin-config and dolphin-launcher
@@ -140,6 +141,7 @@ function getSlippiConfigDir(): string | null {
     if (fs.existsSync(jsonPath)) {
       const dir = path.dirname(jsonPath);
       console.log(`[direct-connect] Slippi config dir resolved via user.json: ${dir}`);
+      directLog.info(`Slippi config dir resolved via user.json: ${dir}`);
       return dir;
     }
   }
@@ -167,6 +169,7 @@ export function injectDirectCode(connectCode: string): void {
   const slippiDir = getSlippiConfigDir();
   if (!slippiDir) {
     console.warn('[direct-connect] Cannot find Slippi config directory — skipping code injection');
+    directLog.warn('Cannot find Slippi config directory — skipping code injection');
     return;
   }
 
@@ -187,4 +190,5 @@ export function injectDirectCode(connectCode: string): void {
   fs.mkdirSync(slippiDir, { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(codes));
   console.log(`[direct-connect] Injected ${connectCode} as most recent in direct-codes.json`);
+  directLog.info(`Injected ${connectCode} as most recent in direct-codes.json`);
 }

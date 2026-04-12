@@ -1,6 +1,7 @@
 import { BrowserWindow, Notification } from 'electron';
 import { getSettings } from './settings';
 import { getCurrentStatus } from './presence';
+import { notifLog } from './logger';
 
 const NOTIF_COOLDOWN_MS = 60_000;
 const recentFriendNotifs = new Map<string, number>();
@@ -43,6 +44,7 @@ export function showFriendOnlineNotification(
     n.show();
   } catch (e) {
     console.error('showFriendOnlineNotification failed', e);
+    notifLog.error('showFriendOnlineNotification failed', e);
   }
 }
 
@@ -65,6 +67,7 @@ export function showFriendRequestNotification(
     playNotificationSound();
   } catch (e) {
     console.error('showFriendRequestNotification failed', e);
+    notifLog.error('showFriendRequestNotification failed', e);
   }
 }
 
@@ -87,6 +90,7 @@ export function showPlayInviteNotification(
     playNotificationSound();
   } catch (e) {
     console.error('showPlayInviteNotification failed', e);
+    notifLog.error('showPlayInviteNotification failed', e);
   }
 }
 
@@ -116,6 +120,7 @@ export function showNudgeNotification(
     playNotificationSound();
   } catch (e) {
     console.error('showNudgeNotification failed', e);
+    notifLog.error('showNudgeNotification failed', e);
   }
 }
 
@@ -127,5 +132,6 @@ export function showTestNotification(): void {
     }
   } catch (e) {
     console.error('showTestNotification failed', e);
+    notifLog.error('showTestNotification failed', e);
   }
 }

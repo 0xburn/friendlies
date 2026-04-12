@@ -526,6 +526,56 @@ export function Settings() {
         </div>
       )}
 
+      {show('troubleshoot', 'debug', 'logs', 'export', 'diagnostics') && (
+      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+        <div className="p-5 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-300">Troubleshooting</p>
+            <p className="text-xs text-gray-500 mt-0.5">Export application logs and metadata for debugging</p>
+          </div>
+          {import.meta.env.DEV ? (
+          <div className="inline-flex rounded-lg border border-[#2a2a2a] overflow-hidden">
+            <button
+              className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors"
+              onClick={() => { window.api.openLogsDirectory(); }}
+            >
+              Open Logs Directory
+            </button>
+            <button
+              className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors border-l border-[#2a2a2a] flex items-center gap-1.5"
+              onClick={async () => {
+                try {
+                  const filePath = await window.api.exportDiagnostics();
+                  if (filePath) flash();
+                } catch {}
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
+              </svg>
+              Export
+            </button>
+          </div>
+          ) : (
+          <button
+            className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 hover:bg-[#222] transition-colors flex items-center gap-1.5"
+            onClick={async () => {
+              try {
+                const filePath = await window.api.exportDiagnostics();
+                if (filePath) flash();
+              } catch {}
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
+            </svg>
+            Export
+          </button>
+          )}
+        </div>
+      </div>
+      )}
+
       {show('account', 'log out', 'logout', 'update', 'version') && (
       <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>

@@ -9,6 +9,7 @@
 import { EventEmitter } from 'events';
 import { injectDirectCode } from './dolphin-config';
 import { isDolphinRunning, killDolphin, launchDolphin } from './dolphin-launcher';
+import { directLog } from '../logger';
 
 export type DirectConnectStatus =
   | 'idle'
@@ -73,6 +74,7 @@ export class DirectConnectService extends EventEmitter {
   private setStatus(status: DirectConnectStatus, message: string, connectCode?: string): void {
     this.currentStatus = status;
     console.log(`[direct-connect] ${status}: ${message}`);
+    directLog.info(`${status}: ${message}`);
     this.emit('status', { status, message, connectCode } as DirectConnectStatusEvent);
   }
 }

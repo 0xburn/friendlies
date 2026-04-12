@@ -1,5 +1,6 @@
 import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron';
 
+import { ipcLog } from './logger';
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getDirectConnectService } from './direct-connect';
@@ -165,6 +166,7 @@ async function upsertPlayerRating(connectCode: string, entry: RatingCacheEntry):
     });
   } catch (e) {
     console.error('upsertPlayerRating', connectCode, e);
+    ipcLog.error('upsertPlayerRating', connectCode, e);
   }
 }
 
@@ -283,6 +285,7 @@ export function registerIpcHandlers(
 
       if (staleCodes.length === 0) return;
       console.log(`[ratings] startup refresh: ${staleCodes.length} stale of ${allCodes.length} total`);
+      ipcLog.info(`startup refresh: ${staleCodes.length} stale of ${allCodes.length} total`);
 
       const CONCURRENCY = 5;
       for (let i = 0; i < staleCodes.length; i += CONCURRENCY) {
@@ -296,8 +299,10 @@ export function registerIpcHandlers(
         }
       }
       console.log(`[ratings] startup refresh complete`);
+      ipcLog.info('startup refresh complete');
     } catch (e) {
       console.error('[ratings] startup refresh failed', e);
+      ipcLog.error('startup refresh failed', e);
     }
   }, 10_000);
 
@@ -307,6 +312,7 @@ export function registerIpcHandlers(
       if (user) await cleanupExpiredInvites(user.id);
     } catch (e) {
       console.error('[invites] startup cleanup failed', e);
+      ipcLog.error('startup cleanup failed', e);
     }
   }, 5_000);
 
@@ -321,7 +327,7 @@ export function registerIpcHandlers(
     if (process.platform === 'linux') {
       const authDone = startLocalAuthServer();
       const url = await startAuthFlow();
-      authDone.then(onLocalAuth).catch((err) => console.error('[auth] Linux local auth failed:', err));
+      authDone.then(onLocalAuth).catch((err) => { console.error('[auth] Linux local auth failed:', err); ipcLog.error('Linux local auth failed:', err); });
       return url;
     }
 
@@ -336,9 +342,10 @@ export function registerIpcHandlers(
         ipcMain.removeListener('auth:deeplink-resolved', markResolved);
         if (deepLinkResolved) return;
         console.log('[auth] Deep link did not return in time, falling back to localhost callback');
+        ipcLog.info('Deep link did not return in time, falling back to localhost callback');
         const authDone = startLocalAuthServer();
         await startAuthFlow(true);
-        authDone.then(onLocalAuth).catch((err) => console.error('[auth] Windows fallback auth failed:', err));
+        authDone.then(onLocalAuth).catch((err) => { console.error('[auth] Windows fallback auth failed:', err); ipcLog.error('Windows fallback auth failed:', err); });
       }, 8_000);
 
       return url;
@@ -363,7 +370,7 @@ export function registerIpcHandlers(
       if (opts?.onLogout) await opts.onLogout();
       await logout();
       sendToRenderer('auth:changed', null);
-    } catch (e) { console.error('auth:logout', e); }
+    } catch (e) { console.error('auth:logout', e); ipcLog.error('auth:logout', e); }
   });
 
   ipcMain.handle('identity:get', () => {
@@ -392,7 +399,7 @@ export function registerIpcHandlers(
         .eq('friend_connect_code', identity.connectCode)
         .is('friend_id', null);
 
-      void verifyIdentity(identity).catch((e) => console.error('verifyIdentity', e));
+      void verifyIdentity(identity).catch((e) => { console.error('verifyIdentity', e); ipcLog.error('verifyIdentity', e); });
       return { ok: true, connectCode: identity.connectCode };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -502,8 +509,9 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] friends:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} cache=${(t3-t2).toFixed(0)} rows=${data.length})`);
+      ipcLog.info(`friends:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} cache=${(t3-t2).toFixed(0)} rows=${data.length})`);
       return result;
-    } catch (e) { console.error('friends:list', e); return []; }
+    } catch (e) { console.error('friends:list', e); ipcLog.error('friends:list', e); return []; }
   });
 
   ipcMain.handle('friends:incoming', async () => {
@@ -570,8 +578,9 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] friends:incoming total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`friends:incoming total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
-    } catch (e) { console.error('friends:incoming', e); return []; }
+    } catch (e) { console.error('friends:incoming', e); ipcLog.error('friends:incoming', e); return []; }
   });
 
   ipcMain.handle('friends:accept', async (_e, requestId: string) => {
@@ -756,6 +765,7 @@ export function registerIpcHandlers(
       await supabase.from('event_log').insert({ user_id: userId, event_type: eventType, metadata });
     } catch (e: any) {
       console.warn('[event_log] Failed to log event:', eventType, e.message);
+      ipcLog.warn('Failed to log event:', eventType, e.message);
     }
   }
 
@@ -876,6 +886,7 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] invite:pending total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`invite:pending total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
     } catch { return []; }
   });
@@ -1010,6 +1021,7 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] invite:sent total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`invite:sent total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
     } catch { return []; }
   });
@@ -1039,7 +1051,7 @@ export function registerIpcHandlers(
         .order('played_at', { ascending: false })
         .limit(limit);
       return data || [];
-    } catch (e) { console.error('opponents:list', e); return []; }
+    } catch (e) { console.error('opponents:list', e); ipcLog.error('opponents:list', e); return []; }
   });
 
   ipcMain.handle('opponents:page', async (_e, before: string, limit = 50) => {
@@ -1054,7 +1066,7 @@ export function registerIpcHandlers(
         .order('played_at', { ascending: false })
         .limit(limit);
       return data || [];
-    } catch (e) { console.error('opponents:page', e); return []; }
+    } catch (e) { console.error('opponents:page', e); ipcLog.error('opponents:page', e); return []; }
   });
 
   ipcMain.handle('opponents:latestTimestamp', async () => {
@@ -1069,7 +1081,7 @@ export function registerIpcHandlers(
         .limit(1)
         .maybeSingle();
       return data?.played_at ?? null;
-    } catch (e) { console.error('opponents:latestTimestamp', e); return null; }
+    } catch (e) { console.error('opponents:latestTimestamp', e); ipcLog.error('opponents:latestTimestamp', e); return null; }
   });
 
   ipcMain.handle('stats:playerCount', async () => {
@@ -1109,7 +1121,7 @@ export function registerIpcHandlers(
         .order('in_game_seconds', { ascending: false })
         .gt('in_game_seconds', 0)
         .limit(limit);
-      if (error) { console.error('leaderboard:top', error.message); return []; }
+      if (error) { console.error('leaderboard:top', error.message); ipcLog.error('leaderboard:top', error.message); return []; }
       const rows = (data || []).map((row: any) => ({
         userId: row.user_id,
         profiles: row.profiles,
@@ -1134,7 +1146,7 @@ export function registerIpcHandlers(
           rankChange: yRank - todayRank,
         };
       });
-    } catch (e) { console.error('leaderboard:top', e); return []; }
+    } catch (e) { console.error('leaderboard:top', e); ipcLog.error('leaderboard:top', e); return []; }
   });
 
   ipcMain.handle('presence:online', () => getOnlineUsers());
@@ -1184,8 +1196,9 @@ export function registerIpcHandlers(
         result[code] = resolvePresenceRow(row as any, PRESENCE_STALE_THRESHOLD, now);
       }
       console.log(`[bench] presence:friendStatuses total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} rows=${data.length})`);
+      ipcLog.info(`presence:friendStatuses total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} rows=${data.length})`);
       return result;
-    } catch (e) { console.error('presence:friendStatuses', e); return {}; }
+    } catch (e) { console.error('presence:friendStatuses', e); ipcLog.error('presence:friendStatuses', e); return {}; }
   });
 
   let discoverInFlight: Promise<any[]> | null = null;
@@ -1404,8 +1417,9 @@ export function registerIpcHandlers(
       }));
 
       console.log(`[bench] discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} nullRatings=${withMutuals.filter((r: any) => r.rating == null).length})`);
+      ipcLog.info(`discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} nullRatings=${withMutuals.filter((r: any) => r.rating == null).length})`);
       return withMutuals;
-    } catch (e) { console.error('discover:list', e); return []; }
+    } catch (e) { console.error('discover:list', e); ipcLog.error('discover:list', e); return []; }
     })();
     try { return await discoverInFlight; } finally { discoverInFlight = null; }
   });
@@ -1744,7 +1758,7 @@ export function registerIpcHandlers(
           blockedAt: b.created_at,
         };
       });
-    } catch (e) { console.error('block:list', e); return []; }
+    } catch (e) { console.error('block:list', e); ipcLog.error('block:list', e); return []; }
   });
 
   ipcMain.handle('auth:checkBlacklist', async () => {
@@ -1817,7 +1831,7 @@ export function registerIpcHandlers(
           gameCount: c.gameCount,
         })).filter((c: any) => c.character != null),
       };
-    } catch (e: any) { console.error('slippi:lookup', e); return null; }
+    } catch (e: any) { console.error('slippi:lookup', e); ipcLog.error('slippi:lookup', e); return null; }
   });
 
   ipcMain.handle('config:broadcast', async () => {
@@ -1863,6 +1877,7 @@ export function registerIpcHandlers(
       const { data, error } = await supabase.from('patreon_public_supporters').select('connect_code');
       if (error) {
         console.warn('[patreon] listPublicSupporterCodes:', error.message);
+        ipcLog.warn('listPublicSupporterCodes:', error.message);
         return [];
       }
       return (data ?? [])
@@ -1877,12 +1892,14 @@ export function registerIpcHandlers(
     const raw = typeof url === 'string' ? url.trim() : '';
     if (!raw) {
       console.warn('[shell] openExternal: empty url');
+      ipcLog.warn('openExternal: empty url');
       return;
     }
     try {
       await shell.openExternal(raw);
     } catch (e) {
       console.error('[shell] openExternal failed:', raw, e);
+      ipcLog.error('openExternal failed:', raw, e);
     }
   });
 
@@ -1901,6 +1918,7 @@ export function registerIpcHandlers(
       exec('reg query HKCR\\discord /ve', { timeout: 3000 }, (err: any, stdout: string) => {
         discordProtocolSupported = !err && stdout.includes('URL:');
         console.log('[discord] protocol supported:', discordProtocolSupported);
+        ipcLog.info('protocol supported:', discordProtocolSupported);
       });
     } else if (process.platform === 'darwin') {
       discordProtocolSupported = true;
@@ -1968,6 +1986,7 @@ export function registerIpcHandlers(
   ipcMain.handle('cashbox:getSnapshot', async () => {
     if (_snapshotInflight) {
       console.log('[cashbox] dedup: sharing in-flight snapshot request');
+      ipcLog.info('dedup: sharing in-flight snapshot request');
       return _snapshotInflight;
     }
 
@@ -2003,6 +2022,7 @@ export function registerIpcHandlers(
         }
         const sggToken = await getStartGgUserToken();
         console.log('[cashbox] token source:', sggToken ? 'oauth (user-linked)' : 'env (START_GG_TOKEN fallback)');
+        ipcLog.info('token source:', sggToken ? 'oauth (user-linked)' : 'env (START_GG_TOKEN fallback)');
         const snap = await getCashboxSnapshot(code, sggToken);
         if (snap.ok) {
           await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
@@ -2012,6 +2032,7 @@ export function registerIpcHandlers(
         return snap;
       } catch (e: any) {
         console.error('cashbox:getSnapshot', e);
+        ipcLog.error('cashbox:getSnapshot', e);
         return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
       }
     })();
@@ -2045,6 +2066,7 @@ export function registerIpcHandlers(
       return { ok: true as const, friendlies: result };
     } catch (e: any) {
       console.error('cashbox:lookupOpponent', e);
+      ipcLog.error('cashbox:lookupOpponent', e);
       return { ok: false as const, message: e?.message || 'Unknown error' };
     }
   });
@@ -2214,5 +2236,19 @@ export function registerIpcHandlers(
       connected: isStartGgConnected(),
       ...getStartGgUserInfo(),
     };
+  });
+
+  ipcMain.handle('diagnostics:export', async () => {
+    const { exportDiagnostics } = await import('./diagnostics');
+    return exportDiagnostics();
+  });
+
+  ipcMain.handle('diagnostics:openLogs', () => {
+    const log = require('electron-log/main');
+    const logFile = log.transports.file.getFile();
+    if (logFile?.path) {
+      const dir = require('path').dirname(logFile.path);
+      shell.openPath(dir);
+    }
   });
 }
