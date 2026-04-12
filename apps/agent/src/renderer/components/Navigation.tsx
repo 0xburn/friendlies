@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { isGameActive } from '../App';
+import { version } from '../../../package.json';
 
 const baseLinks = [
   { to: '/', label: 'Friends', icon: '♟' },
@@ -119,7 +120,7 @@ export function Navigation() {
             {copied ? 'Copied!' : 'Share with a Friend!'}
           </button>
         </div>
-        <div className="px-5 py-2 text-[10px] text-gray-600">v1.0.39</div>
+        <div className="px-5 py-2 text-[10px] text-gray-600">v{version}</div>
       </aside>
       <main className="flex-1 overflow-y-auto">
         <div className="h-[52px] shrink-0 drag relative">

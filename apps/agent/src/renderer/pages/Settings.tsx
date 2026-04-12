@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isGameActive } from '../App';
+import { version } from '../../../package.json';
 
 interface SettingsState {
   replayDir: string;
@@ -631,7 +632,7 @@ export function Settings() {
       })()}
 
       <p className="text-center text-xs text-gray-600">
-      friendlies v1.0.39
+      friendlies v{version}
       </p>
     </div>
   );
