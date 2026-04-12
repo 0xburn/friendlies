@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { BrowserWindow, app, ipcMain, screen, shell } from 'electron';
+import { BrowserWindow, Menu, app, ipcMain, screen, shell } from 'electron';
 import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   listenForTokenRefresh, logout, restoreSession, startAuthFlow,
@@ -569,6 +569,7 @@ app.on('before-quit', async (e) => {
 
 app.whenReady().then(async () => {
   try {
+    Menu.setApplicationMenu(null);
     loadDotEnvFromAppDir();
     const st0 = getSettings();
     app.setLoginItemSettings({ openAtLogin: st0.autoLaunch, openAsHidden: true });
