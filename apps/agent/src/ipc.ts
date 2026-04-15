@@ -1310,6 +1310,8 @@ export function registerIpcHandlers(
             else if (myCountry && theirCountry && myCountry === theirCountry) distance = 500;
             else distance = 9999;
           }
+          const proximityTier = distance <= 50 ? 0 : distance <= 250 ? 1 : distance <= 800 ? 2 : 3;
+
           // Small variance so the order shuffles slightly between refreshes
           distance += distance * 0.08 * (Math.random() - 0.5);
 
@@ -1350,6 +1352,7 @@ export function registerIpcHandlers(
             lfgCharacters: resolved.lfgCharacters,
             lfgRanks: resolved.lfgRanks,
             distance,
+            proximityTier,
           };
         });
 
@@ -1372,6 +1375,7 @@ export function registerIpcHandlers(
         const hasHistoryA = a.lastPlayedAt ? 1 : 0;
         const hasHistoryB = b.lastPlayedAt ? 1 : 0;
         if (hasHistoryA !== hasHistoryB) return hasHistoryB - hasHistoryA;
+        if (a.proximityTier !== b.proximityTier) return a.proximityTier - b.proximityTier;
         const hasStatusA = (a.statusPreset || a.lookingToPlay) ? 1 : 0;
         const hasStatusB = (b.statusPreset || b.lookingToPlay) ? 1 : 0;
         if (hasStatusA !== hasStatusB) return hasStatusB - hasStatusA;
