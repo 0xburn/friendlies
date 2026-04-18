@@ -26,6 +26,7 @@ interface DiscoverPlayer {
   lookingToPlay?: boolean;
   statusPreset?: string | null;
   mutualFriendCount?: number;
+  proximityTier?: number;
 }
 
 function formatLastPlayed(iso: string): string {
@@ -513,6 +514,12 @@ export function Discover() {
         })
       : players;
     return [...list].sort((a, b) => {
+      const aHistory = a.lastPlayedAt ? 1 : 0;
+      const bHistory = b.lastPlayedAt ? 1 : 0;
+      if (aHistory !== bHistory) return bHistory - aHistory;
+      const aTier = a.proximityTier ?? 3;
+      const bTier = b.proximityTier ?? 3;
+      if (aTier !== bTier) return aTier - bTier;
       const aActive = (a.statusPreset || a.lookingToPlay) ? 1 : 0;
       const bActive = (b.statusPreset || b.lookingToPlay) ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
