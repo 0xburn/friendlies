@@ -7,7 +7,7 @@
   "repository": "https://github.com/0xburn/friendlies",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "concurrently -n tsc,vite,electron \"tsc -w --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && NODE_ENV=development electron .\"",
+    "dev": "concurrently -n tsc,vite,electron \"tsc -w --preserveWatchOutput\" \"vite\" \"wait-on http://localhost:5173 && electron . --dev\"",
     "build": "tsc && vite build && electron-builder --publish never",
     "build:mac": "tsc && vite build && electron-builder --mac --publish never",
     "build:win": "tsc && vite build && electron-builder --win --publish never",
