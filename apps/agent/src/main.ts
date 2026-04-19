@@ -163,11 +163,11 @@ function createMainWindow(): BrowserWindow {
       backgroundThrottling: true,
     },
   });
-  //WIN DEV only:
-  // win.webContents.setWindowOpenHandler(({ url }) => {
-  //   shell.openExternal(url);
-  //   return { action: 'deny' };
-  // });
+  // WIN DEV only:
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   let boundsTimer: ReturnType<typeof setTimeout> | null = null;
   const persistBounds = () => {

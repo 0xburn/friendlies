@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { isGameActive } from '../App';
-import { version } from '../../../package.json';
+import { useEffect, useRef, useState } from "react";
+import { isGameActive } from "../App";
+import { version } from "../../../package.json";
 
 interface SettingsState {
   replayDir: string;
@@ -35,12 +35,12 @@ interface PresenceStats {
   realtimeConnected: boolean;
 }
 
-const DEBUG_CONNECT_CODES = ['SMOK#1', 'BF#0'];
+const DEBUG_CONNECT_CODES = ["SMOK#1", "BF#0"];
 export function Settings() {
   const [pStats, setPStats] = useState<PresenceStats | null>(null);
   const [myCode, setMyCode] = useState<string | null>(null);
   const [settings, setSettings] = useState<SettingsState>({
-    replayDir: '',
+    replayDir: "",
     autoLaunch: false,
     closeToTray: false,
     showNotifications: true,
@@ -54,50 +54,97 @@ export function Settings() {
     disableChat: false,
   });
   const [metrics, setMetrics] = useState<AppMetric[] | null>(null);
-  const [privacy, setPrivacy] = useState({ hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null as string | null });
+  const [privacy, setPrivacy] = useState({
+    hideRegion: false,
+    hideDiscordUnlessFriends: false,
+    hideAvatar: false,
+    hideConnectionType: false,
+    hideOnlineStatus: false,
+    disableFriendRequests: false,
+    hideMutualFriends: false,
+    chosenRegion: null as string | null,
+  });
   const [saved, setSaved] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
   const [slippiDir, setSlippiDir] = useState<string | null>(null);
-  const [blockedUsers, setBlockedUsers] = useState<{ connectCode: string; displayName: string | null; avatarUrl: string | null; blockedAt: string }[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<
+    {
+      connectCode: string;
+      displayName: string | null;
+      avatarUrl: string | null;
+      blockedAt: string;
+    }[]
+  >([]);
   const [unblocking, setUnblocking] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.getSettings().then((s) => {
       setSettings({
-        replayDir: s.replayDir || '',
+        replayDir: s.replayDir || "",
         autoLaunch: s.autoLaunch || false,
         closeToTray: !!s.closeToTray,
         showNotifications: s.showNotifications !== false,
         notifyFriendOnline: s.notifyFriendOnline !== false,
         notifyPlayInvite: s.notifyPlayInvite !== false,
         notificationSound: s.notificationSound !== false,
-        notificationVolume: typeof s.notificationVolume === 'number' ? s.notificationVolume : 0.35,
+        notificationVolume:
+          typeof s.notificationVolume === "number"
+            ? s.notificationVolume
+            : 0.35,
         reduceBackgroundActivity: s.reduceBackgroundActivity !== false,
         disableNudges: !!s.disableNudges,
         disableStatuses: !!s.disableStatuses,
         disableChat: !!s.disableChat,
       });
     });
-    window.api.getPrivacy().then(setPrivacy).catch(() => {});
-    window.api.getSlippiDir().then(setSlippiDir).catch(() => {});
+    window.api
+      .getPrivacy()
+      .then(setPrivacy)
+      .catch(() => {});
+    window.api
+      .getSlippiDir()
+      .then(setSlippiDir)
+      .catch(() => {});
     loadBlockedUsers();
     window.api.getIdentity().then((id) => {
       if (id?.connectCode) setMyCode(id.connectCode);
     });
-    const fetchStats = () => (window.api as any).getPresenceStats?.().then((s: PresenceStats) => setPStats(s)).catch(() => {});
+    const fetchStats = () =>
+      (window.api as any)
+        .getPresenceStats?.()
+        .then((s: PresenceStats) => setPStats(s))
+        .catch(() => {});
     fetchStats();
-    const statsInterval = setInterval(() => { if (!document.hidden && !isGameActive()) fetchStats(); }, 30_000);
-    const fetchMetrics = () => window.api.getAppMetrics().then(setMetrics).catch(() => {});
+    const statsInterval = setInterval(() => {
+      if (!document.hidden && !isGameActive()) fetchStats();
+    }, 30_000);
+    const fetchMetrics = () =>
+      window.api
+        .getAppMetrics()
+        .then(setMetrics)
+        .catch(() => {});
     fetchMetrics();
-    const metricsInterval = setInterval(() => { if (!document.hidden && !isGameActive()) fetchMetrics(); }, 30_000);
+    const metricsInterval = setInterval(() => {
+      if (!document.hidden && !isGameActive()) fetchMetrics();
+    }, 30_000);
     const unsub = window.api.onUpdateStatus((s: any) => {
-      if (s.state === 'not-available') setUpdateMsg('Up to date');
-      else if (s.state === 'available') setUpdateMsg(null);
-      else if (s.state === 'error') setUpdateMsg(null);
+      if (s.state === "not-available") setUpdateMsg("Up to date");
+      else if (s.state === "available") setUpdateMsg(null);
+      else if (s.state === "error") setUpdateMsg(null);
     });
-    const onVisible = () => { if (!document.hidden) { fetchStats(); fetchMetrics(); } };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => { unsub(); clearInterval(statsInterval); clearInterval(metricsInterval); document.removeEventListener('visibilitychange', onVisible); };
+    const onVisible = () => {
+      if (!document.hidden) {
+        fetchStats();
+        fetchMetrics();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      unsub();
+      clearInterval(statsInterval);
+      clearInterval(metricsInterval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   async function handleBrowse() {
@@ -109,7 +156,7 @@ export function Settings() {
     }
   }
 
-  async function toggle(key: keyof Omit<SettingsState, 'replayDir'>) {
+  async function toggle(key: keyof Omit<SettingsState, "replayDir">) {
     const next = !settings[key];
     setSettings((s) => ({ ...s, [key]: next }));
     await window.api.updateSettings({ [key]: next });
@@ -148,16 +195,19 @@ export function Settings() {
   }
 
   const notifsEnabled = settings.showNotifications;
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const sq = searchQuery.toLowerCase();
-  const show = (...terms: string[]) => !sq || terms.some(t => t.toLowerCase().includes(sq));
+  const show = (...terms: string[]) =>
+    !sq || terms.some((t) => t.toLowerCase().includes(sq));
 
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-display font-bold">Settings</h1>
         {saved && (
-          <span className="text-xs text-[#21BA45] font-medium animate-pulse">Saved</span>
+          <span className="text-xs text-[#21BA45] font-medium animate-pulse">
+            Saved
+          </span>
         )}
       </div>
 
@@ -169,348 +219,520 @@ export function Settings() {
         className="w-full rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#21BA45]/50"
       />
 
-      {show('replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        {show('replay', 'directory') && (
-        <div className="p-5">
-          <label className="text-sm font-medium text-gray-300">Replay Directory</label>
-          <div className="flex gap-2 mt-2">
-            <input
-              type="text"
-              value={settings.replayDir}
-              readOnly
-              className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white"
-            />
-            <button
-              onClick={handleBrowse}
-              className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
-            >
-              Change
-            </button>
-          </div>
-        </div>
-        )}
-
-        {show('slippi', 'launcher', 'install', 'path', 'custom') && (
-        <div className="p-5">
-          <label className="text-sm font-medium text-gray-300">Slippi Launcher Path</label>
-          <p className="text-xs text-gray-500 mt-0.5 mb-2">Override if Slippi Launcher data is on a different drive</p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={slippiDir || ''}
-              readOnly
-              placeholder="Default (auto-detect)"
-              className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white placeholder-gray-600"
-            />
-            <button
-              onClick={async () => {
-                const dir = await window.api.browseSlippiDir();
-                if (dir) {
-                  await window.api.setSlippiDir(dir);
-                  setSlippiDir(dir);
-                  flash();
-                }
-              }}
-              className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
-            >
-              Change
-            </button>
-            {slippiDir && (
-              <button
-                onClick={async () => {
-                  await window.api.setSlippiDir(null);
-                  setSlippiDir(null);
-                  flash();
-                }}
-                className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-        </div>
-        )}
-
-        {!privacy.hideRegion && show('display region', 'region', 'override', 'auto-detect', 'profile') && (
-          <div className="flex items-center justify-between px-5 py-3">
-            <div>
-              <p className="text-sm font-medium text-gray-300">Display Region</p>
-              <p className="text-xs text-gray-500">Override the auto-detected region shown on your profile</p>
+      {show(
+        "replay",
+        "directory",
+        "display region",
+        "region",
+        "launch",
+        "login",
+        "close",
+        "tray",
+        "slippi",
+        "launcher",
+        "install",
+        "path",
+        "custom",
+      ) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          {show("replay", "directory") && (
+            <div className="p-5">
+              <label className="text-sm font-medium text-gray-300">
+                Replay Directory
+              </label>
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="text"
+                  value={settings.replayDir}
+                  readOnly
+                  className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white"
+                />
+                <button
+                  onClick={handleBrowse}
+                  className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+                >
+                  Change
+                </button>
+              </div>
             </div>
-            <select
-              className="bg-[#21BA45]/10 border border-[#21BA45]/40 rounded-lg px-3 py-1.5 text-sm text-[#21BA45] font-medium focus:outline-none focus:border-[#21BA45]/70 min-w-[180px] cursor-pointer"
-              value={privacy.chosenRegion || ''}
-              onChange={async (e) => {
-                const val = e.target.value || null;
-                setPrivacy((s) => ({ ...s, chosenRegion: val }));
-                await window.api.setRegion(val);
-                flash();
-              }}
-            >
-              <option value="">Auto-detect</option>
-              <optgroup label="United States">
-                {['MDVA','Tristate','New England','Florida','NorCal','Central Cal','SoCal','Pacific Northwest','Midwest','Southwest','South'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Canada">
-                {['British Columbia','Alberta','Saskatchewan','Manitoba','Ontario','Quebec','Atlantic Canada (NB/NS/PEI/NFLD)'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Latin America">
-                {['Mexico'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Europe">
-                {['UK','Ireland','Germany','Sweden','France','Netherlands','Norway','Denmark','Finland','Spain','Portugal','Italy','Poland','Austria','Switzerland','EU'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Oceania">
-                {['NSW','VIC','QLD','WA','SA','TAS','ACT','NT','New Zealand'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Asia">
-                {['Japan','South Korea','Philippines','Southeast Asia'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-              <optgroup label="Other">
-                {['South America','Middle East','Africa'].map((s) => <option key={s} value={s}>{s}</option>)}
-              </optgroup>
-            </select>
-          </div>
-        )}
-        {show('launch', 'login', 'start', 'auto') && (
-        <ToggleRow
-          label="Launch at Login"
-          description="Start friendlies automatically when you log in"
-          checked={settings.autoLaunch}
-          onChange={() => toggle('autoLaunch')}
-        />
-        )}
-        {show('close', 'tray', 'minimize', 'quit') && (
-        <ToggleRow
-          label="Close to Tray"
-          description="Minimize to the system tray instead of quitting when you close the window"
-          checked={settings.closeToTray}
-          onChange={() => toggle('closeToTray')}
-        />
-        )}
-      </div>
-      )}
+          )}
 
-      {show('notification', 'friend online', 'play invite', 'sound', 'volume', 'test') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        {show('notification', 'desktop') && (
-        <ToggleRow
-          label="Notifications"
-          description="Enable desktop notifications"
-          checked={settings.showNotifications}
-          onChange={() => toggle('showNotifications')}
-        />
-        )}
+          {show("slippi", "launcher", "install", "path", "custom") && (
+            <div className="p-5">
+              <label className="text-sm font-medium text-gray-300">
+                Slippi Launcher Path
+              </label>
+              <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                Override if Slippi Launcher data is on a different drive
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={slippiDir || ""}
+                  readOnly
+                  placeholder="Default (auto-detect)"
+                  className="flex-1 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-2.5 text-sm font-mono text-white placeholder-gray-600"
+                />
+                <button
+                  onClick={async () => {
+                    const dir = await window.api.browseSlippiDir();
+                    if (dir) {
+                      await window.api.setSlippiDir(dir);
+                      setSlippiDir(dir);
+                      flash();
+                    }
+                  }}
+                  className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+                >
+                  Change
+                </button>
+                {slippiDir && (
+                  <button
+                    onClick={async () => {
+                      await window.api.setSlippiDir(null);
+                      setSlippiDir(null);
+                      flash();
+                    }}
+                    className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
-        {show('friend online', 'notify', 'notification') && (
-        <ToggleRow
-          label="Friend Online"
-          description="Notify when a friend comes online or enters a game"
-          checked={notifsEnabled && settings.notifyFriendOnline}
-          onChange={() => toggle('notifyFriendOnline')}
-          disabled={!notifsEnabled}
-          indent
-        />
-        )}
-
-        {show('play invite', 'notify', 'notification') && (
-        <ToggleRow
-          label="Play Invites"
-          description="Notify when a friend invites you to play"
-          checked={notifsEnabled && settings.notifyPlayInvite}
-          onChange={() => toggle('notifyPlayInvite')}
-          disabled={!notifsEnabled}
-          indent
-        />
-        )}
-
-        {show('notification sound', 'sound effect') && (
-        <ToggleRow
-          label="Notification Sound"
-          description="Play a sound effect with notifications"
-          checked={notifsEnabled && settings.notificationSound}
-          onChange={() => toggle('notificationSound')}
-          disabled={!notifsEnabled}
-          indent
-        />
-        )}
-
-        {show('volume', 'sound') && (
-        <div className={`flex items-center justify-between p-5 pl-10 ${!notifsEnabled || !settings.notificationSound ? 'opacity-40 pointer-events-none' : ''}`}>
-          <div>
-            <p className="text-sm font-medium text-gray-300">Volume</p>
-            <p className="text-xs text-gray-500 mt-0.5">Adjust notification sound volume</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={0}
-              max={0.35}
-              step={0.01}
-              value={settings.notificationVolume}
-              onChange={(e) => {
-                const vol = parseFloat(e.target.value);
-                setSettings((s) => ({ ...s, notificationVolume: vol }));
-                window.api.updateSettings({ notificationVolume: vol });
-              }}
-              className="w-28 accent-[#21BA45] h-1.5 bg-[#333] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+          {!privacy.hideRegion &&
+            show(
+              "display region",
+              "region",
+              "override",
+              "auto-detect",
+              "profile",
+            ) && (
+              <div className="flex items-center justify-between px-5 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-300">
+                    Display Region
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Override the auto-detected region shown on your profile
+                  </p>
+                </div>
+                <select
+                  className="bg-[#21BA45]/10 border border-[#21BA45]/40 rounded-lg px-3 py-1.5 text-sm text-[#21BA45] font-medium focus:outline-none focus:border-[#21BA45]/70 min-w-[180px] cursor-pointer"
+                  value={privacy.chosenRegion || ""}
+                  onChange={async (e) => {
+                    const val = e.target.value || null;
+                    setPrivacy((s) => ({ ...s, chosenRegion: val }));
+                    await window.api.setRegion(val);
+                    flash();
+                  }}
+                >
+                  <option value="">Auto-detect</option>
+                  <optgroup label="United States">
+                    {[
+                      "MDVA",
+                      "Tristate",
+                      "New England",
+                      "Florida",
+                      "NorCal",
+                      "Central Cal",
+                      "SoCal",
+                      "Pacific Northwest",
+                      "Midwest",
+                      "Southwest",
+                      "South",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Canada">
+                    {[
+                      "British Columbia",
+                      "Alberta",
+                      "Saskatchewan",
+                      "Manitoba",
+                      "Ontario",
+                      "Quebec",
+                      "Atlantic Canada (NB/NS/PEI/NFLD)",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Latin America">
+                    {["Mexico"].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Europe">
+                    {[
+                      "UK",
+                      "Ireland",
+                      "Germany",
+                      "Sweden",
+                      "France",
+                      "Netherlands",
+                      "Norway",
+                      "Denmark",
+                      "Finland",
+                      "Spain",
+                      "Portugal",
+                      "Italy",
+                      "Poland",
+                      "Austria",
+                      "Switzerland",
+                      "EU",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Oceania">
+                    {[
+                      "NSW",
+                      "VIC",
+                      "QLD",
+                      "WA",
+                      "SA",
+                      "TAS",
+                      "ACT",
+                      "NT",
+                      "New Zealand",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Asia">
+                    {[
+                      "Japan",
+                      "South Korea",
+                      "Philippines",
+                      "Southeast Asia",
+                    ].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Other">
+                    {["South America", "Middle East", "Africa"].map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+            )}
+          {show("launch", "login", "start", "auto") && (
+            <ToggleRow
+              label="Launch at Login"
+              description="Start friendlies automatically when you log in"
+              checked={settings.autoLaunch}
+              onChange={() => toggle("autoLaunch")}
             />
-            <span className="text-xs text-gray-500 w-8 text-right tabular-nums">{Math.round((settings.notificationVolume / 0.35) * 100)}%</span>
-          </div>
+          )}
+          {show("close", "tray", "minimize", "quit") && (
+            <ToggleRow
+              label="Close to Tray"
+              description="Minimize to the system tray instead of quitting when you close the window"
+              checked={settings.closeToTray}
+              onChange={() => toggle("closeToTray")}
+            />
+          )}
         </div>
-        )}
-
-        {show('test notification', 'preview') && (
-        <div className={`flex items-center justify-between p-5 pl-10 ${!notifsEnabled ? 'opacity-40 pointer-events-none' : ''}`}>
-          <div>
-            <p className="text-sm font-medium text-gray-300">Test Notification</p>
-            <p className="text-xs text-gray-500 mt-0.5">Send a test notification to preview your settings</p>
-          </div>
-          <button
-            onClick={() => window.api.testNotification()}
-            disabled={!notifsEnabled}
-            className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white disabled:opacity-40"
-          >
-            Test
-          </button>
-        </div>
-        )}
-      </div>
       )}
 
-      {show('reduce', 'background', 'performance', 'polling', 'game') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        <ToggleRow
-          label="Reduce Background Activity"
-          description="Pause notifications and slow polling while in a game to minimize performance impact"
-          checked={settings.reduceBackgroundActivity}
-          onChange={() => toggle('reduceBackgroundActivity')}
-        />
-      </div>
+      {show(
+        "notification",
+        "friend online",
+        "play invite",
+        "sound",
+        "volume",
+        "test",
+      ) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          {show("notification", "desktop") && (
+            <ToggleRow
+              label="Notifications"
+              description="Enable desktop notifications"
+              checked={settings.showNotifications}
+              onChange={() => toggle("showNotifications")}
+            />
+          )}
+
+          {show("friend online", "notify", "notification") && (
+            <ToggleRow
+              label="Friend Online"
+              description="Notify when a friend comes online or enters a game"
+              checked={notifsEnabled && settings.notifyFriendOnline}
+              onChange={() => toggle("notifyFriendOnline")}
+              disabled={!notifsEnabled}
+              indent
+            />
+          )}
+
+          {show("play invite", "notify", "notification") && (
+            <ToggleRow
+              label="Play Invites"
+              description="Notify when a friend invites you to play"
+              checked={notifsEnabled && settings.notifyPlayInvite}
+              onChange={() => toggle("notifyPlayInvite")}
+              disabled={!notifsEnabled}
+              indent
+            />
+          )}
+
+          {show("notification sound", "sound effect") && (
+            <ToggleRow
+              label="Notification Sound"
+              description="Play a sound effect with notifications"
+              checked={notifsEnabled && settings.notificationSound}
+              onChange={() => toggle("notificationSound")}
+              disabled={!notifsEnabled}
+              indent
+            />
+          )}
+
+          {show("volume", "sound") && (
+            <div
+              className={`flex items-center justify-between p-5 pl-10 ${!notifsEnabled || !settings.notificationSound ? "opacity-40 pointer-events-none" : ""}`}
+            >
+              <div>
+                <p className="text-sm font-medium text-gray-300">Volume</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Adjust notification sound volume
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={0.35}
+                  step={0.01}
+                  value={settings.notificationVolume}
+                  onChange={(e) => {
+                    const vol = parseFloat(e.target.value);
+                    setSettings((s) => ({ ...s, notificationVolume: vol }));
+                    window.api.updateSettings({ notificationVolume: vol });
+                  }}
+                  className="w-28 accent-[#21BA45] h-1.5 bg-[#333] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+                />
+                <span className="text-xs text-gray-500 w-8 text-right tabular-nums">
+                  {Math.round((settings.notificationVolume / 0.35) * 100)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {show("test notification", "preview") && (
+            <div
+              className={`flex items-center justify-between p-5 pl-10 ${!notifsEnabled ? "opacity-40 pointer-events-none" : ""}`}
+            >
+              <div>
+                <p className="text-sm font-medium text-gray-300">
+                  Test Notification
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Send a test notification to preview your settings
+                </p>
+              </div>
+              <button
+                onClick={() => window.api.testNotification()}
+                disabled={!notifsEnabled}
+                className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white disabled:opacity-40"
+              >
+                Test
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
-      {show('privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        <div className="p-5">
-          <p className="text-sm font-medium text-gray-300">Privacy</p>
-          <p className="text-xs text-gray-500 mt-0.5">Control what other players can see about you</p>
-        </div>
-        {show('friend request', 'disable', 'block', 'incoming') && (
-        <ToggleRow
-          label="Disable Friend Requests"
-          description="Block all incoming friend requests from other players"
-          checked={privacy.disableFriendRequests}
-          onChange={() => togglePrivacy('disableFriendRequests')}
-          indent
-        />
-        )}
-        {show('hide online', 'online status', 'offline', 'appear') && (
-        <ToggleRow
-          label="Hide Online Status"
-          description="Appear offline to all other players"
-          checked={privacy.hideOnlineStatus}
-          onChange={() => togglePrivacy('hideOnlineStatus')}
-          indent
-        />
-        )}
-        {show('hide location', 'region', 'location') && (
-        <ToggleRow
-          label="Hide Location"
-          description="Don't show your region to other players"
-          checked={privacy.hideRegion}
-          onChange={() => togglePrivacy('hideRegion')}
-          indent
-        />
-        )}
-        {show('hide discord', 'discord', 'non-friends', 'username') && (
-        <ToggleRow
-          label="Hide Discord from Non-Friends"
-          description="Only show your Discord username to accepted friends"
-          checked={privacy.hideDiscordUnlessFriends}
-          onChange={() => togglePrivacy('hideDiscordUnlessFriends')}
-          indent
-        />
-        )}
-        {show('hide discord photo', 'avatar', 'photo', 'character icon') && (
-        <ToggleRow
-          label="Hide Discord Photo"
-          description="Show your main character icon instead of your Discord avatar"
-          checked={privacy.hideAvatar}
-          onChange={() => togglePrivacy('hideAvatar')}
-          indent
-        />
-        )}
-        {show('connection type', 'wifi', 'ethernet') && (
+      {show("reduce", "background", "performance", "polling", "game") && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
           <ToggleRow
-            label="Hide Connection Type"
-            description="Don't show whether you're on Wi-Fi or Ethernet"
-            checked={privacy.hideConnectionType}
-            onChange={() => togglePrivacy('hideConnectionType')}
-            indent
+            label="Reduce Background Activity"
+            description="Pause notifications and slow polling while in a game to minimize performance impact"
+            checked={settings.reduceBackgroundActivity}
+            onChange={() => toggle("reduceBackgroundActivity")}
           />
-        )}
-      </div>
-      )}
-
-      {show('social', 'status preset', 'nudge', 'ggs', 'friendlies', 'chat') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        <div className="p-5">
-          <p className="text-sm font-medium text-gray-300">Social Features</p>
-          <p className="text-xs text-gray-500 mt-0.5">Control which social features are enabled</p>
         </div>
-        {show('status preset', 'down for friendlies', 'status') && (
-        <ToggleRow
-          label="Status Presets"
-          description="Show status presets like 'Down for friendlies' on your card and see others' statuses"
-          checked={!settings.disableStatuses}
-          onChange={() => toggle('disableStatuses')}
-          indent
-        />
-        )}
-        {show('nudge', 'ggs', 'quick message') && (
-        <ToggleRow
-          label="Nudges"
-          description="Receive and send quick messages like 'GGs' to other players"
-          checked={!settings.disableNudges}
-          onChange={() => toggle('disableNudges')}
-          indent
-        />
-        )}
-        {show('chat', 'chatroom', 'disable chat') && (
-        <ToggleRow
-          label="Chat"
-          description="Show the public chatroom tab"
-          checked={!settings.disableChat}
-          onChange={() => toggle('disableChat')}
-          indent
-        />
-        )}
-      </div>
       )}
 
-      {blockedUsers.length > 0 && show('block', 'unblock', 'blocked users') && (
+      {show(
+        "privacy",
+        "friend request",
+        "hide",
+        "online status",
+        "location",
+        "discord",
+        "avatar",
+        "photo",
+        "connection type",
+      ) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          <div className="p-5">
+            <p className="text-sm font-medium text-gray-300">Privacy</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Control what other players can see about you
+            </p>
+          </div>
+          {show("friend request", "disable", "block", "incoming") && (
+            <ToggleRow
+              label="Disable Friend Requests"
+              description="Block all incoming friend requests from other players"
+              checked={privacy.disableFriendRequests}
+              onChange={() => togglePrivacy("disableFriendRequests")}
+              indent
+            />
+          )}
+          {show("hide online", "online status", "offline", "appear") && (
+            <ToggleRow
+              label="Hide Online Status"
+              description="Appear offline to all other players"
+              checked={privacy.hideOnlineStatus}
+              onChange={() => togglePrivacy("hideOnlineStatus")}
+              indent
+            />
+          )}
+          {show("hide location", "region", "location") && (
+            <ToggleRow
+              label="Hide Location"
+              description="Don't show your region to other players"
+              checked={privacy.hideRegion}
+              onChange={() => togglePrivacy("hideRegion")}
+              indent
+            />
+          )}
+          {show("hide discord", "discord", "non-friends", "username") && (
+            <ToggleRow
+              label="Hide Discord from Non-Friends"
+              description="Only show your Discord username to accepted friends"
+              checked={privacy.hideDiscordUnlessFriends}
+              onChange={() => togglePrivacy("hideDiscordUnlessFriends")}
+              indent
+            />
+          )}
+          {show("hide discord photo", "avatar", "photo", "character icon") && (
+            <ToggleRow
+              label="Hide Discord Photo"
+              description="Show your main character icon instead of your Discord avatar"
+              checked={privacy.hideAvatar}
+              onChange={() => togglePrivacy("hideAvatar")}
+              indent
+            />
+          )}
+          {show("connection type", "wifi", "ethernet") && (
+            <ToggleRow
+              label="Hide Connection Type"
+              description="Don't show whether you're on Wi-Fi or Ethernet"
+              checked={privacy.hideConnectionType}
+              onChange={() => togglePrivacy("hideConnectionType")}
+              indent
+            />
+          )}
+          {show("mutual friends", "hide", "privacy") && (
+            <ToggleRow
+              label="Hide from Mutual Friends"
+              description="Don't appear in other players' mutual friends lists"
+              checked={privacy.hideMutualFriends}
+              onChange={() => togglePrivacy("hideMutualFriends")}
+              indent
+            />
+          )}
+        </div>
+      )}
+
+      {show(
+        "social",
+        "status preset",
+        "nudge",
+        "ggs",
+        "friendlies",
+        "chat",
+      ) && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          <div className="p-5">
+            <p className="text-sm font-medium text-gray-300">Social Features</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Control which social features are enabled
+            </p>
+          </div>
+          {show("status preset", "down for friendlies", "status") && (
+            <ToggleRow
+              label="Status Presets"
+              description="Show status presets like 'Down for friendlies' on your card and see others' statuses"
+              checked={!settings.disableStatuses}
+              onChange={() => toggle("disableStatuses")}
+              indent
+            />
+          )}
+          {show("nudge", "ggs", "quick message") && (
+            <ToggleRow
+              label="Nudges"
+              description="Receive and send quick messages like 'GGs' to other players"
+              checked={!settings.disableNudges}
+              onChange={() => toggle("disableNudges")}
+              indent
+            />
+          )}
+          {show("chat", "chatroom", "disable chat") && (
+            <ToggleRow
+              label="Chat"
+              description="Show the public chatroom tab"
+              checked={!settings.disableChat}
+              onChange={() => toggle("disableChat")}
+              indent
+            />
+          )}
+        </div>
+      )}
+
+      {blockedUsers.length > 0 && show("block", "unblock", "blocked users") && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
           <div className="p-5">
             <p className="text-sm font-medium text-gray-300">Blocked Users</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Blocked users can't send you requests, invites, or appear on Discover
+              Blocked users can't send you requests, invites, or appear on
+              Discover
             </p>
           </div>
           {blockedUsers.map((b) => (
-            <div key={b.connectCode} className="flex items-center justify-between px-5 py-3">
+            <div
+              key={b.connectCode}
+              className="flex items-center justify-between px-5 py-3"
+            >
               <div className="flex items-center gap-3 min-w-0">
                 {b.avatarUrl ? (
-                  <img src={b.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 border border-[#2a2a2a]" />
+                  <img
+                    src={b.avatarUrl}
+                    alt=""
+                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-[#2a2a2a]"
+                  />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-gray-600 text-[10px] font-bold shrink-0">
                     {b.connectCode.slice(0, 2)}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <span className="font-mono font-bold text-white text-sm">{b.connectCode}</span>
+                  <span className="font-mono font-bold text-white text-sm">
+                    {b.connectCode}
+                  </span>
                   {b.displayName && (
-                    <p className="text-xs text-gray-500 truncate">{b.displayName}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {b.displayName}
+                    </p>
                   )}
                 </div>
               </div>
@@ -519,107 +741,189 @@ export function Settings() {
                 disabled={unblocking === b.connectCode}
                 className="shrink-0 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-[#222] transition-colors disabled:opacity-40"
               >
-                {unblocking === b.connectCode ? '...' : 'Unblock'}
+                {unblocking === b.connectCode ? "..." : "Unblock"}
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {show('troubleshoot', 'debug', 'logs', 'export', 'diagnostics') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
-        <div className="p-5 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-300">Troubleshooting</p>
-            <p className="text-xs text-gray-500 mt-0.5">Export application logs and metadata for debugging</p>
-          </div>
-          {import.meta.env.DEV ? (
-          <div className="inline-flex rounded-lg border border-[#2a2a2a] overflow-hidden">
-            <button
-              className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors"
-              onClick={() => { window.api.openLogsDirectory(); }}
-            >
-              Open Logs Directory
-            </button>
-            <button
-              className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors border-l border-[#2a2a2a] flex items-center gap-1.5"
-              onClick={async () => {
-                try {
-                  const filePath = await window.api.exportDiagnostics();
-                  if (filePath) flash();
-                } catch {}
-              }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
-              </svg>
-              Export
-            </button>
-          </div>
-          ) : (
-          <button
-            className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 hover:bg-[#222] transition-colors flex items-center gap-1.5"
-            onClick={async () => {
-              try {
-                const filePath = await window.api.exportDiagnostics();
-                if (filePath) flash();
-              } catch {}
-            }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
-            </svg>
-            Export
-          </button>
-          )}
-        </div>
-      </div>
-      )}
-
-      {show('account', 'log out', 'logout', 'update', 'version') && (
-      <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
-        <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
-        <div className="flex gap-3">
-          <button
-            onClick={handleLogout}
-            className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
-          >
-            Log Out
-          </button>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setUpdateMsg(null); window.api.checkForUpdates(); }}
-              className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
-            >
-              Check for Updates
-            </button>
-            {updateMsg && (
-              <span className="text-xs font-medium text-[#21BA45]">{updateMsg}</span>
+      {show("troubleshoot", "debug", "logs", "export", "diagnostics") && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] divide-y divide-[#2a2a2a]">
+          <div className="p-5 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-300">
+                Troubleshooting
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Export application logs and metadata for debugging
+              </p>
+            </div>
+            {import.meta.env.DEV ? (
+              <div className="inline-flex rounded-lg border border-[#2a2a2a] overflow-hidden">
+                <button
+                  className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors"
+                  onClick={() => {
+                    window.api.openLogsDirectory();
+                  }}
+                >
+                  Open Logs Directory
+                </button>
+                <button
+                  className="px-4 py-2 bg-[#1a1a1a] text-sm text-gray-300 hover:bg-[#222] transition-colors border-l border-[#2a2a2a] flex items-center gap-1.5"
+                  onClick={async () => {
+                    try {
+                      const filePath = await window.api.exportDiagnostics();
+                      if (filePath) flash();
+                    } catch {}
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className="w-3.5 h-3.5"
+                  >
+                    <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
+                  </svg>
+                  Export
+                </button>
+              </div>
+            ) : (
+              <button
+                className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-gray-300 hover:bg-[#222] transition-colors flex items-center gap-1.5"
+                onClick={async () => {
+                  try {
+                    const filePath = await window.api.exportDiagnostics();
+                    if (filePath) flash();
+                  } catch {}
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  className="w-3.5 h-3.5"
+                >
+                  <path d="M8 1a.75.75 0 0 1 .75.75v6.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l1.72 1.72V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 14.75h-9A1.5 1.5 0 0 1 2 13.25v-1.5a.75.75 0 0 1 .75-.75Z" />
+                </svg>
+                Export
+              </button>
             )}
           </div>
         </div>
-      </div>
       )}
 
-      {sq && !['replay', 'directory', 'display region', 'region', 'launch', 'login', 'close', 'tray', 'slippi', 'launcher', 'install', 'path', 'custom', 'notification', 'friend online', 'play invite', 'sound', 'volume', 'test', 'reduce', 'background', 'performance', 'polling', 'game', 'privacy', 'friend request', 'hide', 'online status', 'location', 'discord', 'avatar', 'photo', 'connection type', 'social', 'status preset', 'nudge', 'ggs', 'friendlies', 'chat', 'chatroom', 'disable chat', 'block', 'unblock', 'blocked users', 'account', 'log out', 'logout', 'update', 'version'].some(t => t.includes(sq)) && (
-        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
-          <p className="text-gray-500 text-sm">No settings match "{searchQuery}"</p>
+      {show("account", "log out", "logout", "update", "version") && (
+        <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
+          <h3 className="text-sm font-medium text-gray-300 mb-4">Account</h3>
+          <div className="flex gap-3">
+            <button
+              onClick={handleLogout}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+            >
+              Log Out
+            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setUpdateMsg(null);
+                  window.api.checkForUpdates();
+                }}
+                className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-[#222] hover:text-white"
+              >
+                Check for Updates
+              </button>
+              {updateMsg && (
+                <span className="text-xs font-medium text-[#21BA45]">
+                  {updateMsg}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
+      {sq &&
+        ![
+          "replay",
+          "directory",
+          "display region",
+          "region",
+          "launch",
+          "login",
+          "close",
+          "tray",
+          "slippi",
+          "launcher",
+          "install",
+          "path",
+          "custom",
+          "notification",
+          "friend online",
+          "play invite",
+          "sound",
+          "volume",
+          "test",
+          "reduce",
+          "background",
+          "performance",
+          "polling",
+          "game",
+          "privacy",
+          "friend request",
+          "hide",
+          "online status",
+          "location",
+          "discord",
+          "avatar",
+          "photo",
+          "connection type",
+          "social",
+          "status preset",
+          "nudge",
+          "ggs",
+          "friendlies",
+          "chat",
+          "chatroom",
+          "disable chat",
+          "block",
+          "unblock",
+          "blocked users",
+          "account",
+          "log out",
+          "logout",
+          "update",
+          "version",
+        ].some((t) => t.includes(sq)) && (
+          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
+            <p className="text-gray-500 text-sm">
+              No settings match "{searchQuery}"
+            </p>
+          </div>
+        )}
+
       {pStats && myCode && DEBUG_CONNECT_CODES.includes(myCode) && !sq && (
         <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Connection Health</h3>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Connection Health
+          </h3>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-gray-500">Realtime</span>
-              <span className={pStats.realtimeConnected ? 'text-[#21BA45]' : 'text-red-400'}>
-                {pStats.realtimeConnected ? 'Connected' : 'Disconnected'}
+              <span
+                className={
+                  pStats.realtimeConnected ? "text-[#21BA45]" : "text-red-400"
+                }
+              >
+                {pStats.realtimeConnected ? "Connected" : "Disconnected"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">DB writes</span>
-              <span className="text-gray-300">{pStats.upsertOk} ok / {pStats.upsertFail} fail</span>
+              <span className="text-gray-300">
+                {pStats.upsertOk} ok / {pStats.upsertFail} fail
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Writes skipped</span>
@@ -627,11 +931,15 @@ export function Settings() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Realtime tracks</span>
-              <span className="text-gray-300">{pStats.trackOk} ok / {pStats.trackFail} fail</span>
+              <span className="text-gray-300">
+                {pStats.trackOk} ok / {pStats.trackFail} fail
+              </span>
             </div>
           </div>
           {pStats.lastError && (
-            <p className="mt-2 text-[10px] text-red-400/70 truncate">Last error: {pStats.lastError}</p>
+            <p className="mt-2 text-[10px] text-red-400/70 truncate">
+              Last error: {pStats.lastError}
+            </p>
           )}
         </div>
       )}
@@ -640,50 +948,72 @@ export function Settings() {
         <DebugLaunchPanel />
       )}
 
-      {metrics && myCode && DEBUG_CONNECT_CODES.includes(myCode) && !sq && (() => {
-        const labelMap: Record<string, string> = {
-          Browser: 'Main process',
-          Tab: 'Renderer (UI)',
-          GPU: 'GPU compositing',
-          Utility: 'Network / utility',
-        };
-        const totalCpu = metrics.reduce((s, m) => s + m.cpu.percentCPUUsage, 0);
-        const totalMem = metrics.reduce((s, m) => s + m.memory.workingSetSize, 0);
-        const fmtCpu = (v: number) => v.toFixed(2).padStart(6);
-        const fmtMem = (v: number) => `${(v / 1024).toFixed(0)}`.padStart(4);
-        return (
-          <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Performance</h3>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-[10px] text-gray-600">
-                  <td className="pb-2">Process</td>
-                  <td className="pb-2 text-right">CPU</td>
-                  <td className="pb-2 text-right">RAM</td>
-                </tr>
-              </thead>
-              <tbody className="font-mono tabular-nums">
-                {metrics.map((m) => (
-                  <tr key={m.pid}>
-                    <td className="text-gray-500 py-0.5 pr-4 font-sans">{labelMap[m.type] || m.type}</td>
-                    <td className="text-gray-300 py-0.5 text-right whitespace-pre">{fmtCpu(m.cpu.percentCPUUsage)}%</td>
-                    <td className="text-gray-300 py-0.5 text-right whitespace-pre">{fmtMem(m.memory.workingSetSize)} MB</td>
+      {metrics &&
+        myCode &&
+        DEBUG_CONNECT_CODES.includes(myCode) &&
+        !sq &&
+        (() => {
+          const labelMap: Record<string, string> = {
+            Browser: "Main process",
+            Tab: "Renderer (UI)",
+            GPU: "GPU compositing",
+            Utility: "Network / utility",
+          };
+          const totalCpu = metrics.reduce(
+            (s, m) => s + m.cpu.percentCPUUsage,
+            0,
+          );
+          const totalMem = metrics.reduce(
+            (s, m) => s + m.memory.workingSetSize,
+            0,
+          );
+          const fmtCpu = (v: number) => v.toFixed(2).padStart(6);
+          const fmtMem = (v: number) => `${(v / 1024).toFixed(0)}`.padStart(4);
+          return (
+            <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Performance
+              </h3>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-gray-600">
+                    <td className="pb-2">Process</td>
+                    <td className="pb-2 text-right">CPU</td>
+                    <td className="pb-2 text-right">RAM</td>
                   </tr>
-                ))}
-                <tr className="border-t border-[#2a2a2a]">
-                  <td className="text-gray-400 font-medium pt-2 font-sans">Total</td>
-                  <td className="text-white font-medium pt-2 text-right whitespace-pre">{fmtCpu(totalCpu)}%</td>
-                  <td className="text-white font-medium pt-2 text-right whitespace-pre">{fmtMem(totalMem)} MB</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
+                </thead>
+                <tbody className="font-mono tabular-nums">
+                  {metrics.map((m) => (
+                    <tr key={m.pid}>
+                      <td className="text-gray-500 py-0.5 pr-4 font-sans">
+                        {labelMap[m.type] || m.type}
+                      </td>
+                      <td className="text-gray-300 py-0.5 text-right whitespace-pre">
+                        {fmtCpu(m.cpu.percentCPUUsage)}%
+                      </td>
+                      <td className="text-gray-300 py-0.5 text-right whitespace-pre">
+                        {fmtMem(m.memory.workingSetSize)} MB
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-[#2a2a2a]">
+                    <td className="text-gray-400 font-medium pt-2 font-sans">
+                      Total
+                    </td>
+                    <td className="text-white font-medium pt-2 text-right whitespace-pre">
+                      {fmtCpu(totalCpu)}%
+                    </td>
+                    <td className="text-white font-medium pt-2 text-right whitespace-pre">
+                      {fmtMem(totalMem)} MB
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
-      <p className="text-center text-xs text-gray-600">
-      friendlies v{version}
-      </p>
+      <p className="text-center text-xs text-gray-600">friendlies v{version}</p>
     </div>
   );
 }
@@ -702,8 +1032,11 @@ function DebugLaunchPanel() {
     const unsub = window.api.onDirectConnectStatus((evt: any) => {
       const msg = evt.error ? `${evt.status}: ${evt.error}` : evt.status;
       setStatus(msg);
-      setActive(evt.status !== 'stopped' && evt.status !== 'error');
-      setLog((prev) => [...prev.slice(-50), `${new Date().toLocaleTimeString()} ${msg}`]);
+      setActive(evt.status !== "stopped" && evt.status !== "error");
+      setLog((prev) => [
+        ...prev.slice(-50),
+        `${new Date().toLocaleTimeString()} ${msg}`,
+      ]);
     });
     return unsub;
   }, []);
@@ -714,27 +1047,34 @@ function DebugLaunchPanel() {
 
   async function handleLaunch() {
     setLog([]);
-    setStatus('starting...');
+    setStatus("starting...");
     setActive(true);
-    const result = await window.api.startDirectConnect('MANG#0');
+    const result = await window.api.startDirectConnect("MANG#0");
     if (result?.error) {
       setStatus(`error: ${result.error}`);
       setActive(false);
-      setLog((prev) => [...prev, `${new Date().toLocaleTimeString()} error: ${result.error}`]);
+      setLog((prev) => [
+        ...prev,
+        `${new Date().toLocaleTimeString()} error: ${result.error}`,
+      ]);
     }
   }
 
   async function handleStop() {
     await window.api.stopDirectConnect();
     setActive(false);
-    setStatus('stopped');
+    setStatus("stopped");
   }
 
   return (
     <div className="rounded-2xl border border-yellow-500/30 bg-[#141414] p-5">
-      <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-3">Launch Dolphin (debug)</h3>
+      <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-3">
+        Launch Dolphin (debug)
+      </h3>
       <p className="text-xs text-gray-500 mb-3">
-        Launches Dolphin and injects <span className="font-mono text-gray-400">MANG#0</span> as the direct connect code.
+        Launches Dolphin and injects{" "}
+        <span className="font-mono text-gray-400">MANG#0</span> as the direct
+        connect code.
       </p>
       <div className="flex items-center gap-3 mb-3">
         <button
@@ -742,7 +1082,7 @@ function DebugLaunchPanel() {
           disabled={active}
           className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20 disabled:opacity-40"
         >
-          {active ? 'Running...' : 'Launch'}
+          {active ? "Running..." : "Launch"}
         </button>
         {active && (
           <button
@@ -753,11 +1093,15 @@ function DebugLaunchPanel() {
           </button>
         )}
         {status && (
-          <span className={`text-xs font-medium ${
-            status.startsWith('error') ? 'text-red-400' :
-            status === 'stopped' ? 'text-gray-500' :
-            'text-yellow-400'
-          }`}>
+          <span
+            className={`text-xs font-medium ${
+              status.startsWith("error")
+                ? "text-red-400"
+                : status === "stopped"
+                  ? "text-gray-500"
+                  : "text-yellow-400"
+            }`}
+          >
             {status}
           </span>
         )}
@@ -767,7 +1111,7 @@ function DebugLaunchPanel() {
           ref={logRef}
           className="mt-2 max-h-32 overflow-y-auto rounded-lg bg-[#0a0a0a] border border-[#2a2a2a] p-3 text-[10px] text-gray-500 font-mono leading-relaxed"
         >
-          {log.join('\n')}
+          {log.join("\n")}
         </pre>
       )}
     </div>
@@ -790,7 +1134,9 @@ function ToggleRow({
   indent?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between p-5 ${indent ? 'pl-10' : ''} ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+    <div
+      className={`flex items-center justify-between p-5 ${indent ? "pl-10" : ""} ${disabled ? "opacity-40 pointer-events-none" : ""}`}
+    >
       <div>
         <p className="text-sm font-medium text-gray-300">{label}</p>
         <p className="text-xs text-gray-500 mt-0.5">{description}</p>
@@ -799,12 +1145,12 @@ function ToggleRow({
         onClick={onChange}
         disabled={disabled}
         className={`relative w-11 h-6 rounded-full transition-colors ${
-          checked ? 'bg-[#21BA45]' : 'bg-[#333]'
+          checked ? "bg-[#21BA45]" : "bg-[#333]"
         }`}
       >
         <span
           className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-5' : ''
+            checked ? "translate-x-5" : ""
           }`}
         />
       </button>

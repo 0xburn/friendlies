@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { isGameActive } from '../App';
 import { ConnectionTypeIcon } from '../components/ConnectionTypeIcon';
 import { OnlineIndicator } from '../components/OnlineIndicator';
@@ -6,8 +6,10 @@ import { PlayerCard } from '../components/PlayerCard';
 import { RankBadge } from '../components/RankBadge';
 import { CharacterIcon } from '../components/CharacterIcon';
 import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
+import { FRIEND_REQUEST_TAGS } from '../lib/friend-request-tags';
 import { getRankTier } from '../lib/ranks';
 import { friendsSelfStatusShell, PatronBadge } from '../lib/patronCardStyle';
+
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -62,6 +64,7 @@ function SkeletonCard() {
 }
 
 export function Friends() {
+
   const [friends, setFriends] = useState<Friend[]>([]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [onlineMap, setOnlineMap] = useState<Record<string, { status: string; opponentCode?: string; currentCharacter?: number | null; playingSince?: string; gameMode?: string | null; lookingToPlay?: boolean; statusPreset?: string | null; lfgCharacters?: number[]; lfgRanks?: string[]; connectionType?: 'wifi' | 'ethernet' | null }>>({});
@@ -1156,7 +1159,7 @@ export function Friends() {
       )}
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-display font-bold">Friends</h1>
+        <h1 className="px-3 py-1.5 text-lg font-display font-bold text-white">Friends</h1>
         {!initialLoading && (
           <div className="flex items-center gap-2">
             {(['all', 'online', 'in-game', 'offline'] as const).map((f) => (
@@ -1188,6 +1191,7 @@ export function Friends() {
         )}
       </div>
 
+      {(<>
       <div className="flex gap-2">
         <input
           type="text"
@@ -1418,7 +1422,7 @@ export function Friends() {
                 When adding a player, it often helps to let them know a bit more info on what you're looking for! Notes are optional.
               </p>
               <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                {['Looking for MU practice', 'GGs from unranked', 'Same region', 'Just saying hi', 'Similar skill level'].map((tag) => (
+                {FRIEND_REQUEST_TAGS.map((tag) => (
                   <button
                     key={tag}
                     onClick={() => setAddNote(addNote === tag ? null : tag)}
@@ -1543,6 +1547,8 @@ export function Friends() {
           </button>
         )}
       </div>
+      </>)}
+
     </div>
   );
 }

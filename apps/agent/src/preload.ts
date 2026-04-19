@@ -53,6 +53,9 @@ const api = {
 
   discoverPlayers: (opts?: { characterIds?: number[]; minElo?: number; maxElo?: number }) => ipcRenderer.invoke('discover:list', opts),
 
+  getMutualConnections: () => ipcRenderer.invoke('mutuals:list'),
+  getMutualFriendsFor: (targetUserId: string) => ipcRenderer.invoke('mutuals:for-player', targetUserId),
+
   getLeaderboard: (limit?: number) => ipcRenderer.invoke('leaderboard:top', limit) as Promise<{ userId: string; connectCode: string; displayName: string; avatarUrl: string | null; mainCharacter: number | null; inGameSeconds: number; rankChange: number }[]>,
 
   getPlayerCount: () => ipcRenderer.invoke('stats:playerCount'),

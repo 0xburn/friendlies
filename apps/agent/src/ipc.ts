@@ -459,13 +459,14 @@ export function registerIpcHandlers(
     const t0 = performance.now();
     try {
       const user = await getCurrentUser();
-      if (!user) return [];
+      if (!user) { console.log('[friends:list] no authenticated user'); return []; }
       const t1 = performance.now();
-      const { data } = await supabase
+      const { data, error: friendsError } = await supabase
         .from('friends')
         .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, chosen_region, hide_region, hide_discord_unless_friends, hide_avatar, main_character, secondary_character, top_characters)')
         .eq('user_id', user.id);
-      if (!data) return [];
+      if (friendsError) console.error('[friends:list] query error', friendsError);
+      if (!data) { console.log(`[friends:list] no data for user ${user.id}`); return []; }
       const t2 = performance.now();
 
       const codes = data
@@ -1428,6 +1429,102 @@ export function registerIpcHandlers(
     try { return await discoverInFlight; } finally { discoverInFlight = null; }
   });
 
+  // --- Mutuals ---
+
+  ipcMain.handle('mutuals:list', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) { console.log('[mutuals:list] no authenticated user'); return []; }
+      const t0 = performance.now();
+
+      // Read precomputed mutual counts for this user
+      const { data: rows, error: mfcError } = await supabase
+        .from('mutual_friend_counts')
+        .select('user_a, user_b, mutual_count')
+        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+        .order('mutual_count', { ascending: false })
+        .limit(100);
+      if (mfcError) console.error('[mutuals:list] mfc query error', mfcError);
+      if (!rows || rows.length === 0) { console.log(`[mutuals:list] no mutual_friend_counts rows for user ${user.id}`); return []; }
+
+      // Collect the "other" user ids
+      const otherIds = rows.map((r: any) => r.user_a === user.id ? r.user_b : r.user_a);
+      const countMap = new Map<string, number>();
+      rows.forEach((r: any) => {
+        const otherId = r.user_a === user.id ? r.user_b : r.user_a;
+        countMap.set(otherId, r.mutual_count);
+      });
+
+      // Fetch profiles
+      const { data: profiles } = await supabase.from('profiles').select('id, connect_code, display_name, avatar_url, hide_avatar, hide_mutual_friends, top_characters, main_character, region, chosen_region, hide_region, discord_username, discord_id, hide_discord_unless_friends').in('id', otherIds);
+
+      // Fetch ratings (keyed by connect_code)
+      const codes = (profiles || []).map((p: any) => p.connect_code).filter(Boolean);
+      const { data: ratings } = codes.length > 0
+        ? await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes)
+        : { data: [] };
+
+      const ratingsMap: Record<string, number> = {};
+      (ratings || []).forEach((r: any) => { if (r.effective_rating != null) ratingsMap[r.connect_code] = r.effective_rating; });
+
+      // Check which of these users are already friends
+      const { data: friendRows } = await supabase
+        .from('friends')
+        .select('friend_id, friend_connect_code, status')
+        .eq('user_id', user.id)
+        .in('friend_connect_code', (profiles || []).map((p: any) => p.connect_code).filter(Boolean));
+      const friendStatusMap = new Map<string, string>();
+      (friendRows || []).forEach((f: any) => {
+        if (f.friend_connect_code) friendStatusMap.set(f.friend_connect_code, f.status);
+      });
+
+      const result = (profiles || [])
+        .filter((p: any) => !p.hide_mutual_friends && friendStatusMap.get(p.connect_code) !== 'accepted')
+        .map((p: any) => {
+          const slippi: { characterId: number; gameCount: number }[] = Array.isArray(p.top_characters) ? p.top_characters : [];
+          const topCharacters: { characterId: number; gameCount: number }[] = [];
+          if (p.main_character != null) topCharacters.push({ characterId: p.main_character, gameCount: 0 });
+          else if (slippi[0]) topCharacters.push(slippi[0]);
+          return {
+            userId: p.id,
+            connectCode: p.connect_code,
+            displayName: p.display_name || null,
+            discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
+            discordId: p.hide_discord_unless_friends ? null : (p.discord_id || null),
+            avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
+            rating: ratingsMap[p.connect_code] ?? null,
+            topCharacters,
+            region: p.hide_region ? null : (p.chosen_region || p.region || null),
+            mutualFriendCount: countMap.get(p.id) ?? 0,
+            friendStatus: friendStatusMap.get(p.connect_code) || null,
+          };
+        })
+        .sort((a: any, b: any) => (b.mutualFriendCount ?? 0) - (a.mutualFriendCount ?? 0));
+
+      console.log(`[bench] mutuals:list total=${(performance.now()-t0).toFixed(0)}ms rows=${result.length}`);
+      ipcLog.info(`mutuals:list total=${(performance.now()-t0).toFixed(0)}ms rows=${result.length}`);
+      return result;
+    } catch (e) { console.error('mutuals:list', e); ipcLog.error('mutuals:list', e); return []; }
+  });
+
+  ipcMain.handle('mutuals:for-player', async (_e, targetUserId: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      const { data, error } = await supabase.rpc('get_mutual_friends', { p_target_id: targetUserId });
+      if (error) { console.error('mutuals:for-player rpc error', error); return []; }
+      return (data || []).map((r: any) => ({
+        userId: r.id,
+        connectCode: r.connect_code,
+        displayName: r.display_name || null,
+        avatarUrl: r.avatar_url || null,
+        rating: r.rating != null ? Number(r.rating) : null,
+        topCharacters: Array.isArray(r.top_characters) ? r.top_characters : [],
+        region: r.region || null,
+      }));
+    } catch (e) { console.error('mutuals:for-player', e); ipcLog.error('mutuals:for-player', e); return []; }
+  });
+
   const VALID_NUDGE_MESSAGES = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi', 'Down in 5-15 min', 'Sorry, another time', 'Looking for different matchup', 'Message me on Discord'];
 
   ipcMain.handle('nudge:send', async (_e, receiverConnectCode: string, message: string) => {
@@ -1613,8 +1710,8 @@ export function registerIpcHandlers(
   ipcMain.handle('privacy:get', async () => {
     try {
       const user = await getCurrentUser();
-      if (!user) return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null };
-      const { data } = await supabase.from('profiles').select('hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, show_online_status, disable_friend_requests, chosen_region').eq('id', user.id).single();
+      if (!user) return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, hideMutualFriends: false, chosenRegion: null };
+      const { data } = await supabase.from('profiles').select('hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, show_online_status, disable_friend_requests, hide_mutual_friends, chosen_region').eq('id', user.id).single();
       const hideConn = data?.hide_connection_type ?? false;
       const hideOnline = !(data?.show_online_status ?? true);
       setHideConnectionType(hideConn);
@@ -1626,12 +1723,13 @@ export function registerIpcHandlers(
         hideConnectionType: hideConn,
         hideOnlineStatus: hideOnline,
         disableFriendRequests: data?.disable_friend_requests ?? false,
+        hideMutualFriends: data?.hide_mutual_friends ?? false,
         chosenRegion: data?.chosen_region ?? null,
       };
     } catch { return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null }; }
   });
 
-  ipcMain.handle('privacy:update', async (_e, partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean; hideAvatar?: boolean; hideConnectionType?: boolean; hideOnlineStatus?: boolean; disableFriendRequests?: boolean }) => {
+  ipcMain.handle('privacy:update', async (_e, partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean; hideAvatar?: boolean; hideConnectionType?: boolean; hideOnlineStatus?: boolean; disableFriendRequests?: boolean; hideMutualFriends?: boolean }) => {
     try {
       const user = await getCurrentUser();
       if (!user) return { error: 'Not authenticated' };
@@ -1648,6 +1746,7 @@ export function registerIpcHandlers(
         setHideOnlineStatus(partial.hideOnlineStatus);
       }
       if (partial.disableFriendRequests !== undefined) update.disable_friend_requests = partial.disableFriendRequests;
+      if (partial.hideMutualFriends !== undefined) update.hide_mutual_friends = partial.hideMutualFriends;
       const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
       if (error) return { error: error.message };
       return { ok: true };
