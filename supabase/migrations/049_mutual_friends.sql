@@ -2,6 +2,39 @@
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hide_avatar BOOLEAN DEFAULT FALSE;
 
 -- Mutual friends feature: precomputed counts table, trigger maintenance, privacy, and RPCs.
+--
+-- Complexity (let F = friends of affected user, N = total users, C = discover candidates):
+--
+--   refresh_mutual_counts() trigger (per friendship change):
+--     Time:  O(F) -- loops friends of v_friend, each does a PK upsert/delete at O(1).
+--     Space: O(F) for the loop cursor; net table growth is at most F rows.
+--
+--   Backfill query (Section C, runs once at migration time):
+--     Time:  O(E * F_avg) -- self-joins friends on friend_id, index-driven via
+--            idx_friends_accepted_friend. E = accepted edges, F_avg = avg friends/user.
+--     Space: O(P) where P = distinct user pairs sharing a mutual friend (worst case O(N^2)).
+--
+--   discover_mutual_friend_counts RPC (Discover page):
+--     Time:  O(C) where C = |p_candidate_ids| (capped at 50 by caller).
+--            Each candidate lookup is O(log P_user) via idx_mfc_a / idx_mfc_b.
+--     Space: O(C) for the result set.
+--
+--   "Has Mutual Friends" toggle (client-side Discover filter):
+--     Time:  O(C) -- filters already-fetched array to mutualFriendCount > 0. No extra query.
+--     Space: O(C) for the filtered subset.
+--
+--   get_mutual_friends RPC (per-player popover):
+--     Time:  O(min(F_me, F_them)) -- intersects two friend lists via index nested-loop join
+--            on idx_friends_accepted_friend.
+--     Space: O(M) where M = mutual friends returned (intersection size).
+--
+--   mutual_friend_counts table (storage):
+--     Space: O(P) total. Fixed-size rows (two UUIDs + integer). CHECK (user_a < user_b)
+--            prevents duplicates. Two secondary indexes add O(P) each.
+--
+--   Frontend (Discover.tsx):
+--     Time:  O(C log C) for sort + render. hasMutualFriends filter is a linear pass.
+--     Space: O(C) for React state (players array, filtered memo, add-state maps).
 
 -- A. Precomputed mutual friend counts (canonical pair ordering: user_a < user_b)
 CREATE TABLE mutual_friend_counts (
