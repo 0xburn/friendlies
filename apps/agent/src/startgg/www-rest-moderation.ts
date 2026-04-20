@@ -1,4 +1,5 @@
 import { getStartGgToken, startGgGraphql } from './client';
+import { startggLog } from '../logger';
 
 const WWW_ORIGIN = 'https://www.start.gg';
 
@@ -8,6 +9,7 @@ let _sessionFetcher: SessionFetcher | null = null;
 export function setStartGgSessionFetcher(fn: SessionFetcher): void {
   _sessionFetcher = fn;
   console.log('[startgg rest] sessionFetcher registered:', !!fn);
+  startggLog.info('sessionFetcher registered:', !!fn);
 }
 
 type UserTokenProvider = () => Promise<string | null>;
@@ -227,11 +229,13 @@ export async function fetchPhaseGroupRestJson(phaseGroupId: string): Promise<unk
     const res = await fetch(url, { method: 'GET', headers });
     if (!res.ok) {
       console.warn('[startgg rest] phase_group HTTP', res.status, await res.text().catch(() => ''));
+      startggLog.warn('phase_group HTTP', res.status);
       return null;
     }
     return await res.json();
   } catch (e) {
     console.error('[startgg rest] phase_group', e);
+    startggLog.error('phase_group', e);
     return null;
   }
 }
@@ -275,6 +279,7 @@ async function fetchSetRestJson(setId: string): Promise<unknown | null> {
       const cfCache = res.headers.get('cf-cache-status') ?? '?';
       if (!res.ok) {
         console.warn('[startgg rest] set HTTP', res.status, `cf=${cfCache}`, await res.text().catch(() => ''));
+        startggLog.warn('set HTTP', res.status, `cf=${cfCache}`);
         return null;
       }
       const parsed = await parseSetJsonWithRetry(res);
@@ -291,12 +296,15 @@ async function fetchSetRestJson(setId: string): Promise<unknown | null> {
     const fallback = lastGoodSetPayloads.get(cacheKey);
     if (fallback && Date.now() - fallback.at < 30_000) {
       console.warn(`[startgg rest] set ${setId}: malformed JSON, using cached payload (${Date.now() - fallback.at}ms old)`);
+      startggLog.warn(`set ${setId}: malformed JSON, using cached payload (${Date.now() - fallback.at}ms old)`);
       return fallback.payload;
     }
     console.warn(`[startgg rest] set ${setId}: malformed JSON and no fresh cache available`);
+    startggLog.warn(`set ${setId}: malformed JSON and no fresh cache available`);
     return null;
   } catch (e) {
     console.error('[startgg rest] set fetch', e);
+    startggLog.error('set fetch', e);
     return null;
   }
 }
@@ -337,6 +345,7 @@ function logActiveTasks(tasks: RawSetTask[]): void {
   if (!summary || summary === _lastLoggedSummary) return;
   _lastLoggedSummary = summary;
   console.log(`[startgg rest] active tasks: ${summary}`);
+  startggLog.info(`active tasks: ${summary}`);
 }
 
 /**
@@ -369,6 +378,7 @@ export async function fetchRawSetTasks(
     tasks = extractRawSetTasksFromPayload(setPayload, numericSetId);
     if (tasks.length === 0) tasks = extractRawSetTasksFromPayload(setPayload, 0);
     console.log(`[startgg rest] set ${setId}: tasks=${tasks.length} (${Date.now() - t0}ms)`);
+    startggLog.info(`set ${setId}: tasks=${tasks.length} (${Date.now() - t0}ms)`);
   }
 
   if (tasks.length === 0) {
@@ -394,6 +404,7 @@ function parseTaskMutationResponse(
   const tasks = extractRawSetTasksFromPayload(json, 0);
   const topKeys = Object.keys(j).join(',');
   console.log(`[startgg rest] PUT response: topKeys=[${topKeys}] extractedTasks=${tasks.length}`);
+  startggLog.info(`PUT response: topKeys=[${topKeys}] extractedTasks=${tasks.length}`);
   return { ok: true, tasks };
 }
 
@@ -408,12 +419,14 @@ async function putTaskWithRetry(
       const headers = await wwwRestHeaders(useSession);
       if (attempt === 0) {
         console.log(`[startgg rest] PUT ${label} auth:${headers.Authorization?.slice(0, 20) || '(none)'} cookie:${useSession ? 'session' : headers.Cookie ? 'yes' : 'no'}`);
+        startggLog.info(`PUT ${label} auth:${headers.Authorization?.slice(0, 20) || '(none)'} cookie:${useSession ? 'session' : headers.Cookie ? 'yes' : 'no'}`);
       }
       const doFetch = _sessionFetcher ?? fetch;
       const res = await doFetch(url, { method: 'PUT', headers, body: JSON.stringify(body), cache: 'no-store' as RequestCache });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
         console.warn(`[startgg rest] ${label} HTTP`, res.status, txt.slice(0, 200));
+        startggLog.warn(`${label} HTTP`, res.status, txt.slice(0, 200));
         return { ok: false, message: txt.slice(0, 400) || `HTTP ${res.status}`, status: res.status };
       }
       const json = await res.json().catch(() => null);
@@ -421,16 +434,18 @@ async function putTaskWithRetry(
       if (!result.ok && result.message === 'Login is required') {
         if (attempt === 0 && _cookieRefresher) {
           console.log('[startgg rest] session expired, refreshing cookies and retrying…');
+          startggLog.info('session expired, refreshing cookies and retrying…');
           await _cookieRefresher();
           continue;
         }
         if (attempt === 1 && _sessionReAuthenticator) {
           console.log('[startgg rest] cookie refresh insufficient, opening browser for re-login…');
+          startggLog.info('cookie refresh insufficient, opening browser for re-login…');
           await _sessionReAuthenticator();
           continue;
         }
       }
-      if (!result.ok) console.warn(`[startgg rest] ${label} rejected:`, result.message);
+      if (!result.ok) { console.warn(`[startgg rest] ${label} rejected:`, result.message); startggLog.warn(`${label} rejected:`, result.message); }
       if (result.ok && result.tasks.length > 0) {
         for (const t of result.tasks) {
           const sid = String(t.setId);

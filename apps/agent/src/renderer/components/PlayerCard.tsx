@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionTypeIcon } from './ConnectionTypeIcon';
 import { OnlineIndicator } from './OnlineIndicator';
 import { RankBadge } from './RankBadge';
@@ -17,6 +17,7 @@ function DiscordIcon({ className }: { className?: string }) {
 
 interface PlayerCardProps {
   player: {
+    userId?: string;
     connectCode: string;
     displayName?: string;
     discordUsername?: string;
@@ -97,9 +98,53 @@ function playerCardAreEqual(prev: PlayerCardProps, next: PlayerCardProps): boole
 export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, expandable = true, onClick, onBlock, onRemove, onInvite, inviteDisabled, inviteState, nudgeOptions, onNudge, nudgeState, onAdd, addDisabled, addState, removeLabel, onUnsend, rankOverride, patreonPublicSupporter }: PlayerCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [nudgePickerOpen, setNudgePickerOpen] = useState(false);
+  const [mutualOpen, setMutualOpen] = useState(false);
+  const [mutualFriends, setMutualFriends] = useState<{ userId: string; connectCode: string; displayName: string | null; avatarUrl: string | null; rating: number | null; topCharacters: { characterId: number; gameCount: number }[]; region: string | null }[] | null>(null);
+  const [mutualLoading, setMutualLoading] = useState(false);
+  const [mutualShowAll, setMutualShowAll] = useState(false);
+  const mutualRef = useRef<HTMLDivElement>(null);
+  const mutualBtnRef = useRef<HTMLButtonElement>(null);
+  const [mutualPos, setMutualPos] = useState<{ top: number; left: number } | null>(null);
   const hasAvatar = !!player.avatarUrl;
 
-  function handleClick() {
+  useEffect(() => {
+    if (!mutualOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mutualRef.current && !mutualRef.current.contains(e.target as Node) &&
+          mutualBtnRef.current && !mutualBtnRef.current.contains(e.target as Node)) {
+        setMutualOpen(false);
+        setMutualShowAll(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [mutualOpen]);
+
+  const handleMutualClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!player.userId) return;
+    if (mutualOpen) {
+      setMutualOpen(false);
+      setMutualShowAll(false);
+      return;
+    }
+    if (mutualBtnRef.current) {
+      const rect = mutualBtnRef.current.getBoundingClientRect();
+      setMutualPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setMutualOpen(true);
+    if (mutualFriends === null) {
+      setMutualLoading(true);
+      window.api.getMutualFriendsFor(player.userId).then((friends: any[]) => {
+        setMutualFriends(friends);
+        setMutualLoading(false);
+      }).catch(() => { setMutualLoading(false); });
+    }
+  }, [player.userId, mutualOpen, mutualFriends]);
+
+
+  function handleClick(e: React.MouseEvent) {
+    if (mutualBtnRef.current?.contains(e.target as Node)) return;
     if (expandable) {
       setExpanded((prev) => !prev);
     }
@@ -172,9 +217,80 @@ export const PlayerCard = memo(function PlayerCard({ player, showStatus = true, 
               <span className="text-[10px] text-gray-600 truncate">{player.region}</span>
             )}
             {player.mutualFriendCount != null && player.mutualFriendCount > 0 && (
-              <span className="text-[10px] text-[#21BA45]/70 shrink-0" title="Accepted friends you share">
-                {player.mutualFriendCount} mutual friend{player.mutualFriendCount === 1 ? '' : 's'}
-              </span>
+              player.userId ? (
+                <div className="shrink-0">
+                  <button
+                    ref={mutualBtnRef}
+                    onClick={handleMutualClick}
+                    className={`text-[10px] transition-colors ${mutualOpen ? 'text-[#21BA45]' : 'text-[#21BA45]/70 hover:text-[#21BA45]'}`}
+                    title="Click to see mutual friends"
+                  >
+                    {player.mutualFriendCount} mutual friend{player.mutualFriendCount === 1 ? '' : 's'}
+                    <span className="ml-0.5 text-[8px]">{mutualOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {mutualOpen && mutualPos && (
+                    <div
+                      ref={mutualRef}
+                      className="fixed z-[9999] rounded-lg border border-[#2a2a2a] bg-[#141414] min-w-[240px] max-w-[300px]"
+                      style={{ top: mutualPos.top, left: mutualPos.left, boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-3 py-2 border-b border-[#2a2a2a]">
+                        <span className="text-[9px] text-gray-500 uppercase tracking-wider">Mutual friends</span>
+                      </div>
+                      {mutualLoading ? (
+                        <div className="flex items-center gap-2 px-3 py-3 text-[10px] text-gray-500 animate-pulse">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#21BA45]/40" /> Loading...
+                        </div>
+                      ) : mutualFriends && mutualFriends.length > 0 ? (
+                        <>
+                          <div className="py-1">
+                            {(mutualShowAll ? mutualFriends : mutualFriends.slice(0, 5)).map((mf) => (
+                                <div key={mf.userId} className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5">
+                                  {mf.avatarUrl ? (
+                                    <img src={mf.avatarUrl} alt="" className="w-5 h-5 rounded-full object-cover shrink-0 border border-[#2a2a2a]" />
+                                  ) : mf.topCharacters?.[0] ? (
+                                    <CharacterIcon characterId={mf.topCharacters[0].characterId} size="sm" />
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] shrink-0" />
+                                  )}
+                                  <span className="font-mono text-[11px] text-white">{mf.connectCode}</span>
+                                  {mf.displayName && <span className="text-[10px] text-gray-500 truncate flex-1 min-w-0">{mf.displayName}</span>}
+                                  {mf.rating != null && (
+                                    <span className="text-[10px] text-gray-500 shrink-0">{Math.round(mf.rating)}</span>
+                                  )}
+                                  {mf.region && <span className="text-[9px] text-gray-600 shrink-0">{mf.region}</span>}
+                                </div>
+                            ))}
+                          </div>
+                          {mutualFriends.length > 5 && !mutualShowAll && (
+                            <button
+                              onClick={() => setMutualShowAll(true)}
+                              className="w-full border-t border-[#2a2a2a] px-3 py-2 text-[10px] text-[#21BA45]/70 hover:text-[#21BA45] hover:bg-white/5 transition-colors text-left"
+                            >
+                              and {mutualFriends.length - 5} more...
+                            </button>
+                          )}
+                          {mutualShowAll && mutualFriends.length > 5 && (
+                            <button
+                              onClick={() => setMutualShowAll(false)}
+                              className="w-full border-t border-[#2a2a2a] px-3 py-1.5 text-[10px] text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors text-left"
+                            >
+                              Show less
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <div className="px-3 py-3 text-[10px] text-gray-500">No mutual friends found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[10px] text-[#21BA45]/70 shrink-0" title="Accepted friends you share">
+                  {player.mutualFriendCount} mutual friend{player.mutualFriendCount === 1 ? '' : 's'}
+                </span>
+              )
             )}
           </div>
           {(player.statusPreset || (isLfg && !player.statusPreset)) && (

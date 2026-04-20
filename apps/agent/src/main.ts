@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { BrowserWindow, app, ipcMain, screen, shell } from 'electron';
+import { BrowserWindow, Menu, app, ipcMain, screen, shell } from 'electron';
+import { mainLog } from './logger';
 import {
   getCurrentUser, handleAuthCallback, isAuthenticated,
   listenForTokenRefresh, logout, restoreSession, startAuthFlow,
@@ -64,7 +65,7 @@ function loadDotEnvFromAppDir(): void {
         parseDotEnvContent(fs.readFileSync(envPath, 'utf8'));
       }
     }
-  } catch (e) { console.error('loadDotEnvFromAppDir', e); }
+  } catch (e) { console.error('loadDotEnvFromAppDir', e); mainLog.error('loadDotEnvFromAppDir', e); }
 }
 
 async function fetchGeoWithFallback(): Promise<{ lat: number; lon: number; region: string } | null> {
@@ -108,6 +109,7 @@ async function fetchGeoWithFallback(): Promise<{ lat: number; lon: number; regio
 
   if (results.length === 0) {
     console.warn('[main] all geolocation services failed');
+    mainLog.warn('all geolocation services failed');
     return null;
   }
 
@@ -161,6 +163,11 @@ function createMainWindow(): BrowserWindow {
       backgroundThrottling: true,
     },
   });
+  // WIN DEV only:
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   let boundsTimer: ReturnType<typeof setTimeout> | null = null;
   const persistBounds = () => {
@@ -169,6 +176,12 @@ function createMainWindow(): BrowserWindow {
   };
   win.on('resize', persistBounds);
   win.on('move', persistBounds);
+
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      win.webContents.toggleDevTools();
+    }
+  });
 
   if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
     win.loadURL('http://localhost:5173');
@@ -200,7 +213,7 @@ async function stopAgentServices(): Promise<void> {
   knownPlayInviteIds.clear();
   knownNudgeIds.clear();
   unreadNudgeCount = 0;
-  try { await stopPresenceLoop(); } catch (e) { console.error('stopPresenceLoop', e); }
+  try { await stopPresenceLoop(); } catch (e) { console.error('stopPresenceLoop', e); mainLog.error('stopPresenceLoop', e); }
   stopWatcher();
 }
 
@@ -220,7 +233,10 @@ async function pollAllNotifications(userId: string): Promise<void> {
     ]);
     firstPollDone = true;
     const ms = performance.now() - t0;
-    if (ms > 200) console.log(`[perf] pollAllNotifications took ${ms.toFixed(0)}ms`);
+    if (ms > 200) {
+      console.log(`[perf] pollAllNotifications took ${ms.toFixed(0)}ms`);
+      mainLog.info(`pollAllNotifications took ${ms.toFixed(0)}ms`);
+    }
   } finally {
     pollInFlight = false;
     updateTrayStatus();
@@ -259,7 +275,7 @@ async function pollFriendOnlineStatuses(userId: string, suppressNotifs = false):
       }
       previousFriendStatuses.set(code, newStatus);
     }
-  } catch (e) { console.error('[main] friend status poll failed', e); }
+  } catch (e) { console.error('[main] friend status poll failed', e); mainLog.error('friend status poll failed', e); }
 }
 
 async function pollIncomingFriendRequests(userId: string, suppressNotifs = false): Promise<void> {
@@ -296,7 +312,7 @@ async function pollIncomingFriendRequests(userId: string, suppressNotifs = false
         }
       });
     }
-  } catch (e) { console.error('[main] incoming request poll failed', e); }
+  } catch (e) { console.error('[main] incoming request poll failed', e); mainLog.error('incoming request poll failed', e); }
 }
 
 async function pollPlayInvites(userId: string): Promise<void> {
@@ -343,7 +359,7 @@ async function pollPlayInvites(userId: string): Promise<void> {
     if (didNotify) {
       sendToRenderer('invites:refresh', {});
     }
-  } catch (e) { console.error('[main] play invite poll failed', e); }
+  } catch (e) { console.error('[main] play invite poll failed', e); mainLog.error('play invite poll failed', e); }
 }
 
 async function pollNudges(userId: string, suppressNotifs = false): Promise<void> {
@@ -387,13 +403,14 @@ async function pollNudges(userId: string, suppressNotifs = false): Promise<void>
       }
     }
     sendToRenderer('nudge:unreadCount', unreadNudgeCount);
-  } catch (e) { console.error('[main] nudge poll failed', e); }
+  } catch (e) { console.error('[main] nudge poll failed', e); mainLog.error('nudge poll failed', e); }
 }
 
 async function startAgentServices(identity: SlippiIdentity, userId: string): Promise<void> {
   const key = `${userId}:${identity.connectCode}`;
   if (activeServiceKey === key) {
     console.log('[main] services already running for', identity.connectCode, '— skipping restart');
+    mainLog.info('services already running for', identity.connectCode, '— skipping restart');
     return;
   }
   await stopAgentServices();
@@ -403,6 +420,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
 
   setIdentityMismatchHandler(async (mismatch) => {
     console.warn('[main] Identity mismatch — stopping services and notifying renderer');
+    mainLog.warn('Identity mismatch — stopping services and notifying renderer');
     await stopAgentServices();
     sendToRenderer('identity:mismatch', mismatch);
   });
@@ -413,7 +431,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
       setLastOpponent(info.connectCode, info.characterId, info.gameMode);
       sendToRenderer('opponent:new', info);
       updateTrayStatus();
-    } catch (e) { console.error('opponent callback', e); }
+    } catch (e) { console.error('opponent callback', e); mainLog.error('opponent callback', e); }
   });
   setGameThrottling(st.reduceBackgroundActivity);
   await startPresenceLoop(identity.connectCode, identity.displayName || identity.connectCode, userId, st.replayDir);
@@ -436,6 +454,7 @@ async function startAgentServices(identity: SlippiIdentity, userId: string): Pro
     const interval = inGame ? NOTIF_POLL_IN_GAME : NOTIF_POLL_NORMAL;
     friendPollTimer = setInterval(() => void pollAllNotifications(userId), interval);
     console.log(`[main] Game ${inGame ? 'active' : 'idle'} — notification poll interval: ${interval / 1000}s`);
+    mainLog.info(`Game ${inGame ? 'active' : 'idle'} — notification poll interval: ${interval / 1000}s`);
   });
 }
 
@@ -449,6 +468,7 @@ async function refreshAgentState(): Promise<void> {
     if (authed && identity && user) {
       if (identity.staleAccount) {
         console.warn(`[main] identity is stale (user.json uid ≠ Launcher activeId) — stopping services`);
+        mainLog.warn('identity is stale (user.json uid ≠ Launcher activeId) — stopping services');
         await stopAgentServices();
         sendToRenderer('identity:staleAccount', { connectCode: identity.connectCode });
         updateTrayStatus();
@@ -464,6 +484,7 @@ async function refreshAgentState(): Promise<void> {
 
       if (existingClaim?.verified) {
         console.warn(`[main] connect code ${identity.connectCode} is already claimed by another verified user`);
+        mainLog.warn(`connect code ${identity.connectCode} is already claimed by another verified user`);
         await stopAgentServices();
         sendToRenderer('identity:codeClaimed', { connectCode: identity.connectCode });
         updateTrayStatus();
@@ -493,18 +514,18 @@ async function refreshAgentState(): Promise<void> {
           profileUpdate.longitude = geo.lon;
           profileUpdate.region = geo.region;
         }
-      } catch (e) { console.warn('[main] geolocation lookup failed:', e); }
+      } catch (e) { console.warn('[main] geolocation lookup failed:', e); mainLog.warn('geolocation lookup failed:', e); }
 
       const { error: syncErr } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
-      if (syncErr) console.error('[main] profile sync failed:', syncErr.message);
-      else console.log('[main] profile synced:', identity.connectCode);
+      if (syncErr) { console.error('[main] profile sync failed:', syncErr.message); mainLog.error('profile sync failed:', syncErr.message); }
+      else { console.log('[main] profile synced:', identity.connectCode); mainLog.info('profile synced:', identity.connectCode); }
 
       await startAgentServices(identity, user.id);
     } else {
       await stopAgentServices();
     }
     updateTrayStatus();
-  } catch (e) { console.error('refreshAgentState', e); } finally { refreshLock = false; }
+  } catch (e) { console.error('refreshAgentState', e); mainLog.error('refreshAgentState', e); } finally { refreshLock = false; }
 }
 
 async function handleDeepLink(url: string): Promise<void> {
@@ -519,7 +540,7 @@ async function handleDeepLink(url: string): Promise<void> {
     const user = await getCurrentUser();
     sendToRenderer('auth:changed', user);
     await refreshAgentState();
-  } catch (e) { console.error('handleDeepLink', e); }
+  } catch (e) { console.error('handleDeepLink', e); mainLog.error('handleDeepLink', e); }
 }
 
 // --- App lifecycle ---
@@ -532,7 +553,7 @@ if (process.platform === 'win32') {
 
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 
-if (!isDev && !app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -561,7 +582,7 @@ app.on('before-quit', async (e) => {
     (app as any).isQuitting = true;
     try {
       await pushOfflineAndStop();
-    } catch (err) { console.error('before-quit cleanup failed', err); }
+    } catch (err) { console.error('before-quit cleanup failed', err); mainLog.error('before-quit cleanup failed', err); }
     destroyTray();
     app.quit();
   }
@@ -569,7 +590,9 @@ app.on('before-quit', async (e) => {
 
 app.whenReady().then(async () => {
   try {
+    Menu.setApplicationMenu(null);
     loadDotEnvFromAppDir();
+    mainLog.info('App starting', { version: app.getVersion(), platform: process.platform, arch: process.arch });
     const st0 = getSettings();
     app.setLoginItemSettings({ openAtLogin: st0.autoLaunch, openAsHidden: true });
 
@@ -644,7 +667,7 @@ app.whenReady().then(async () => {
         updateTrayStatus();
       } catch {}
     }, 10_000);
-  } catch (e) { console.error('app.whenReady', e); }
+  } catch (e) { console.error('app.whenReady', e); mainLog.error('app.whenReady', e); }
 });
 
 app.on('window-all-closed', () => {

@@ -15,6 +15,7 @@ import {
 import { getStartGgUserToken, getStartGgWebCookies, refreshStartGgWebCookies, startGgSessionFetch, reLoginStartGgSession, getStartGgUserInfo } from '../startgg-auth';
 import { supabase } from '../supabase';
 import { getCurrentUser } from '../auth';
+import { cashboxLog } from '../logger';
 
 setStartGgUserTokenProvider(getStartGgUserToken);
 setStartGgWebCookieProvider(getStartGgWebCookies);
@@ -128,6 +129,7 @@ async function entrantIdForUserInEvent(
     if (r.errors?.length || !r.data?.tournament?.participants) {
       const isRateLimit = r.errors?.some((e) => /rate.?limit/i.test(e.message)) ?? false;
       console.warn('[cashbox] entrantIdForUserInEvent failed at page', page, isRateLimit ? '(RATE LIMITED)' : '', 'errors:', r.errors);
+      cashboxLog.warn('entrantIdForUserInEvent failed at page', page, isRateLimit ? '(RATE LIMITED)' : '', 'errors:', r.errors);
       return { found: false, rateLimited: isRateLimit };
     }
     const pg = r.data.tournament.participants;
@@ -145,6 +147,7 @@ async function entrantIdForUserInEvent(
     page++;
   }
   console.warn('[cashbox] entrantIdForUserInEvent: user', userId, 'not found in', tournamentSlug, 'event', eventId, '(scanned', page - 1, 'pages)');
+  cashboxLog.warn('entrantIdForUserInEvent: user', userId, 'not found in', tournamentSlug, 'event', eventId, '(scanned', page - 1, 'pages)');
   return { found: false, rateLimited: false };
 }
 
@@ -233,17 +236,19 @@ async function resolveMapValueToEntrantId(
 async function resolveStartGgUserIdFromProfile(): Promise<string | null> {
   try {
     const user = await getCurrentUser();
-    if (!user) { console.log('[cashbox] resolveStartGgUserIdFromProfile: no current user'); return null; }
+    if (!user) { console.log('[cashbox] resolveStartGgUserIdFromProfile: no current user'); cashboxLog.info('resolveStartGgUserIdFromProfile: no current user'); return null; }
     const { data, error } = await supabase
       .from('profiles')
       .select('startgg_user_id')
       .eq('id', user.id)
       .maybeSingle();
-    if (error) console.warn('[cashbox] resolveStartGgUserIdFromProfile query error:', error.message);
+    if (error) { console.warn('[cashbox] resolveStartGgUserIdFromProfile query error:', error.message); cashboxLog.warn('resolveStartGgUserIdFromProfile query error:', error.message); }
     console.log('[cashbox] resolveStartGgUserIdFromProfile:', { userId: user.id, startgg_user_id: data?.startgg_user_id ?? '(null)' });
+    cashboxLog.info('resolveStartGgUserIdFromProfile:', { userId: user.id, startgg_user_id: data?.startgg_user_id ?? '(null)' });
     return data?.startgg_user_id || null;
   } catch (e: any) {
     console.error('[cashbox] resolveStartGgUserIdFromProfile exception:', e?.message);
+    cashboxLog.error('resolveStartGgUserIdFromProfile exception:', e?.message);
     return null;
   }
 }
@@ -1079,7 +1084,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
   if (!resolved.ok) {
     if (isRateLimitError(resolved.message)) {
       const cached = getCachedSnapshot(connectCode);
-      if (cached) { console.log('[cashbox] serving cached snapshot (event resolve rate-limited)'); return cached; }
+      if (cached) { console.log('[cashbox] serving cached snapshot (event resolve rate-limited)'); cashboxLog.info('serving cached snapshot (event resolve rate-limited)'); return cached; }
     }
     return { ok: false, reason: 'config', message: resolved.message, giveawayRegisterUrl };
   }
@@ -1100,6 +1105,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
 
   if (!entrantId && profileUserId) {
     console.log('[cashbox] resolved startgg_user_id from Supabase profile:', profileUserId);
+    cashboxLog.info('resolved startgg_user_id from Supabase profile:', profileUserId);
     const result = await entrantIdForUserInEvent(profileUserId, meta.tournamentSlug, meta.eventId, userToken);
     if (result.found) entrantId = result.id;
     else if (result.rateLimited) wasRateLimited = true;
@@ -1109,6 +1115,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
     const localInfo = getStartGgUserInfo();
     if (localInfo.userId && localInfo.userId !== profileUserId) {
       console.log('[cashbox] trying local store userId:', localInfo.userId);
+      cashboxLog.info('trying local store userId:', localInfo.userId);
       const result = await entrantIdForUserInEvent(localInfo.userId, meta.tournamentSlug, meta.eventId, userToken);
       if (result.found) entrantId = result.id;
       else if (result.rateLimited) wasRateLimited = true;
@@ -1118,7 +1125,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
   if (!entrantId) {
     if (wasRateLimited) {
       const cached = getCachedSnapshot(connectCode);
-      if (cached) { console.log('[cashbox] serving cached snapshot (entrant resolve rate-limited)'); return cached; }
+      if (cached) { console.log('[cashbox] serving cached snapshot (entrant resolve rate-limited)'); cashboxLog.info('serving cached snapshot (entrant resolve rate-limited)'); return cached; }
       return {
         ok: false,
         reason: 'api',
@@ -1145,7 +1152,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
   if (!pack.ok) {
     if (isRateLimitError(pack.message)) {
       const cached = getCachedSnapshot(connectCode);
-      if (cached) { console.log('[cashbox] serving cached snapshot (sets fetch rate-limited)'); return cached; }
+      if (cached) { console.log('[cashbox] serving cached snapshot (sets fetch rate-limited)'); cashboxLog.info('serving cached snapshot (sets fetch rate-limited)'); return cached; }
     }
     return { ok: false, reason: 'api', message: pack.message, giveawayRegisterUrl };
   }
@@ -1214,7 +1221,7 @@ export async function getCashboxSnapshot(connectCode: string, userToken?: string
       ? hydrateNextMatchOpponent(nextMatch, entrantId, userToken)
       : Promise.resolve(),
     pgId
-      ? fetchPhaseGroupPool(String(pgId), String(entrantId), userToken).catch((e) => { console.error('[cashbox] fetchPhaseGroupPool', e); return null; })
+      ? fetchPhaseGroupPool(String(pgId), String(entrantId), userToken).catch((e) => { console.error('[cashbox] fetchPhaseGroupPool', e); cashboxLog.error('fetchPhaseGroupPool', e); return null; })
       : Promise.resolve(null),
     nextMatch?.phaseGroupId
       ? fetchPhaseGroupRestJson(nextMatch.phaseGroupId).catch(() => null)
@@ -1323,13 +1330,16 @@ export async function reportBracketSet(
     if (body.errors?.length) {
       const msg = body.errors.map((e: any) => e.message).join('; ');
       console.error('[cashbox] reportBracketSet errors:', msg);
+      cashboxLog.error('reportBracketSet errors:', msg);
       return { ok: false, message: msg };
     }
     const set = body.data?.reportBracketSet;
     console.log('[cashbox] reportBracketSet ok, state:', set?.state);
+    cashboxLog.info('reportBracketSet ok, state:', set?.state);
     return { ok: true, state: set?.state ?? null };
   } catch (e: any) {
     console.error('[cashbox] reportBracketSet', e);
+    cashboxLog.error('reportBracketSet', e);
     return { ok: false, message: e?.message || 'Network error' };
   }
 }

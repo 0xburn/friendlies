@@ -5,6 +5,7 @@ import { CharacterIcon } from '../components/CharacterIcon';
 import { ConnectionTypeIcon } from '../components/ConnectionTypeIcon';
 import { RankBadge } from '../components/RankBadge';
 import { CHARACTER_MAP, getCharacterImagePath, getCharacterShortName } from '../lib/characters';
+import { FRIEND_REQUEST_TAGS } from '../lib/friend-request-tags';
 
 interface DiscoverPlayer {
   userId: string;
@@ -116,10 +117,12 @@ const TOP_CHARACTERS = [2, 20, 9, 19, 15, 12, 0];
 const TOP_SET = new Set(TOP_CHARACTERS);
 const REST_CHARACTERS = ALL_CHARACTER_IDS.filter((id) => !TOP_SET.has(id));
 
-function CharacterFilter({ selected, onToggle, onClear }: {
+function CharacterFilter({ selected, onToggle, onClear, hasMutualFriends, onHasMutualFriendsToggle }: {
   selected: Set<number>;
   onToggle: (id: number) => void;
   onClear: () => void;
+  hasMutualFriends: boolean;
+  onHasMutualFriendsToggle: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -175,6 +178,19 @@ function CharacterFilter({ selected, onToggle, onClear }: {
           `}
         >
           <span className="text-xs font-medium">{expanded ? 'Less' : 'More'}</span>
+        </button>
+        <div className="h-10 w-px bg-[#333] mx-2" />
+        <button
+          onClick={onHasMutualFriendsToggle}
+          className={`
+            relative h-10 px-3 rounded-lg border transition-all flex items-center justify-center
+            ${hasMutualFriends
+              ? 'border-[#21BA45]/60 bg-[#21BA45]/15 ring-1 ring-[#21BA45]/30 text-[#21BA45]'
+              : 'border-[#2a2a2a] bg-[#141414] text-gray-500 opacity-60 hover:opacity-90 hover:border-[#3a3a3a]'
+            }
+          `}
+        >
+          <span className="text-xs font-medium">Has Mutual Friends</span>
         </button>
       </div>
       {expanded && (
@@ -232,6 +248,7 @@ export function Discover() {
   const [eloFilter, setEloFilter] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [patreonCodes, setPatreonCodes] = useState<Set<string>>(new Set());
+  const [hasMutualFriends, setMutualFilter] = useState(false);
   const charFilterRef = useRef(charFilter);
   charFilterRef.current = charFilter;
   const eloFilterRef = useRef(eloFilter);
@@ -383,6 +400,7 @@ export function Discover() {
     loadSentInvites();
     loadPlayInvites();
     loadPatreonCodes();
+
     window.api.getIdentity().then((id) => { if (id) setMyCode(id.connectCode); });
     const interval = setInterval(() => {
       if (!document.hidden && !isGameActive()) {
@@ -390,6 +408,7 @@ export function Discover() {
         loadSentInvites();
         loadPlayInvites();
         loadPatreonCodes();
+
       }
     }, 30_000);
     const onVisible = () => {
@@ -398,6 +417,7 @@ export function Discover() {
         loadSentInvites();
         loadPlayInvites();
         loadPatreonCodes();
+
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -503,7 +523,7 @@ export function Discover() {
 
   const filtered = useMemo(() => {
     const STATUS_ORDER: Record<string, number> = { online: 1, 'in-game': 2, idle: 3, offline: 4 };
-    const list = search
+    let list = search
       ? players.filter((p) => {
           const q = search.toLowerCase();
           return (
@@ -513,6 +533,9 @@ export function Discover() {
           );
         })
       : players;
+    if (hasMutualFriends) {
+      list = list.filter((p) => (p.mutualFriendCount ?? 0) > 0);
+    }
     return [...list].sort((a, b) => {
       const aHistory = a.lastPlayedAt ? 1 : 0;
       const bHistory = b.lastPlayedAt ? 1 : 0;
@@ -527,7 +550,7 @@ export function Discover() {
       const bOrd = STATUS_ORDER[b.status] ?? 5;
       return aOrd - bOrd;
     });
-  }, [players, search]);
+  }, [players, search, hasMutualFriends]);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -550,6 +573,8 @@ export function Discover() {
         selected={charFilter}
         onToggle={toggleChar}
         onClear={clearFilter}
+        hasMutualFriends={hasMutualFriends}
+        onHasMutualFriendsToggle={() => { setMutualFilter((v) => !v); setVisibleCount(15); }}
       />
 
       <EloFilter
@@ -745,7 +770,7 @@ export function Discover() {
           </>
         )}
 
-        {!loading && filtered.length === 0 && !search && charFilter.size === 0 && eloFilter.size === 0 && (
+        {!loading && filtered.length === 0 && !search && charFilter.size === 0 && eloFilter.size === 0 && !hasMutualFriends && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
             <p className="text-gray-500 text-sm">
               No players online right now. Check back later!
@@ -753,10 +778,11 @@ export function Discover() {
           </div>
         )}
 
-        {!loading && filtered.length === 0 && (search || charFilter.size > 0 || eloFilter.size > 0) && (
+        {!loading && filtered.length === 0 && (search || charFilter.size > 0 || eloFilter.size > 0 || hasMutualFriends) && (
           <div className="rounded-2xl border border-[#2a2a2a] bg-[#141414] p-12 text-center">
             <p className="text-gray-500 text-sm">
               {search ? 'No players match your search.'
+                : hasMutualFriends ? 'No online players with mutual friends right now.'
                 : eloFilter.size > 0 && charFilter.size > 0 ? 'No players match the selected rank and characters.'
                 : eloFilter.size > 0 ? 'No players match the selected rank.'
                 : 'No players match the selected characters.'}
@@ -778,6 +804,7 @@ export function Discover() {
               )}
               <PlayerCard
                 player={{
+                  userId: p.userId,
                   connectCode: p.connectCode,
                   displayName: p.displayName,
                   discordUsername: p.discordUsername ?? undefined,
@@ -836,7 +863,7 @@ export function Discover() {
             When adding a player, it often helps to let them know a bit more info on what you're looking for! Notes are optional.
             </p>
             <div className="flex flex-wrap gap-2 mt-4 justify-center">
-              {['Looking for MU practice', 'GGs from unranked', 'Same region', 'Just saying hi', 'Similar skill level'].map((tag) => (
+              {FRIEND_REQUEST_TAGS.map((tag) => (
                 <button
                   key={tag}
                   onClick={() => setAddNote(addNote === tag ? null : tag)}

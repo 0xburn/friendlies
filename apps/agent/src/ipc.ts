@@ -1,5 +1,6 @@
 import { BrowserWindow, app, clipboard, dialog, ipcMain, shell } from 'electron';
 
+import { ipcLog } from './logger';
 import { getCurrentUser, handleAuthCallback, isAuthenticated, logout, startAuthFlow, startLocalAuthServer } from './auth';
 import { PRESENCE_STALE_THRESHOLD } from './config';
 import { getDirectConnectService } from './direct-connect';
@@ -165,6 +166,7 @@ async function upsertPlayerRating(connectCode: string, entry: RatingCacheEntry):
     });
   } catch (e) {
     console.error('upsertPlayerRating', connectCode, e);
+    ipcLog.error('upsertPlayerRating', connectCode, e);
   }
 }
 
@@ -283,6 +285,7 @@ export function registerIpcHandlers(
 
       if (staleCodes.length === 0) return;
       console.log(`[ratings] startup refresh: ${staleCodes.length} stale of ${allCodes.length} total`);
+      ipcLog.info(`startup refresh: ${staleCodes.length} stale of ${allCodes.length} total`);
 
       const CONCURRENCY = 5;
       for (let i = 0; i < staleCodes.length; i += CONCURRENCY) {
@@ -296,8 +299,10 @@ export function registerIpcHandlers(
         }
       }
       console.log(`[ratings] startup refresh complete`);
+      ipcLog.info('startup refresh complete');
     } catch (e) {
       console.error('[ratings] startup refresh failed', e);
+      ipcLog.error('startup refresh failed', e);
     }
   }, 10_000);
 
@@ -307,6 +312,7 @@ export function registerIpcHandlers(
       if (user) await cleanupExpiredInvites(user.id);
     } catch (e) {
       console.error('[invites] startup cleanup failed', e);
+      ipcLog.error('startup cleanup failed', e);
     }
   }, 5_000);
 
@@ -321,7 +327,7 @@ export function registerIpcHandlers(
     if (process.platform === 'linux') {
       const authDone = startLocalAuthServer();
       const url = await startAuthFlow();
-      authDone.then(onLocalAuth).catch((err) => console.error('[auth] Linux local auth failed:', err));
+      authDone.then(onLocalAuth).catch((err) => { console.error('[auth] Linux local auth failed:', err); ipcLog.error('Linux local auth failed:', err); });
       return url;
     }
 
@@ -336,9 +342,10 @@ export function registerIpcHandlers(
         ipcMain.removeListener('auth:deeplink-resolved', markResolved);
         if (deepLinkResolved) return;
         console.log('[auth] Deep link did not return in time, falling back to localhost callback');
+        ipcLog.info('Deep link did not return in time, falling back to localhost callback');
         const authDone = startLocalAuthServer();
         await startAuthFlow(true);
-        authDone.then(onLocalAuth).catch((err) => console.error('[auth] Windows fallback auth failed:', err));
+        authDone.then(onLocalAuth).catch((err) => { console.error('[auth] Windows fallback auth failed:', err); ipcLog.error('Windows fallback auth failed:', err); });
       }, 8_000);
 
       return url;
@@ -363,7 +370,7 @@ export function registerIpcHandlers(
       if (opts?.onLogout) await opts.onLogout();
       await logout();
       sendToRenderer('auth:changed', null);
-    } catch (e) { console.error('auth:logout', e); }
+    } catch (e) { console.error('auth:logout', e); ipcLog.error('auth:logout', e); }
   });
 
   ipcMain.handle('identity:get', () => {
@@ -392,7 +399,7 @@ export function registerIpcHandlers(
         .eq('friend_connect_code', identity.connectCode)
         .is('friend_id', null);
 
-      void verifyIdentity(identity).catch((e) => console.error('verifyIdentity', e));
+      void verifyIdentity(identity).catch((e) => { console.error('verifyIdentity', e); ipcLog.error('verifyIdentity', e); });
       return { ok: true, connectCode: identity.connectCode };
     } catch (e: any) { return { error: e.message }; }
   });
@@ -452,13 +459,14 @@ export function registerIpcHandlers(
     const t0 = performance.now();
     try {
       const user = await getCurrentUser();
-      if (!user) return [];
+      if (!user) { console.log('[friends:list] no authenticated user'); return []; }
       const t1 = performance.now();
-      const { data } = await supabase
+      const { data, error: friendsError } = await supabase
         .from('friends')
         .select('id, friend_id, friend_connect_code, status, created_at, profiles!friends_friend_id_fkey(connect_code, display_name, discord_username, discord_id, avatar_url, region, chosen_region, hide_region, hide_discord_unless_friends, hide_avatar, main_character, secondary_character, top_characters)')
         .eq('user_id', user.id);
-      if (!data) return [];
+      if (friendsError) console.error('[friends:list] query error', friendsError);
+      if (!data) { console.log(`[friends:list] no data for user ${user.id}`); return []; }
       const t2 = performance.now();
 
       const codes = data
@@ -502,8 +510,9 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] friends:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} cache=${(t3-t2).toFixed(0)} rows=${data.length})`);
+      ipcLog.info(`friends:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} cache=${(t3-t2).toFixed(0)} rows=${data.length})`);
       return result;
-    } catch (e) { console.error('friends:list', e); return []; }
+    } catch (e) { console.error('friends:list', e); ipcLog.error('friends:list', e); return []; }
   });
 
   ipcMain.handle('friends:incoming', async () => {
@@ -570,8 +579,9 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] friends:incoming total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`friends:incoming total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
-    } catch (e) { console.error('friends:incoming', e); return []; }
+    } catch (e) { console.error('friends:incoming', e); ipcLog.error('friends:incoming', e); return []; }
   });
 
   ipcMain.handle('friends:accept', async (_e, requestId: string) => {
@@ -756,6 +766,7 @@ export function registerIpcHandlers(
       await supabase.from('event_log').insert({ user_id: userId, event_type: eventType, metadata });
     } catch (e: any) {
       console.warn('[event_log] Failed to log event:', eventType, e.message);
+      ipcLog.warn('Failed to log event:', eventType, e.message);
     }
   }
 
@@ -876,6 +887,7 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] invite:pending total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`invite:pending total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
     } catch { return []; }
   });
@@ -1010,6 +1022,7 @@ export function registerIpcHandlers(
         };
       });
       console.log(`[bench] invite:sent total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
+      ipcLog.info(`invite:sent total=${(performance.now()-t0).toFixed(0)}ms rows=${data.length}`);
       return result;
     } catch { return []; }
   });
@@ -1039,7 +1052,7 @@ export function registerIpcHandlers(
         .order('played_at', { ascending: false })
         .limit(limit);
       return data || [];
-    } catch (e) { console.error('opponents:list', e); return []; }
+    } catch (e) { console.error('opponents:list', e); ipcLog.error('opponents:list', e); return []; }
   });
 
   ipcMain.handle('opponents:page', async (_e, before: string, limit = 50) => {
@@ -1054,7 +1067,7 @@ export function registerIpcHandlers(
         .order('played_at', { ascending: false })
         .limit(limit);
       return data || [];
-    } catch (e) { console.error('opponents:page', e); return []; }
+    } catch (e) { console.error('opponents:page', e); ipcLog.error('opponents:page', e); return []; }
   });
 
   ipcMain.handle('opponents:latestTimestamp', async () => {
@@ -1069,7 +1082,7 @@ export function registerIpcHandlers(
         .limit(1)
         .maybeSingle();
       return data?.played_at ?? null;
-    } catch (e) { console.error('opponents:latestTimestamp', e); return null; }
+    } catch (e) { console.error('opponents:latestTimestamp', e); ipcLog.error('opponents:latestTimestamp', e); return null; }
   });
 
   ipcMain.handle('stats:playerCount', async () => {
@@ -1109,7 +1122,7 @@ export function registerIpcHandlers(
         .order('in_game_seconds', { ascending: false })
         .gt('in_game_seconds', 0)
         .limit(limit);
-      if (error) { console.error('leaderboard:top', error.message); return []; }
+      if (error) { console.error('leaderboard:top', error.message); ipcLog.error('leaderboard:top', error.message); return []; }
       const rows = (data || []).map((row: any) => ({
         userId: row.user_id,
         profiles: row.profiles,
@@ -1134,7 +1147,7 @@ export function registerIpcHandlers(
           rankChange: yRank - todayRank,
         };
       });
-    } catch (e) { console.error('leaderboard:top', e); return []; }
+    } catch (e) { console.error('leaderboard:top', e); ipcLog.error('leaderboard:top', e); return []; }
   });
 
   ipcMain.handle('presence:online', () => getOnlineUsers());
@@ -1184,8 +1197,9 @@ export function registerIpcHandlers(
         result[code] = resolvePresenceRow(row as any, PRESENCE_STALE_THRESHOLD, now);
       }
       console.log(`[bench] presence:friendStatuses total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} rows=${data.length})`);
+      ipcLog.info(`presence:friendStatuses total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} friends=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} rows=${data.length})`);
       return result;
-    } catch (e) { console.error('presence:friendStatuses', e); return {}; }
+    } catch (e) { console.error('presence:friendStatuses', e); ipcLog.error('presence:friendStatuses', e); return {}; }
   });
 
   let discoverInFlight: Promise<any[]> | null = null;
@@ -1408,10 +1422,107 @@ export function registerIpcHandlers(
       }));
 
       console.log(`[bench] discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} nullRatings=${withMutuals.filter((r: any) => r.rating == null).length})`);
+      ipcLog.info(`discover:list total=${(performance.now()-t0).toFixed(0)}ms (auth=${(t1-t0).toFixed(0)} context=${(t2-t1).toFixed(0)} presence=${(t3-t2).toFixed(0)} profiles=${(t4-t3).toFixed(0)} ratings=${(t5-t4).toFixed(0)} matches=${(t6-t5).toFixed(0)} candidates=${candidateIds.length} results=${withMutuals.length} nullRatings=${withMutuals.filter((r: any) => r.rating == null).length})`);
       return withMutuals;
-    } catch (e) { console.error('discover:list', e); return []; }
+    } catch (e) { console.error('discover:list', e); ipcLog.error('discover:list', e); return []; }
     })();
     try { return await discoverInFlight; } finally { discoverInFlight = null; }
+  });
+
+  // --- Mutuals ---
+
+  ipcMain.handle('mutuals:list', async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) { console.log('[mutuals:list] no authenticated user'); return []; }
+      const t0 = performance.now();
+
+      // Read precomputed mutual counts for this user
+      const { data: rows, error: mfcError } = await supabase
+        .from('mutual_friend_counts')
+        .select('user_a, user_b, mutual_count')
+        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+        .order('mutual_count', { ascending: false })
+        .limit(100);
+      if (mfcError) console.error('[mutuals:list] mfc query error', mfcError);
+      if (!rows || rows.length === 0) { console.log(`[mutuals:list] no mutual_friend_counts rows for user ${user.id}`); return []; }
+
+      // Collect the "other" user ids
+      const otherIds = rows.map((r: any) => r.user_a === user.id ? r.user_b : r.user_a);
+      const countMap = new Map<string, number>();
+      rows.forEach((r: any) => {
+        const otherId = r.user_a === user.id ? r.user_b : r.user_a;
+        countMap.set(otherId, r.mutual_count);
+      });
+
+      // Fetch profiles
+      const { data: profiles } = await supabase.from('profiles').select('id, connect_code, display_name, avatar_url, hide_avatar, hide_mutual_friends, top_characters, main_character, region, chosen_region, hide_region, discord_username, discord_id, hide_discord_unless_friends').in('id', otherIds);
+
+      // Fetch ratings (keyed by connect_code)
+      const codes = (profiles || []).map((p: any) => p.connect_code).filter(Boolean);
+      const { data: ratings } = codes.length > 0
+        ? await supabase.from('player_ratings').select('connect_code, effective_rating').in('connect_code', codes)
+        : { data: [] };
+
+      const ratingsMap: Record<string, number> = {};
+      (ratings || []).forEach((r: any) => { if (r.effective_rating != null) ratingsMap[r.connect_code] = r.effective_rating; });
+
+      // Check which of these users are already friends
+      const { data: friendRows } = await supabase
+        .from('friends')
+        .select('friend_id, friend_connect_code, status')
+        .eq('user_id', user.id)
+        .in('friend_connect_code', (profiles || []).map((p: any) => p.connect_code).filter(Boolean));
+      const friendStatusMap = new Map<string, string>();
+      (friendRows || []).forEach((f: any) => {
+        if (f.friend_connect_code) friendStatusMap.set(f.friend_connect_code, f.status);
+      });
+
+      const result = (profiles || [])
+        .filter((p: any) => !p.hide_mutual_friends && friendStatusMap.get(p.connect_code) !== 'accepted')
+        .map((p: any) => {
+          const slippi: { characterId: number; gameCount: number }[] = Array.isArray(p.top_characters) ? p.top_characters : [];
+          const topCharacters: { characterId: number; gameCount: number }[] = [];
+          if (p.main_character != null) topCharacters.push({ characterId: p.main_character, gameCount: 0 });
+          else if (slippi[0]) topCharacters.push(slippi[0]);
+          return {
+            userId: p.id,
+            connectCode: p.connect_code,
+            displayName: p.display_name || null,
+            discordUsername: p.hide_discord_unless_friends ? null : (p.discord_username || null),
+            discordId: p.hide_discord_unless_friends ? null : (p.discord_id || null),
+            avatarUrl: p.hide_avatar ? null : (p.avatar_url || null),
+            rating: ratingsMap[p.connect_code] ?? null,
+            topCharacters,
+            region: p.hide_region ? null : (p.chosen_region || p.region || null),
+            mutualFriendCount: countMap.get(p.id) ?? 0,
+            friendStatus: friendStatusMap.get(p.connect_code) || null,
+          };
+        })
+        .sort((a: any, b: any) => (b.mutualFriendCount ?? 0) - (a.mutualFriendCount ?? 0));
+
+      console.log(`[bench] mutuals:list total=${(performance.now()-t0).toFixed(0)}ms rows=${result.length}`);
+      ipcLog.info(`mutuals:list total=${(performance.now()-t0).toFixed(0)}ms rows=${result.length}`);
+      return result;
+    } catch (e) { console.error('mutuals:list', e); ipcLog.error('mutuals:list', e); return []; }
+  });
+
+  ipcMain.handle('mutuals:for-player', async (_e, targetUserId: string) => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      const { data, error } = await supabase.rpc('get_mutual_friends', { p_target_id: targetUserId });
+      if (error) { console.error('mutuals:for-player rpc error', error); return []; }
+      return (data || []).map((r: any) => ({
+        userId: r.id,
+        connectCode: r.connect_code,
+        displayName: r.display_name || null,
+        avatarUrl: r.avatar_url || null,
+        rating: r.rating != null ? Number(r.rating) : null,
+        topCharacters: Array.isArray(r.top_characters) ? r.top_characters : [],
+        region: r.region || null,
+      }));
+    } catch (e) { console.error('mutuals:for-player', e); ipcLog.error('mutuals:for-player', e); return []; }
   });
 
   const VALID_NUDGE_MESSAGES = ['GGs', 'one more', 'gtg', 'you play so hot and cool', 'that was sick', "you're cracked", "i'm cracked", "i'm so high", 'check discord', 'hi', 'Down in 5-15 min', 'Sorry, another time', 'Looking for different matchup', 'Message me on Discord'];
@@ -1599,8 +1710,8 @@ export function registerIpcHandlers(
   ipcMain.handle('privacy:get', async () => {
     try {
       const user = await getCurrentUser();
-      if (!user) return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null };
-      const { data } = await supabase.from('profiles').select('hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, show_online_status, disable_friend_requests, chosen_region').eq('id', user.id).single();
+      if (!user) return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, hideMutualFriends: false, chosenRegion: null };
+      const { data } = await supabase.from('profiles').select('hide_region, hide_discord_unless_friends, hide_avatar, hide_connection_type, show_online_status, disable_friend_requests, hide_mutual_friends, chosen_region').eq('id', user.id).single();
       const hideConn = data?.hide_connection_type ?? false;
       const hideOnline = !(data?.show_online_status ?? true);
       setHideConnectionType(hideConn);
@@ -1612,12 +1723,13 @@ export function registerIpcHandlers(
         hideConnectionType: hideConn,
         hideOnlineStatus: hideOnline,
         disableFriendRequests: data?.disable_friend_requests ?? false,
+        hideMutualFriends: data?.hide_mutual_friends ?? false,
         chosenRegion: data?.chosen_region ?? null,
       };
     } catch { return { hideRegion: false, hideDiscordUnlessFriends: false, hideAvatar: false, hideConnectionType: false, hideOnlineStatus: false, disableFriendRequests: false, chosenRegion: null }; }
   });
 
-  ipcMain.handle('privacy:update', async (_e, partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean; hideAvatar?: boolean; hideConnectionType?: boolean; hideOnlineStatus?: boolean; disableFriendRequests?: boolean }) => {
+  ipcMain.handle('privacy:update', async (_e, partial: { hideRegion?: boolean; hideDiscordUnlessFriends?: boolean; hideAvatar?: boolean; hideConnectionType?: boolean; hideOnlineStatus?: boolean; disableFriendRequests?: boolean; hideMutualFriends?: boolean }) => {
     try {
       const user = await getCurrentUser();
       if (!user) return { error: 'Not authenticated' };
@@ -1634,6 +1746,7 @@ export function registerIpcHandlers(
         setHideOnlineStatus(partial.hideOnlineStatus);
       }
       if (partial.disableFriendRequests !== undefined) update.disable_friend_requests = partial.disableFriendRequests;
+      if (partial.hideMutualFriends !== undefined) update.hide_mutual_friends = partial.hideMutualFriends;
       const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
       if (error) return { error: error.message };
       return { ok: true };
@@ -1748,7 +1861,7 @@ export function registerIpcHandlers(
           blockedAt: b.created_at,
         };
       });
-    } catch (e) { console.error('block:list', e); return []; }
+    } catch (e) { console.error('block:list', e); ipcLog.error('block:list', e); return []; }
   });
 
   ipcMain.handle('auth:checkBlacklist', async () => {
@@ -1821,7 +1934,7 @@ export function registerIpcHandlers(
           gameCount: c.gameCount,
         })).filter((c: any) => c.character != null),
       };
-    } catch (e: any) { console.error('slippi:lookup', e); return null; }
+    } catch (e: any) { console.error('slippi:lookup', e); ipcLog.error('slippi:lookup', e); return null; }
   });
 
   ipcMain.handle('config:broadcast', async () => {
@@ -1867,6 +1980,7 @@ export function registerIpcHandlers(
       const { data, error } = await supabase.from('patreon_public_supporters').select('connect_code');
       if (error) {
         console.warn('[patreon] listPublicSupporterCodes:', error.message);
+        ipcLog.warn('listPublicSupporterCodes:', error.message);
         return [];
       }
       return (data ?? [])
@@ -1881,12 +1995,14 @@ export function registerIpcHandlers(
     const raw = typeof url === 'string' ? url.trim() : '';
     if (!raw) {
       console.warn('[shell] openExternal: empty url');
+      ipcLog.warn('openExternal: empty url');
       return;
     }
     try {
       await shell.openExternal(raw);
     } catch (e) {
       console.error('[shell] openExternal failed:', raw, e);
+      ipcLog.error('openExternal failed:', raw, e);
     }
   });
 
@@ -1905,6 +2021,7 @@ export function registerIpcHandlers(
       exec('reg query HKCR\\discord /ve', { timeout: 3000 }, (err: any, stdout: string) => {
         discordProtocolSupported = !err && stdout.includes('URL:');
         console.log('[discord] protocol supported:', discordProtocolSupported);
+        ipcLog.info('protocol supported:', discordProtocolSupported);
       });
     } else if (process.platform === 'darwin') {
       discordProtocolSupported = true;
@@ -1972,6 +2089,7 @@ export function registerIpcHandlers(
   ipcMain.handle('cashbox:getSnapshot', async () => {
     if (_snapshotInflight) {
       console.log('[cashbox] dedup: sharing in-flight snapshot request');
+      ipcLog.info('dedup: sharing in-flight snapshot request');
       return _snapshotInflight;
     }
 
@@ -2007,6 +2125,7 @@ export function registerIpcHandlers(
         }
         const sggToken = await getStartGgUserToken();
         console.log('[cashbox] token source:', sggToken ? 'oauth (user-linked)' : 'env (START_GG_TOKEN fallback)');
+        ipcLog.info('token source:', sggToken ? 'oauth (user-linked)' : 'env (START_GG_TOKEN fallback)');
         const snap = await getCashboxSnapshot(code, sggToken);
         if (snap.ok) {
           await enrichCashboxFriendliesOpponent(snap, user?.id ?? null, code);
@@ -2016,6 +2135,7 @@ export function registerIpcHandlers(
         return snap;
       } catch (e: any) {
         console.error('cashbox:getSnapshot', e);
+        ipcLog.error('cashbox:getSnapshot', e);
         return { ok: false as const, reason: 'api' as const, message: e?.message || 'Unknown error' };
       }
     })();
@@ -2049,6 +2169,7 @@ export function registerIpcHandlers(
       return { ok: true as const, friendlies: result };
     } catch (e: any) {
       console.error('cashbox:lookupOpponent', e);
+      ipcLog.error('cashbox:lookupOpponent', e);
       return { ok: false as const, message: e?.message || 'Unknown error' };
     }
   });
@@ -2218,5 +2339,19 @@ export function registerIpcHandlers(
       connected: isStartGgConnected(),
       ...getStartGgUserInfo(),
     };
+  });
+
+  ipcMain.handle('diagnostics:export', async () => {
+    const { exportDiagnostics } = await import('./diagnostics');
+    return exportDiagnostics();
+  });
+
+  ipcMain.handle('diagnostics:openLogs', () => {
+    const log = require('electron-log/main');
+    const logFile = log.transports.file.getFile();
+    if (logFile?.path) {
+      const dir = require('path').dirname(logFile.path);
+      shell.openPath(dir);
+    }
   });
 }

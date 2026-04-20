@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import { sendToRenderer } from './ipc';
 import { getCurrentUser } from './auth';
 import { getIdentity } from './identity';
+import { chatLog } from './logger';
 
 export interface ChatMessage {
   id: string;
@@ -131,9 +132,11 @@ export async function subscribeChatRoom(room: string): Promise<boolean> {
       });
     });
     console.log('[chat] Subscribed to room:', room);
+    chatLog.info('Subscribed to room:', room);
     return true;
   } catch (e) {
     console.error('[chat] Subscribe failed:', e);
+    chatLog.error('Subscribe failed:', e);
     chatChannel = null;
     currentRoom = null;
     return false;
@@ -195,8 +198,10 @@ export async function joinChatPresence(room: string): Promise<void> {
       displayName: identity.displayName || identity.connectCode,
     });
     console.log('[chat] Presence joined for room:', room);
+    chatLog.info('Presence joined for room:', room);
   } catch (e) {
     console.error('[chat] Presence join failed:', e);
+    chatLog.error('Presence join failed:', e);
   }
 }
 
@@ -265,7 +270,7 @@ export async function getChatHistory(
   if (before) query = query.lt('created_at', before);
 
   const { data, error } = await query;
-  if (error) { console.error('[chat] history error:', error.message); return { messages: [], profiles: {} }; }
+  if (error) { console.error('[chat] history error:', error.message); chatLog.error('history error:', error.message); return { messages: [], profiles: {} }; }
 
   const blocked = await getBlockedCodes();
   const messages = (data ?? [])

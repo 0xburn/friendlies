@@ -19,6 +19,7 @@ import {
   shouldWriteDb as _shouldWriteDb,
   type PresenceStatus,
 } from './presence-logic';
+import { presenceLog } from './logger';
 import { supabase } from './supabase';
 
 export type { PresenceStatus };
@@ -286,7 +287,7 @@ export function onGameActiveChange(cb: GameActiveCallback): () => void {
 
 function emitGameActive(inGame: boolean): void {
   for (const cb of gameActiveCallbacks) {
-    try { cb(inGame); } catch (e) { console.error('gameActiveCallback', e); }
+    try { cb(inGame); } catch (e) { console.error('gameActiveCallback', e); presenceLog.error('gameActiveCallback', e); }
   }
 }
 
@@ -450,7 +451,7 @@ export function onLocalStatusChange(cb: LocalStatusCallback): () => void {
 
 function emitPresenceSync(): void {
   for (const cb of syncCallbacks) {
-    try { cb(onlineUsers); } catch (e) { console.error('presenceSyncCallback', e); }
+    try { cb(onlineUsers); } catch (e) { console.error('presenceSyncCallback', e); presenceLog.error('presenceSyncCallback', e); }
   }
 }
 
@@ -466,7 +467,7 @@ function emitLocalStatus(): void {
     gameMode: currentStatus === 'in-game' ? lastGameMode : null,
   };
   for (const cb of localStatusCallbacks) {
-    try { cb(info); } catch (e) { console.error('localStatusCallback', e); }
+    try { cb(info); } catch (e) { console.error('localStatusCallback', e); presenceLog.error('localStatusCallback', e); }
   }
 }
 
@@ -493,7 +494,7 @@ function extractOnlineUsers(): OnlineUser[] {
       }
     }
     return users;
-  } catch (e) { console.error('extractOnlineUsers', e); return []; }
+  } catch (e) { console.error('extractOnlineUsers', e); presenceLog.error('extractOnlineUsers', e); return []; }
 }
 
 function getProcessSnapshot(): Promise<string> {
@@ -576,10 +577,12 @@ async function pushPresence(
         if (error.message.includes('row-level security')) {
           if (now - lastRlsWarning > 60_000) {
             console.warn('[presence] RLS rejection — auth session may have expired. Will retry silently.');
+            presenceLog.warn('RLS rejection — auth session may have expired. Will retry silently.');
             lastRlsWarning = now;
           }
         } else {
           console.error('[presence] DB upsert failed:', error.message);
+          presenceLog.error('DB upsert failed:', error.message);
           if (error.message.includes('opponent_code') || error.message.includes('playing_since')) {
             const { error: retryErr } = await supabase.from('presence_log').upsert(
               {
@@ -591,7 +594,10 @@ async function pushPresence(
               },
               { onConflict: 'user_id' },
             );
-            if (retryErr) console.error('[presence] DB upsert retry failed:', retryErr.message);
+            if (retryErr) {
+              console.error('[presence] DB upsert retry failed:', retryErr.message);
+              presenceLog.error('DB upsert retry failed:', retryErr.message);
+            }
           }
         }
       } else {
@@ -603,7 +609,10 @@ async function pushPresence(
               p_seconds: deltaSec,
               p_in_game: true,
             }).then(({ error: actErr }) => {
-              if (actErr) console.error('[activity] increment failed:', actErr.message);
+              if (actErr) {
+                console.error('[activity] increment failed:', actErr.message);
+                presenceLog.error('increment failed:', actErr.message);
+              }
             });
           }
         }
@@ -653,6 +662,7 @@ async function pushPresence(
     presenceStats.upsertFail++;
     presenceStats.lastError = `upsert: ${e}`;
     console.error('pushPresence failed', e);
+    presenceLog.error('pushPresence failed', e);
   }
 }
 
@@ -672,7 +682,9 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
   }
 
   console.log('[presence] Creating Realtime channel for', connectCode, `(gen=${gen})`);
+  presenceLog.info('Creating Realtime channel for', connectCode, `(gen=${gen})`);
   console.log('[presence] WebSocket available:', typeof globalThis.WebSocket !== 'undefined');
+  presenceLog.info('WebSocket available:', typeof globalThis.WebSocket !== 'undefined');
 
   presenceChannel = supabase.channel('presence:global', {
     config: {
@@ -694,8 +706,10 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
         reject(new Error('presence subscribe timeout (10s)'));
       }, 10_000);
       console.log('[presence] Calling channel.subscribe()...');
+      presenceLog.info('Calling channel.subscribe()...');
       presenceChannel!.subscribe((status, err) => {
         console.log('[presence] subscribe status:', status, err ? `error: ${err}` : '', `(gen=${gen}, current=${subscribeGeneration})`);
+        presenceLog.info('subscribe status:', status, err ? `error: ${err}` : '', `(gen=${gen}, current=${subscribeGeneration})`);
         if (gen !== subscribeGeneration) { clearTimeout(t); return; }
         if (status === 'SUBSCRIBED') {
           clearTimeout(t);
@@ -706,6 +720,7 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
           reject(new Error(`presence subscribe ${status}${err ? ': ' + err : ''}`));
         } else if (status === 'CLOSED' && subscribed) {
           console.warn('[presence] Channel closed after SUBSCRIBED — will retry');
+          presenceLog.warn('Channel closed after SUBSCRIBED — will retry');
           subscribed = false;
           presenceStats.realtimeConnected = false;
           presenceStats.lastError = 'channel closed unexpectedly';
@@ -716,13 +731,16 @@ async function subscribeChannel(connectCode: string): Promise<boolean> {
     channelRetryCount = 0;
     presenceStats.realtimeConnected = true;
     console.log('[presence] Realtime channel CONNECTED (gen=%d)', gen);
+    presenceLog.info('Realtime channel CONNECTED (gen=%d)', gen);
     return true;
   } catch (e: any) {
     if (gen !== subscribeGeneration) {
       console.log('[presence] Ignoring stale subscribe error (gen=%d, current=%d)', gen, subscribeGeneration);
+      presenceLog.info('Ignoring stale subscribe error (gen=%d, current=%d)', gen, subscribeGeneration);
       return false;
     }
     console.error('[presence] subscribeChannel failed:', e?.message ?? e);
+    presenceLog.error('subscribeChannel failed:', e?.message ?? e);
     presenceStats.subscribeFail++;
     presenceStats.lastError = `subscribe: ${e?.message ?? e}`;
     presenceStats.realtimeConnected = false;
@@ -743,9 +761,11 @@ function scheduleChannelRetry(): void {
   if (channelRetryTimer || channelRetryCount >= MAX_CHANNEL_RETRIES) {
     if (channelRetryCount >= MAX_CHANNEL_RETRIES && !periodicRetryTimer) {
       console.log('[presence] Retries exhausted — will re-attempt every 5 minutes');
+      presenceLog.info('Retries exhausted — will re-attempt every 5 minutes');
       periodicRetryTimer = setInterval(async () => {
         if (subscribed || !loopConnectCode) return;
         console.log('[presence] Periodic re-attempt of Realtime subscription...');
+        presenceLog.info('Periodic re-attempt of Realtime subscription...');
         channelRetryCount = 0;
         const ok = await subscribeChannel(loopConnectCode);
         if (ok && periodicRetryTimer) {
@@ -762,6 +782,7 @@ function scheduleChannelRetry(): void {
     if (subscribed || !loopConnectCode) return;
     channelRetryCount++;
     console.log(`[presence] Retrying channel subscription (${channelRetryCount}/${MAX_CHANNEL_RETRIES}) — next in ${delay * 2 / 1000}s...`);
+    presenceLog.info(`Retrying channel subscription (${channelRetryCount}/${MAX_CHANNEL_RETRIES}) — next in ${delay * 2 / 1000}s...`);
     const ok = await subscribeChannel(loopConnectCode);
     if (!ok) {
       scheduleChannelRetry();
@@ -784,15 +805,18 @@ export async function startPresenceLoop(
     loopDisplayName = displayName;
     loopUserId = userId;
     console.log('[presence] startPresenceLoop — subscribing channel...');
+    presenceLog.info('startPresenceLoop — subscribing channel...');
 
     if (process.platform === 'darwin' && !macDeviceTypeMap) {
       macDeviceTypeMap = await buildMacDeviceMap();
     }
     currentConnectionType = detectConnectionType();
     console.log('[presence] connection type:', currentConnectionType);
+    presenceLog.info('connection type:', currentConnectionType);
 
     const channelOk = await subscribeChannel(connectCode);
     console.log('[presence] startPresenceLoop — channelOk:', channelOk);
+    presenceLog.info('startPresenceLoop — channelOk:', channelOk);
     if (!channelOk) scheduleChannelRetry();
 
     const tick = async () => {
@@ -815,8 +839,13 @@ export async function startPresenceLoop(
             .in('status', ['online', 'in-game'])
             .lt('updated_at', cutoff)
             .then(({ error }) => {
-              if (error) console.warn('[presence] stale cleanup failed:', error.message);
-              else console.log('[presence] stale cleanup ran');
+              if (error) {
+                console.warn('[presence] stale cleanup failed:', error.message);
+                presenceLog.warn('stale cleanup failed:', error.message);
+              } else {
+                console.log('[presence] stale cleanup ran');
+                presenceLog.info('stale cleanup ran');
+              }
             });
         }
 
@@ -829,7 +858,10 @@ export async function startPresenceLoop(
         const launcherRunning = snapshotContains(snapshot, SLIPPI_LAUNCHER_PROCESS_NAMES);
         const dolphinRunning = snapshotContains(snapshot, DOLPHIN_PROCESS_NAMES);
         const procMs = performance.now() - t0;
-        if (procMs > 100) console.log(`[perf] process scan took ${procMs.toFixed(0)}ms`);
+        if (procMs > 100) {
+          console.log(`[perf] process scan took ${procMs.toFixed(0)}ms`);
+          presenceLog.info(`process scan took ${procMs.toFixed(0)}ms`);
+        }
 
         const next = resolvePresenceStatus(launcherRunning, dolphinRunning);
         if (next === 'in-game' && currentStatus !== 'in-game') {
@@ -843,6 +875,11 @@ export async function startPresenceLoop(
         if (next !== currentStatus) {
           console.log(
             `[presence] ${currentStatus} → ${next}` +
+            (opponent ? ` opponent=${opponent.code}` : '') +
+            (lastCharacterId != null ? ` myChar=${lastCharacterId}` : ''),
+          );
+          presenceLog.info(
+            `${currentStatus} → ${next}` +
             (opponent ? ` opponent=${opponent.code}` : '') +
             (lastCharacterId != null ? ` myChar=${lastCharacterId}` : ''),
           );
@@ -863,11 +900,15 @@ export async function startPresenceLoop(
           loopUserId,
         );
         const pushMs = performance.now() - t1;
-        if (pushMs > 200) console.log(`[perf] pushPresence took ${pushMs.toFixed(0)}ms`);
+        if (pushMs > 200) {
+          console.log(`[perf] pushPresence took ${pushMs.toFixed(0)}ms`);
+          presenceLog.info(`pushPresence took ${pushMs.toFixed(0)}ms`);
+        }
 
         if (!subscribed) scheduleChannelRetry();
       } catch (e) {
         console.error('presence tick failed', e);
+        presenceLog.error('presence tick failed', e);
       }
 
       const delay = (currentStatus === 'in-game' && throttleInGame)
@@ -879,6 +920,7 @@ export async function startPresenceLoop(
     void tick();
   } catch (e) {
     console.error('startPresenceLoop failed', e);
+    presenceLog.error('startPresenceLoop failed', e);
   }
 }
 
@@ -902,6 +944,7 @@ export async function stopPresenceLoop(): Promise<void> {
         await presenceChannel.untrack();
       } catch (e) {
         console.error('presence untrack failed', e);
+        presenceLog.error('presence untrack failed', e);
       }
       await presenceChannel.unsubscribe();
       subscribed = false;
@@ -920,6 +963,7 @@ export async function stopPresenceLoop(): Promise<void> {
     lastDbWriteTime = 0;
   } catch (e) {
     console.error('stopPresenceLoop failed', e);
+    presenceLog.error('stopPresenceLoop failed', e);
   }
 }
 
@@ -974,7 +1018,7 @@ export async function pushOfflineAndStop(): Promise<void> {
       subscribed = false;
       presenceChannel = null;
     }
-  } catch (e) { console.error('pushOfflineAndStop failed', e); }
+  } catch (e) { console.error('pushOfflineAndStop failed', e); presenceLog.error('pushOfflineAndStop failed', e); }
 }
 
 export function updatePresenceReplayDir(_dir: string): void {

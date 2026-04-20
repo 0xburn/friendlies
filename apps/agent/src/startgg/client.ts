@@ -1,4 +1,5 @@
 const START_GG_ENDPOINT = 'https://api.start.gg/gql/alpha';
+import { startggLog } from '../logger';
 
 export interface StartGgGraphqlResult<T> {
   data: T | null;
@@ -24,6 +25,7 @@ export async function startGgGraphql<T>(
   _lastTokenSource = userToken ? 'oauth' : token ? 'env' : 'none';
   if (!token) {
     console.warn(`[startgg-gql] ${operationName ?? 'query'}: NO TOKEN AVAILABLE`);
+    startggLog.warn(`${operationName ?? 'query'}: NO TOKEN AVAILABLE`);
     return { data: null, errors: [{ message: 'No start.gg token available (link your start.gg account or set START_GG_TOKEN)' }] };
   }
 

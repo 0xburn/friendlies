@@ -5,6 +5,7 @@ import chokidar from 'chokidar';
 
 import { ENABLE_IDENTITY_BLACKLIST_ENFORCEMENT } from './identity-enforcement';
 import { getIdentity } from './identity';
+import { watcherLog, identityLog } from './logger';
 import { normalizeConnectCode } from './presence-logic';
 import { supabase } from './supabase';
 
@@ -67,6 +68,7 @@ function drainPendingReplays(): void {
   const batch = _pendingReplays.splice(0);
   if (batch.length === 0) return;
   console.log(`[watcher] Draining ${batch.length} deferred replay(s)`);
+  watcherLog.info(`Draining ${batch.length} deferred replay(s)`);
   for (const item of batch) {
     void (async () => {
       try {
@@ -74,6 +76,7 @@ function drainPendingReplays(): void {
         if (info) item.onOpponent(info);
       } catch (e) {
         console.error('deferred replay processing failed', e);
+        watcherLog.error('deferred replay processing failed', e);
       }
     })();
   }
@@ -113,6 +116,7 @@ export async function processNewReplay(
     );
     if (playersWithCodes.length === 0) {
       console.log('[watcher] Skipping offline/local replay (no connect codes)');
+      watcherLog.info('Skipping offline/local replay (no connect codes)');
       return null;
     }
 
@@ -123,8 +127,10 @@ export async function processNewReplay(
     if (localPlayer) {
       consecutiveMismatches = 0;
       console.log(`[watcher] Matched local player at port ${localPlayer.port} (code ${localNorm}, char ${localPlayer.characterId})`);
+      watcherLog.info(`Matched local player at port ${localPlayer.port}`, { code: localNorm, char: localPlayer.characterId });
     } else {
       console.log(`[watcher] Local player not found for ${localNorm} — players: ${playersWithCodes.map((p) => normalizeConnectCode(p.connectCode || '')).join(', ')}`);
+      watcherLog.info(`Local player not found for ${localNorm}`, { players: playersWithCodes.map((p) => normalizeConnectCode(p.connectCode || '')) });
     }
 
     // Identity mismatch detection: only for live replays (not backfill)
@@ -139,6 +145,7 @@ export async function processNewReplay(
     ) {
       if (isSpectateReplay(filePath)) {
         console.log(`[identity] Skipping mismatch check — spectate replay: ${path.basename(filePath)}`);
+        identityLog.info(`Skipping mismatch check — spectate replay: ${path.basename(filePath)}`);
       } else {
         const actualCodes = humans
           .map((p) => normalizeConnectCode(p.connectCode || ''))
@@ -155,8 +162,10 @@ export async function processNewReplay(
 
         if (isEncodingMismatch) {
           console.log(`[identity] Encoding-only mismatch for ${localNorm} — not a spoof`);
+          identityLog.info(`Encoding-only mismatch for ${localNorm} — not a spoof`);
         } else if (freshMatchesReplay) {
           console.log(`[identity] user.json updated to ${freshNorm} which matches replay — account switch, not a spoof`);
+          identityLog.info(`user.json updated to ${freshNorm} which matches replay — account switch, not a spoof`);
         } else if (actualCodes.length > 0) {
           consecutiveMismatches++;
           const replayName = path.basename(filePath);
@@ -164,6 +173,7 @@ export async function processNewReplay(
             `[identity] Mismatch strike ${consecutiveMismatches}/${MISMATCH_STRIKE_THRESHOLD}:`,
             { claimedCode: localNorm, actualCode: actualCodes[0], replayFile: replayName },
           );
+          identityLog.warn(`Mismatch strike ${consecutiveMismatches}/${MISMATCH_STRIKE_THRESHOLD}`, { claimedCode: localNorm, actualCode: actualCodes[0], replayFile: replayName });
 
           if (consecutiveMismatches >= MISMATCH_STRIKE_THRESHOLD) {
             const mismatch: IdentityMismatch = {
@@ -172,6 +182,7 @@ export async function processNewReplay(
               replayFile: replayName,
             };
             console.warn('[identity] MISMATCH CONFIRMED after consecutive strikes:', mismatch);
+            identityLog.warn('MISMATCH CONFIRMED after consecutive strikes', mismatch);
             try {
               const { data: userData } = await supabase.auth.getUser();
               if (userData?.user) {
@@ -194,6 +205,7 @@ export async function processNewReplay(
               }
             } catch (e) {
               console.error('Failed to blacklist/unlink spoofed profile', e);
+              identityLog.error('Failed to blacklist/unlink spoofed profile', e);
             }
             if (onIdentityMismatch) onIdentityMismatch(mismatch);
           }
@@ -225,6 +237,7 @@ export async function processNewReplay(
         setLastPlayedCharacterId(localPlayer.characterId);
       } catch (e) {
         console.error('presence character notify failed', e);
+        watcherLog.error('presence character notify failed', e);
       }
     }
 
@@ -322,6 +335,7 @@ export async function processNewReplay(
       .upsert(row, { onConflict: 'user_id,replay_filename' });
     if (error) {
       console.error('matches upsert failed', error);
+      watcherLog.error('matches upsert failed', error);
     }
 
     return {
@@ -332,6 +346,7 @@ export async function processNewReplay(
     };
   } catch (e) {
     console.error('processNewReplay failed', e);
+    watcherLog.error('processNewReplay failed', e);
     return null;
   }
 }
@@ -345,9 +360,11 @@ export function startWatcher(
     stopWatcher();
     if (!fs.existsSync(replayDir)) {
       console.error('Replay directory missing:', replayDir);
+      watcherLog.error('Replay directory missing:', replayDir);
       return;
     }
     console.log(`[watcher] Starting — dir="${replayDir}" code="${localConnectCode}"`);
+    watcherLog.info('Starting', { dir: replayDir, code: localConnectCode });
     peeked.clear();
 
     watcher = chokidar.watch(replayDir, {
@@ -357,15 +374,18 @@ export function startWatcher(
 
     watcher.on('ready', () => {
       console.log('[watcher] Ready and watching for new replays');
+      watcherLog.info('Ready and watching for new replays');
     });
     watcher.on('error', (err) => {
       console.error('[watcher] Error:', err);
+      watcherLog.error('Error:', err);
     });
     watcher.on('add', (filePath: string) => {
       if (!filePath.toLowerCase().endsWith('.slp')) return;
       if (peeked.has(filePath)) return;
       peeked.add(filePath);
       console.log(`[watcher] New replay detected: ${path.basename(filePath)}`);
+      watcherLog.info(`New replay detected: ${path.basename(filePath)}`);
 
       // Immediate presence peek after brief delay for .slp header flush
       setTimeout(() => {
@@ -374,6 +394,7 @@ export function startWatcher(
             const info = await processNewReplay(filePath, localConnectCode, true, { presenceOnly: true });
             if (info) {
               console.log(`[watcher] Presence peek: ${info.connectCode} mode=${info.gameMode}`);
+              watcherLog.info(`Presence peek: ${info.connectCode} mode=${info.gameMode}`);
               try {
                 const { setLastOpponent } = require('./presence') as {
                   setLastOpponent: (code: string, characterId?: number, gameMode?: string | null) => void;
@@ -381,6 +402,7 @@ export function startWatcher(
                 setLastOpponent(info.connectCode, info.characterId, info.gameMode);
               } catch (e) {
                 console.error('setLastOpponent from peek failed', e);
+                watcherLog.error('setLastOpponent from peek failed', e);
               }
             }
           } catch { /* file not readable yet — full processing will handle it */ }
@@ -398,15 +420,18 @@ export function startWatcher(
           const info = await processNewReplay(filePath, localConnectCode, true);
           if (info) {
             console.log(`[watcher] Opponent: ${info.connectCode} (char ${info.characterId})`);
+            watcherLog.info(`Opponent: ${info.connectCode} (char ${info.characterId})`);
             onOpponent(info);
           }
         } catch (e) {
           console.error('watcher add handler failed', e);
+          watcherLog.error('watcher add handler failed', e);
         }
       })();
     });
   } catch (e) {
     console.error('startWatcher failed', e);
+    watcherLog.error('startWatcher failed', e);
   }
 }
 
@@ -432,6 +457,7 @@ export async function backfillRecentReplays(
       .slice(0, BACKFILL_MAX_PER_CALL);
 
     console.log(`[backfill] Processing ${filtered.length} replays (max ${BACKFILL_MAX_PER_CALL} per call)`);
+    watcherLog.info(`Backfill processing ${filtered.length} replays`);
 
     for (const f of filtered) {
       try {
@@ -441,7 +467,8 @@ export async function backfillRecentReplays(
       } catch { /* skip bad replays */ }
     }
     console.log(`[backfill] Done — ${processed}/${filtered.length} processed`);
-  } catch (e) { console.error('backfillRecentReplays', e); }
+    watcherLog.info(`Backfill done — ${processed}/${filtered.length} processed`);
+  } catch (e) { console.error('backfillRecentReplays', e); watcherLog.error('backfillRecentReplays', e); }
   return { processed, oldestMs };
 }
 
@@ -479,6 +506,7 @@ export function stopWatcher(): void {
     void watcher?.close();
   } catch (e) {
     console.error('stopWatcher failed', e);
+    watcherLog.error('stopWatcher failed', e);
   }
   watcher = null;
   peeked.clear();
