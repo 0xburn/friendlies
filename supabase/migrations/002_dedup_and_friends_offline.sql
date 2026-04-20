@@ -1,3 +1,6 @@
+-- The following command only is originally from 002_add_app_version.sql
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS app_version TEXT;
+
 -- 1. Deduplicate matches by replay_filename per user
 DELETE FROM matches a USING matches b
   WHERE a.id > b.id
