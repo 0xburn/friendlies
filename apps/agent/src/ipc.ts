@@ -11,6 +11,7 @@ import { resolvePresenceRow } from './presence-logic';
 import { getConnectionType, getLfgCharacters, getLfgExpiry, getLfgRanks, getLocalStatusSnapshot, getOnlineUsers, getPresenceStats, getStatusPreset, isLookingToPlay, onLocalStatusChange, onPresenceSync, setGameThrottling, setHideConnectionType, setHideOnlineStatus, setLfgCharacters, setLfgExpiry, setLfgRanks, setRendererDocumentHidden, setStatusPreset, toggleLookingToPlay } from './presence';
 import { showTestNotification } from './notifications';
 import { getSettings, isSetupComplete, updateSettings, type AgentSettings } from './settings';
+import { startStream, stopStream } from './stream';
 import { updateTrayStatus } from './tray';
 import { supabase } from './supabase';
 import { checkForUpdates, downloadUpdate, quitAndInstall } from './updater';
@@ -2218,5 +2219,20 @@ export function registerIpcHandlers(
       connected: isStartGgConnected(),
       ...getStartGgUserInfo(),
     };
+  });
+
+  // --- Streaming ---
+
+  ipcMain.handle('stream:start', async () => {
+    try {
+      return { streamId: await startStream() };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('stream:stop', () => {
+    stopStream();
+    return { ok: true };
   });
 }

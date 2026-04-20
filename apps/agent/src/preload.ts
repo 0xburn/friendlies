@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { DisconnectReason } from 'slippi-web-bridge';
 
 type Unsubscribe = () => void;
 
@@ -208,6 +209,10 @@ const api = {
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   reportDocumentHidden: (hidden: boolean) => ipcRenderer.send('visibility:document', hidden),
   onGameActive: (cb: (active: boolean) => void): Unsubscribe => onEvent('game:active', cb),
+
+  startStream: () => ipcRenderer.invoke('stream:start'),
+  stopStream: () => ipcRenderer.invoke('stream:stop'),
+  onStreamDisconnected: (cb: (reason: DisconnectReason) => void): Unsubscribe => onEvent('stream:disconnected', cb),
 };
 
 export type ElectronAPI = typeof api;
