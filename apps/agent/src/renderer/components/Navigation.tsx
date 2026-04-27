@@ -146,39 +146,36 @@ export function Navigation() {
           </div>
         </div>
         <div className="px-6 pb-6">
-          <button
-            type="button"
-            onClick={() => {
-              window.api.trackBannerClick(patreonPublicSupporter ? 'patreon_public_supporter' : 'patreon_public_promo');
-              window.api.openExternal('https://www.patreon.com/cw/Lucky7smelee');
-            }}
-            className="mb-4 w-full text-left rounded-xl overflow-hidden border border-[#5c4d78]/45 bg-gradient-to-br from-[#151022] via-[#10151c] to-[#0c1016] animate-patreon-glow group cursor-pointer ring-1 ring-inset ring-[#c9a227]/12 hover:border-[#7c6ba8]/55 hover:ring-[#c9a227]/18 transition-all"
-          >
-            <div className="relative flex items-center gap-4 px-5 py-3">
-              <div className="relative shrink-0 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#6366f1] via-[#5b21b6] to-[#4c1d95] text-lg text-white/95 shadow-lg shadow-[#4338ca]/25">
-                ✦
-              </div>
-              <div className="relative flex flex-col items-start min-w-0 gap-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#b4a5d6]">
-                  Lucky 7s Melee on Patreon
-                </span>
-                <span className="text-sm font-display font-bold text-white tracking-tight">
-                  Want to support Lucky 7s?
-                </span>
-                <span className="text-[11px] text-gray-400 leading-snug">
-                  Back us on Patreon to get your profile highlighted on Friendlies and Lucky Stats! <br />Along with other amazing features like Full House BTS content, Lucky Stats upgrades, and content shoutouts!
-                </span>
-                {patreonPublicSupporter && (
-                  <span className="text-[11px] font-medium text-[#e8d5a3]/95 mt-1">
-                    You are on the thanks list. Thank you.
+          {!patreonPublicSupporter && (
+            <button
+              type="button"
+              onClick={() => {
+                window.api.trackBannerClick('patreon_public_promo');
+                window.api.openExternal('https://www.patreon.com/cw/Lucky7smelee');
+              }}
+              className="mb-4 w-full text-left rounded-xl overflow-hidden border border-[#5c4d78]/45 bg-gradient-to-br from-[#151022] via-[#10151c] to-[#0c1016] animate-patreon-glow group cursor-pointer ring-1 ring-inset ring-[#c9a227]/12 hover:border-[#7c6ba8]/55 hover:ring-[#c9a227]/18 transition-all"
+            >
+              <div className="relative flex items-center gap-4 px-5 py-3">
+                <div className="relative shrink-0 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#6366f1] via-[#5b21b6] to-[#4c1d95] text-lg text-white/95 shadow-lg shadow-[#4338ca]/25">
+                  ✦
+                </div>
+                <div className="relative flex flex-col items-start min-w-0 gap-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#b4a5d6]">
+                    Lucky 7s Melee on Patreon
                   </span>
-                )}
+                  <span className="text-sm font-display font-bold text-white tracking-tight">
+                    Want to support Lucky 7s?
+                  </span>
+                  <span className="text-[11px] text-gray-400 leading-snug">
+                    Back us on Patreon to get your profile highlighted on Friendlies and Lucky Stats! <br />Along with other amazing features like Full House BTS content, Lucky Stats upgrades, and content shoutouts!
+                  </span>
+                </div>
+                <span className="relative ml-auto shrink-0 text-[#d4b87a] text-xs font-semibold opacity-90 group-hover:opacity-100 self-center">
+                  →
+                </span>
               </div>
-              <span className="relative ml-auto shrink-0 text-[#d4b87a] text-xs font-semibold opacity-90 group-hover:opacity-100 self-center">
-                →
-              </span>
-            </div>
-          </button>
+            </button>
+          )}
           {SHOW_FULL_HOUSE_SIEGE_BANNER && (
             <button
               onClick={() => { window.api.trackBannerClick('fullhouse_siege'); window.api.openExternal('https://start.gg/fullhouse'); }}
